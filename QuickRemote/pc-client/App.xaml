@@ -49,6 +49,73 @@
             <conv:BoolToVisibilityConverter x:Key="BoolToVisConverter"/>
             <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
 
+            <!-- 深色滚动条 Thumb 样式（圆角 + 悬停高亮），供所有滚动条复用 -->
+            <Style x:Key="DarkScrollThumb" TargetType="Thumb">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Border Background="{StaticResource BorderLightBrush}" CornerRadius="3"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Thumb">
+                                    <Border Background="{StaticResource TextMutedBrush}" CornerRadius="3"/>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- 隐式滚动条样式：全局所有滚动条（TextBox/ListBox/ScrollViewer 等）统一深色主题。
+                 6px 窄轨道、圆角、悬停高亮，替代 Windows 默认滚动条的违和感。 -->
+            <Style TargetType="ScrollBar">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Width" Value="6"/>
+                <Setter Property="MinWidth" Value="6"/>
+                <Setter Property="Margin" Value="0,4,2,4"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ScrollBar">
+                            <Grid>
+                                <Border Background="Transparent" CornerRadius="3"/>
+                                <Track Name="PART_Track" IsDirectionReversed="True">
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource DarkScrollThumb}"/>
+                                    </Track.Thumb>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="Orientation" Value="Horizontal">
+                        <Setter Property="Height" Value="6"/>
+                        <Setter Property="MinHeight" Value="6"/>
+                        <Setter Property="Width" Value="Auto"/>
+                        <Setter Property="Margin" Value="4,0,4,0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ScrollBar">
+                                    <Grid>
+                                        <Border Background="Transparent" CornerRadius="3"/>
+                                        <Track Name="PART_Track" IsDirectionReversed="False">
+                                            <Track.Thumb>
+                                                <Thumb Style="{StaticResource DarkScrollThumb}"/>
+                                            </Track.Thumb>
+                                        </Track>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
             <!-- 自定义滚动条样式（与深色主题融合） -->
             <Style x:Key="DarkScrollBar" TargetType="ScrollViewer">
                 <Setter Property="Template">

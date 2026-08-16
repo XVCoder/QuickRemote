@@ -36,10 +36,21 @@ public sealed class TrayService : IDisposable
             Icon = (Icon)_appIcon.Clone()
         };
 
-        _menu = new Forms.ContextMenuStrip();
-        var showItem = new Forms.ToolStripMenuItem("显示主窗口");
+        _menu = new Forms.ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(),
+            ShowImageMargin = true,
+            Font = new Font("Segoe UI", 9f)
+        };
+        var showItem = new Forms.ToolStripMenuItem("显示主窗口")
+        {
+            Image = CreateWindowIcon()
+        };
         showItem.Click += (_, _) => ShowMainWindowRequested?.Invoke();
-        var exitItem = new Forms.ToolStripMenuItem("退出");
+        var exitItem = new Forms.ToolStripMenuItem("退出")
+        {
+            Image = CreateExitIcon()
+        };
         exitItem.Click += (_, _) => ExitRequested?.Invoke();
         _menu.Items.Add(showItem);
         _menu.Items.Add(new Forms.ToolStripSeparator());
@@ -112,6 +123,31 @@ public sealed class TrayService : IDisposable
         return Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
     }
 
+    /// <summary>绘制「显示主窗口」菜单图标（窗口形状，主题蓝）。</summary>
+    private static Image CreateWindowIcon()
+    {
+        var bmp = new Bitmap(16, 16);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(Color.FromArgb(0x3B, 0x82, 0xF6), 1.3f);
+        g.DrawRectangle(pen, 2, 3, 12, 10);   // 窗口主体
+        g.DrawLine(pen, 2, 3, 14, 3);         // 标题栏
+        g.DrawLine(pen, 4, 5, 8, 5);          // 标题栏按钮
+        return bmp;
+    }
+
+    /// <summary>绘制「退出」菜单图标（×，红色）。</summary>
+    private static Image CreateExitIcon()
+    {
+        var bmp = new Bitmap(16, 16);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(Color.FromArgb(0xEF, 0x44, 0x44), 1.5f);
+        g.DrawLine(pen, 4, 4, 12, 12);
+        g.DrawLine(pen, 12, 4, 4, 12);
+        return bmp;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -125,5 +161,71 @@ public sealed class TrayService : IDisposable
             _notifyIcon.Dispose();
         }
         catch { }
+    }
+
+    /// <summary>深色主题配色表（与主界面 BgCard/Border/Accent 一致）。</summary>
+    private sealed class DarkColorTable : Forms.ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground => Color.FromArgb(0x1C, 0x20, 0x30);
+        public override Color ImageMarginGradientBegin => Color.FromArgb(0x1C, 0x20, 0x30);
+        public override Color ImageMarginGradientMiddle => Color.FromArgb(0x1C, 0x20, 0x30);
+        public override Color ImageMarginGradientEnd => Color.FromArgb(0x1C, 0x20, 0x30);
+        public override Color MenuBorder => Color.FromArgb(0x2A, 0x2F, 0x3E);
+        public override Color MenuItemBorder => Color.FromArgb(0x3B, 0x82, 0xF6);
+        public override Color MenuItemSelected => Color.FromArgb(0x23, 0x28, 0x38);
+        public override Color MenuItemSelectedGradientBegin => Color.FromArgb(0x23, 0x28, 0x38);
+        public override Color MenuItemSelectedGradientEnd => Color.FromArgb(0x23, 0x28, 0x38);
+        public override Color SeparatorDark => Color.FromArgb(0x2A, 0x2F, 0x3E);
+        public override Color SeparatorLight => Color.FromArgb(0x2A, 0x2F, 0x3E);
+    }
+
+    /// <summary>深色主题菜单渲染器：深色背景、浅色文字、选中高亮 + 左侧主题色条。</summary>
+    private sealed class DarkMenuRenderer : Forms.ToolStripProfessionalRenderer
+    {
+        public DarkMenuRenderer() : base(new DarkColorTable()) { }
+
+        protected override void OnRenderItemText(Forms.ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Selected ? Color.White : Color.FromArgb(0xE4, 0xE6, 0xEB);
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderMenuItemBackground(Forms.ToolStripItemRenderEventArgs e)
+        {
+            if (e.Item.Selected)
+            {
+                var rc = new Rectangle(0, 0, e.Item.Width, e.Item.Height);
+                using var brush = new SolidBrush(Color.FromArgb(0x23, 0x28, 0x38));
+                e.Graphics.FillRectangle(brush, rc);
+                using var accent = new SolidBrush(Color.FromArgb(0x3B, 0x82, 0xF6));
+                e.Graphics.FillRectangle(accent, 0, 1, 3, rc.Height - 2);
+            }
+            else
+            {
+                base.OnRenderMenuItemBackground(e);
+            }
+        }
+
+        protected override void OnRenderSeparator(Forms.ToolStripSeparatorRenderEventArgs e)
+        {
+            using var pen = new Pen(Color.FromArgb(0x2A, 0x2F, 0x3E));
+            e.Graphics.DrawLine(pen, 30, e.Item.Height / 2, e.Item.Width - 10, e.Item.Height / 2);
+        }
+
+        protected override void OnRenderToolStripBorder(Forms.ToolStripRenderEventArgs e)
+        {
+            if (e.ToolStrip is Forms.ContextMenuStrip)
+            {
+                using var pen = new Pen(Color.FromArgb(0x2A, 0x2F, 0x3E));
+                var rc = e.AffectedBounds;
+                rc.Width -= 1;
+                rc.Height -= 1;
+                e.Graphics.DrawRectangle(pen, rc);
+            }
+            else
+            {
+                base.OnRenderToolStripBorder(e);
+            }
+        }
     }
 }
