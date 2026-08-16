@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.6",
-    "changelog": "增强自动升级健壮性：下载后等待文件句柄释放时间延长、覆盖安装重试次数增加、升级失败日志固化到临时目录，修复升级后程序退出但未拉起新版本的问题",
+    "latest_version": "1.1.7",
+    "changelog": "修复远程连接导致本地黑屏：启用 NLA 网络级认证，无凭据连接被干净拒绝不再抢占本地控制台；新增紧急恢复、自定义主题弹窗、导出配置、窗口置顶，滚动条与托盘菜单统一深色主题",
     "versions": {
+      "1.1.7": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/3ce0079f-cbb8-4826-b4eb-a17a67f11edc"
+      },
       "1.1.6": {
         "zip": "https://quickdeploy.solutionx.top/d/p/80ec2a29-74b1-4631-9d57-a908681bab0d"
       },
       "1.1.5": {
         "zip": "https://quickdeploy.solutionx.top/d/p/d1395e2b-57f1-474b-8fb4-fb63aa9480b2"
-      },
-      "1.1.4": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/84f480dd-4a93-45d1-b1c4-52601b7eef13"
       }
     }
   },
