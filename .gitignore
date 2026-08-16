@@ -33,3 +33,7 @@ Thumbs.db
 config.yaml
 local.properties
 *.db
+
+# WorkBuddy 本地工作记录（不纳入版本库）
+.workbuddy/memory/
+.workbuddy/overview.md
