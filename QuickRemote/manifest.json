@@ -1,8 +1,12 @@
 {
   "relay-server": {
-    "latest_version": "1.0.3",
-    "changelog": "新增隧道数据监听器(TCP 8445)：修复 ECONNREFUSED 隧道连接失败，PC/App 数据桥接端口此前在旧版二进制中未监听",
+    "latest_version": "1.0.4",
+    "changelog": "移除内置关于页（根路径 / 改为健康检查响应 ok，保留部署脚本就绪探测），精简服务体积与攻击面",
     "versions": {
+      "1.0.4": {
+        "amd64": "https://quickdeploy.solutionx.top/d/p/afd3b5b7-560b-4d63-afca-7f55f0a570da",
+        "arm64": "https://quickdeploy.solutionx.top/d/p/34888eb1-a359-4c75-90ca-6024e1f636b7"
+      },
       "1.0.3": {
         "amd64": "https://quickdeploy.solutionx.top/d/p/996791e2-bfd4-4fbc-a477-90ae6f2739c8",
         "arm64": "https://quickdeploy.solutionx.top/d/p/9f7b3739-8090-480b-8346-bb7c63f68172"
@@ -10,10 +14,6 @@
       "1.0.2": {
         "amd64": "https://quickdeploy.solutionx.top/d/p/501d726e-16cb-4e78-bb6d-042bf090b975",
         "arm64": "https://quickdeploy.solutionx.top/d/p/d12a4e25-06ef-446d-aebc-f7de8c362346"
-      },
-      "1.0.1": {
-        "amd64": "https://quickdeploy.solutionx.top/d/p/256f06cf-423e-4a4b-a206-9f415afdc70d",
-        "arm64": "https://quickdeploy.solutionx.top/d/p/c23185f6-ce83-4b13-a93d-a5740982288c"
       }
     }
   },

@@ -20,7 +20,7 @@ import (
 )
 
 // Version 是中转服务器的版本号，可在编译时通过 -ldflags="-X main.Version=x.y.z" 注入。
-var Version = "1.0.3"
+var Version = "1.0.4"
 
 func main() {
 	configPath := "config.yaml"
