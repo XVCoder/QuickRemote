@@ -8,6 +8,31 @@ agent_created: true
 
 本 skill 封装 QuickRemote 项目三端组件的编译、上传、版本管理完整流程。
 
+## 快速发布（推荐：用 release.py 脚本）
+
+**优先使用 `release.py` 脚本执行 MCP 操作，不要手写重复的 Python MCP 调用脚本**（这是 token 消耗的主要来源）。
+
+脚本位置：`.workbuddy/skills/quickremote-release/release.py`（从 `~/.workbuddy/mcp.json` 自动读取端点与 token，目录 ID 内置）。
+
+```bash
+PY="C:/Users/xiong/.workbuddy/binaries/python/versions/3.13.12/python.exe"
+R=".workbuddy/skills/quickremote-release/release.py"
+
+"$PY" "$R" list <dir_id> [--mcp quickdeploy|qdrl]     # 列目录
+"$PY" "$R" upload <file> <dir_id> [--ext zip]         # 上传单个文件（输出 share_url/file_id）
+"$PY" "$R" upload-all <dir_id> --ext '' f1 f2         # 多文件共享一个令牌（relay amd64+arm64）
+"$PY" "$R" delete <file_id> [--mcp ...]               # 删除文件
+"$PY" "$R" upload-root manifest.json CHANGELOG.md     # 覆盖上传清单到根目录
+"$PY" "$R" upgrade-about <tar.gz> <version>           # 上传 about 包并 upgrade_app
+"$PY" "$R" apps                                       # 列出 qdrl 托管应用
+```
+
+目录 ID 常量（脚本内置，也写在这里备查）：
+- quickdeploy 根 `5bc66dc8-a607-4384-93a7-1158bf43aed3`、pc-client `70fe2927-9101-4aa8-9f7a-f5b4d344ee48`、relay-server `299b53f5-3472-47fc-963d-3ec0a66d6184`、android-app `5a9ded9b-f935-4a3c-86cd-0532462c3d25`
+- qdrl quickremote 根 `5b681a68-ff94-4a14-bc89-8aab6a200a53`，about 应用 `quickremote-about`
+
+> 脚本只处理「上传/删除/列目录/部署」这类 MCP 操作；版本号更新、manifest/changelog 编辑、git 提交仍需用编辑工具完成。上传返回 `文件\tshare_url\tfile_id\tsize` 三列，直接用于更新 manifest.json。
+
 ## 两个 MCP 的分工（关键）
 
 发布流程涉及**两个独立的 MCP**，职责不同，切勿混用：
