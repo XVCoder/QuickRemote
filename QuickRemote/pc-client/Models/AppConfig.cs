@@ -32,7 +32,7 @@ public class AppConfig
 public class ServerConfig
 {
     [JsonPropertyName("Address")]
-    public string Address { get; set; } = "relay.example.com:8443";
+    public string Address { get; set; } = "relay.example.com:8444";
 
     [JsonPropertyName("PreSharedKey")]
     public string PreSharedKey { get; set; } = "change-me-please";
