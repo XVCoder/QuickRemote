@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.5",
-    "changelog": "修复连接服务器后卡在注册：控制连接端口应为 8444（HTTP 端口 +1），注册阶段加 10 秒超时避免卡死；查看日志改为程序内弹窗，不再跳转保存目录；默认服务器地址端口修正为 8444",
+    "latest_version": "1.1.6",
+    "changelog": "增强自动升级健壮性：下载后等待文件句柄释放时间延长、覆盖安装重试次数增加、升级失败日志固化到临时目录，修复升级后程序退出但未拉起新版本的问题",
     "versions": {
+      "1.1.6": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/80ec2a29-74b1-4631-9d57-a908681bab0d"
+      },
       "1.1.5": {
         "zip": "https://quickdeploy.solutionx.top/d/p/d1395e2b-57f1-474b-8fb4-fb63aa9480b2"
       },
       "1.1.4": {
         "zip": "https://quickdeploy.solutionx.top/d/p/84f480dd-4a93-45d1-b1c4-52601b7eef13"
-      },
-      "1.1.3": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/a2968a8e-b2e8-479f-a0d8-c8a4ed1890ce"
       }
     }
   },
