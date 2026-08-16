@@ -285,7 +285,18 @@ class FreeRdpClient(
     override fun OnConnectionFailure(inst: Long) {
         val err = runCatching { LibFreeRDP.getLastErrorString(inst) }.getOrDefault("")
         logger.error("FreeRDP connection failed: $err")
-        listener?.onDisconnected("连接失败（${err.ifBlank { "未知错误" }}）")
+        val friendly = when {
+            err.contains("tls", ignoreCase = true) ->
+                "TLS 握手失败。可能原因：PC 端 RDP 服务未启用（请在 PC 客户端点「一键启用 RDP」），" +
+                    "或 Windows RDP 密码套件与当前 FreeRDP 不兼容"
+            err.contains("timeout", ignoreCase = true) ->
+                "连接超时，请检查网络是否可达、隧道端口(8445)是否开放"
+            err.contains("refused", ignoreCase = true) ->
+                "连接被拒绝：PC 端 RDP 服务(3389)未监听或隧道未建立"
+            err.isBlank() -> "未知错误"
+            else -> err
+        }
+        listener?.onDisconnected("连接失败：$friendly")
     }
 
     override fun OnDisconnecting(inst: Long) {

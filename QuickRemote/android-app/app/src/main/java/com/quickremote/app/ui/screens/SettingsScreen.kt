@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.quickremote.app.BuildConfig
 import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.ResolutionMode
@@ -350,10 +351,8 @@ fun SettingsScreen(
                             .fillMaxWidth()
                             .heightIn(max = 420.dp)
                     ) {
-                        Text(
+                        ChangelogMarkdown(
                             changelogContent,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextPrimary,
                             modifier = Modifier
                                 .verticalScroll(rememberScrollState())
                                 .padding(vertical = 4.dp)
@@ -540,4 +539,59 @@ private fun NumberField(
         shape = RoundedCornerShape(4.dp),
         textStyle = MaterialTheme.typography.bodyMedium
     )
+}
+
+/**
+ * 轻量 Markdown 渲染：支持标题、版本号行、列表项、分隔线。
+ * 用于「更新记录」弹窗，把 changelog 原文渲染成预览效果。
+ */
+@Composable
+private fun ChangelogMarkdown(content: String, modifier: Modifier = Modifier) {
+    val lines = content.replace("\r\n", "\n").split("\n")
+    Column(modifier = modifier) {
+        lines.forEach { rawLine ->
+            val line = rawLine.trimEnd()
+            when {
+                line.isBlank() ->
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                line.matches(Regex("^=+$")) || line.matches(Regex("^-{3,}$")) ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(BorderLight)
+                    )
+
+                line.startsWith("### ") ->
+                    Text(line.removePrefix("### ").trim(), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Accent)
+
+                line.startsWith("## ") ->
+                    Text(line.removePrefix("## ").trim(), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Accent)
+
+                line.startsWith("# ") ->
+                    Text(line.removePrefix("# ").trim(), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Accent)
+
+                line.matches(Regex("^v?\\d+\\.\\d+(\\.\\d+)?.*")) ->
+                    Text(
+                        line,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = TextPrimary,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                    )
+
+                line.startsWith("- ") || line.startsWith("* ") ->
+                    Text(
+                        "•  " + line.removePrefix("- ").removePrefix("* ").trim(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary,
+                        modifier = Modifier.padding(start = 10.dp, top = 2.dp, bottom = 2.dp)
+                    )
+
+                else ->
+                    Text(line, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+            }
+        }
+    }
 }
