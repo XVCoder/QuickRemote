@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using QuickRemote.PCClient.ViewModels;
 
@@ -12,6 +13,7 @@ namespace QuickRemote.PCClient;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+    private bool _isPinned;
 
     public MainWindow()
     {
@@ -50,6 +52,17 @@ public partial class MainWindow : Window
     private void BtnMinimize_Click(object sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Minimized;
+    }
+
+    /// <summary>置顶按钮：切换窗口是否始终置顶。</summary>
+    private void BtnPin_Click(object sender, RoutedEventArgs e)
+    {
+        _isPinned = !_isPinned;
+        Topmost = _isPinned;
+        BtnPin.Content = _isPinned ? "已置顶" : "置顶";
+        BtnPin.Foreground = _isPinned
+            ? (Brush)FindResource("AccentBrush")
+            : (Brush)FindResource("TextMutedBrush");
     }
 
     /// <summary>关闭按钮：隐藏到托盘而非退出。</summary>

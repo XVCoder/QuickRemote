@@ -200,6 +200,9 @@
                         <Run Text=" PC"/>
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="BtnPin" Content="置顶" Click="BtnPin_Click"
+                                Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                                BorderThickness="0" Cursor="Hand" FontSize="11" Padding="6,3" Margin="0,0,10,0"/>
                         <Button x:Name="BtnMinimize" Style="{StaticResource TitleCircleButton}"
                                 Background="#F59E0B" Margin="0,0,8,0" Click="BtnMinimize_Click"/>
                         <Button x:Name="BtnClose" Style="{StaticResource TitleCircleButton}"
@@ -622,12 +625,15 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Button Grid.Column="0" Content="更新记录" Style="{StaticResource ActionButton}"
                             Margin="0,0,4,0" Command="{Binding ShowChangelogCommand}"/>
-                    <Button Grid.Column="1" Content="检查更新" Style="{StaticResource ActionButton}"
+                    <Button Grid.Column="1" Content="导出配置" Style="{StaticResource ActionButton}"
+                            Margin="4,0,4,0" Command="{Binding ExportConfigCommand}"/>
+                    <Button Grid.Column="2" Content="检查更新" Style="{StaticResource ActionButton}"
                             Margin="4,0,4,0" Command="{Binding CheckUpdateCommand}"/>
-                    <Button Grid.Column="2" Content="保存设置" Style="{StaticResource PrimaryActionButton}"
+                    <Button Grid.Column="3" Content="保存设置" Style="{StaticResource PrimaryActionButton}"
                             Margin="4,0,0,0" Command="{Binding SaveSettingsCommand}"/>
                 </Grid>
             </Border>

@@ -62,6 +62,7 @@ public sealed class MainViewModel : BaseViewModel
         ShowChangelogCommand = new RelayCommand(ShowChangelog);
         EnableRdpCommand = new RelayCommand(EnableRdp);
         RecoverSessionCommand = new RelayCommand(RecoverSession);
+        ExportConfigCommand = new RelayCommand(ExportConfig);
         ViewLogsCommand = new RelayCommand(ViewLogs);
 
         // 订阅事件
@@ -258,6 +259,7 @@ public sealed class MainViewModel : BaseViewModel
     public ICommand ShowChangelogCommand { get; }
     public ICommand EnableRdpCommand { get; }
     public ICommand RecoverSessionCommand { get; }
+    public ICommand ExportConfigCommand { get; }
     public ICommand ViewLogsCommand { get; }
 
     // ========== 系统托盘 ==========
@@ -353,7 +355,7 @@ public sealed class MainViewModel : BaseViewModel
         // 重启连接以应用新地址
         StartConnection();
 
-        MessageBox.Show("设置已保存并应用", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+        Views.DialogWindow.Show("设置已保存并应用", "成功", Views.DialogWindow.DialogType.Success);
     }
 
     private async Task CheckUpdateAsync()
@@ -363,23 +365,22 @@ public sealed class MainViewModel : BaseViewModel
         // 检查完成后弹出结果提示
         if (!string.IsNullOrEmpty(_updateChecker.LastErrorMessage))
         {
-            MessageBox.Show(_updateChecker.LastErrorMessage, "检查更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Views.DialogWindow.Show(_updateChecker.LastErrorMessage, "检查更新", Views.DialogWindow.DialogType.Warning);
         }
         else if (_updateChecker.IsUpdateAvailable)
         {
-            var result = MessageBox.Show(
+            var result = Views.DialogWindow.Confirm(
                 $"发现新版本 v{_updateChecker.LatestVersion}\n当前版本 v{App.Version}\n\n是否立即下载并安装？",
                 "更新可用",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Information);
-            if (result == MessageBoxResult.Yes && !string.IsNullOrEmpty(_updateChecker.DownloadUrl))
+                Views.DialogWindow.DialogType.Question);
+            if (result && !string.IsNullOrEmpty(_updateChecker.DownloadUrl))
             {
                 await Services.AutoUpdater.UpdateAsync(_updateChecker.DownloadUrl, _updateChecker.LatestVersion, _logger);
             }
         }
         else
         {
-            MessageBox.Show($"当前 v{App.Version} 已是最新版本", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+            Views.DialogWindow.Show($"当前 v{App.Version} 已是最新版本", "检查更新", Views.DialogWindow.DialogType.Info);
         }
     }
 
@@ -400,29 +401,28 @@ public sealed class MainViewModel : BaseViewModel
             if (RdpEnabled && FirewallEnabled)
             {
                 var nlaNote = NlaEnabled ? "（网络级认证已启用）" : "（警告：网络级认证未启用，无凭据的远程连接可能导致本地黑屏）";
-                MessageBox.Show($"RDP 已成功启用 (端口 {RdpPort})，防火墙规则已添加{nlaNote}", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                Views.DialogWindow.Show($"RDP 已成功启用 (端口 {RdpPort})，防火墙规则已添加{nlaNote}", "成功", Views.DialogWindow.DialogType.Success);
             }
             else if (!RdpEnabled && !FirewallEnabled)
             {
-                MessageBox.Show(
+                Views.DialogWindow.Show(
                     "启用 RDP 失败，可能需要管理员权限。\n请右键点击程序 → 以管理员身份运行后重试。",
                     "需要管理员权限",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                    Views.DialogWindow.DialogType.Warning);
             }
             else if (!RdpEnabled)
             {
-                MessageBox.Show("注册表修改失败，RDP 服务未开启。\n请以管理员身份运行后重试。", "部分失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Views.DialogWindow.Show("注册表修改失败，RDP 服务未开启。\n请以管理员身份运行后重试。", "部分失败", Views.DialogWindow.DialogType.Warning);
             }
             else
             {
-                MessageBox.Show("RDP 服务已开启，但防火墙规则添加失败。\n请手动在 Windows 防火墙中放行 RDP 端口。", "部分失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Views.DialogWindow.Show("RDP 服务已开启，但防火墙规则添加失败。\n请手动在 Windows 防火墙中放行 RDP 端口。", "部分失败", Views.DialogWindow.DialogType.Warning);
             }
         }
         catch (Exception ex)
         {
             _logger.Error("RDP enable failed", ex);
-            MessageBox.Show($"启用 RDP 时发生错误：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            Views.DialogWindow.Show($"启用 RDP 时发生错误：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
             RefreshRdpStatus();
         }
     }
@@ -460,6 +460,23 @@ public sealed class MainViewModel : BaseViewModel
         Views.LogViewerWindow.ShowWindow();
     }
 
+    /// <summary>导出当前配置为 JSON 并复制到剪贴板。</summary>
+    private void ExportConfig()
+    {
+        try
+        {
+            var json = _configService.ExportJson();
+            System.Windows.Clipboard.SetText(json);
+            _logger.Info("Config exported to clipboard");
+            Views.DialogWindow.Show("当前配置已复制到剪贴板，可直接粘贴到其他机器或分享。", "导出配置", Views.DialogWindow.DialogType.Success);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Export config failed", ex);
+            Views.DialogWindow.Show($"导出配置失败：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
+        }
+    }
+
     /// <summary>
     /// 紧急恢复：注销卡住的远程 RDP 会话，让本地控制台恢复正常（无需重启电脑）。
     /// 用于应对「远程连接失败导致本地黑屏」的紧急场景。
@@ -469,37 +486,36 @@ public sealed class MainViewModel : BaseViewModel
         _logger.Info("Recover console session requested");
         try
         {
-            var result = MessageBox.Show(
+            var result = Views.DialogWindow.Confirm(
                 "即将注销所有卡住的远程会话，恢复本地控制台显示。\n\n" +
                 "此操作会断开正在进行的远程连接，但不会注销你本地的登录会话，也不会重启电脑。\n\n是否继续？",
                 "紧急恢复",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                Views.DialogWindow.DialogType.Warning);
 
-            if (result != MessageBoxResult.Yes) return;
+            if (!result) return;
 
             var count = RdpConfigurator.RecoverConsoleSession();
             if (count > 0)
             {
                 _logger.Info($"Recovered console session, logged off {count} remote session(s)");
-                MessageBox.Show($"已注销 {count} 个卡住的远程会话，本地控制台应已恢复。\n\n如果屏幕仍未恢复，请按 Ctrl+Alt+Del 进入登录界面。",
-                    "恢复完成", MessageBoxButton.OK, MessageBoxImage.Information);
+                Views.DialogWindow.Show($"已注销 {count} 个卡住的远程会话，本地控制台应已恢复。\n\n如果屏幕仍未恢复，请按 Ctrl+Alt+Del 进入登录界面。",
+                    "恢复完成", Views.DialogWindow.DialogType.Success);
             }
             else if (count == 0)
             {
-                MessageBox.Show("未发现卡住的远程会话。\n\n如果屏幕仍然黑屏，请按 Ctrl+Alt+Del，或按 Win+Ctrl+Shift+B 重置显卡驱动。",
-                    "恢复完成", MessageBoxButton.OK, MessageBoxImage.Information);
+                Views.DialogWindow.Show("未发现卡住的远程会话。\n\n如果屏幕仍然黑屏，请按 Ctrl+Alt+Del，或按 Win+Ctrl+Shift+B 重置显卡驱动。",
+                    "恢复完成", Views.DialogWindow.DialogType.Info);
             }
             else
             {
-                MessageBox.Show("恢复操作失败，可能需要管理员权限。\n\n请右键点击程序 → 以管理员身份运行后重试，或手动执行：\n  query session\n  logoff <远程会话ID>",
-                    "需要管理员权限", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Views.DialogWindow.Show("恢复操作失败，可能需要管理员权限。\n\n请右键点击程序 → 以管理员身份运行后重试，或手动执行：\n  query session\n  logoff <远程会话ID>",
+                    "需要管理员权限", Views.DialogWindow.DialogType.Warning);
             }
         }
         catch (Exception ex)
         {
             _logger.Error("Recover console session failed", ex);
-            MessageBox.Show($"恢复操作出错：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            Views.DialogWindow.Show($"恢复操作出错：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
         }
     }
 

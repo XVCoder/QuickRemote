@@ -24,7 +24,7 @@ public static class AutoUpdater
     {
         if (string.IsNullOrWhiteSpace(downloadUrl))
         {
-            MessageBox.Show("下载地址无效", "更新失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            DialogWindow.Show("下载地址无效", "更新失败", DialogWindow.DialogType.Warning);
             return false;
         }
 
@@ -76,7 +76,7 @@ public static class AutoUpdater
         {
             logger.Error("Download failed", ex);
             progress.Close();
-            MessageBox.Show($"下载更新包失败：{ex.Message}", "更新失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            DialogWindow.Show($"下载更新包失败：{ex.Message}", "更新失败", DialogWindow.DialogType.Error);
             return false;
         }
 
@@ -216,7 +216,7 @@ exit
         catch (Exception ex)
         {
             logger.Error("Failed to launch update script", ex);
-            MessageBox.Show($"启动更新失败：{ex.Message}", "更新失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            DialogWindow.Show($"启动更新失败：{ex.Message}", "更新失败", DialogWindow.DialogType.Error);
             return false;
         }
     }
