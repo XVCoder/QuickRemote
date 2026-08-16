@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  quickremote-relay:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8443:8443"
+      - "8444:8444"
+    volumes:
+      - relay-data:/var/lib/quickremote
+      - ./config.yaml:/etc/quickremote/config.yaml
+    restart: always
+
+volumes:
+  relay-data:

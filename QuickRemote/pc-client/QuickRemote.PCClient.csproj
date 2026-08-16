@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RootNamespace>QuickRemote.PCClient</RootNamespace>
+    <AssemblyName>QuickRemote.PCClient</AssemblyName>
+    <Version>1.1.4</Version>
+    <Company>QuickRemote</Company>
+    <Product>QuickRemote PC Client</Product>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app.png" />
+  </ItemGroup>
+
+  <!--
+    UseWindowsForms 会隐式引入 System.Windows.Forms / System.Drawing 全局 using，
+    与 WPF 的 System.Windows.Application 等类型冲突，此处移除这两个全局 using，
+    仅在需要 WinForms 的 TrayService 中显式引用。
+  -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+</Project>

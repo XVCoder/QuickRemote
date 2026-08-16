@@ -1,0 +1,17 @@
+server:
+  listen: ":8443"
+  # 隧道数据端口（PC 与 App 的数据桥接），默认 ":8445"
+  tunnel_listen: ":8445"
+  tls:
+    cert: ""
+    key: ""
+auth:
+  pre_shared_key: "change-me-please"
+  jwt_secret: "jwt-signing-secret"
+storage:
+  sqlite_path: "./registry.db"
+quickdeploy:
+  base_url: ""
+  # 上传令牌：客户端上报的日志会转发到 quickdeploy 的 user_logs 目录。
+  # 通过 quickdeploy 的 create_upload_token（target_dir 为 user_logs）生成。
+  upload_token: ""

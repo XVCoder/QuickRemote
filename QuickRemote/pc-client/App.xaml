@@ -1,0 +1,170 @@
+<Application x:Class="QuickRemote.PCClient.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:QuickRemote.PCClient.Converters">
+    <Application.Resources>
+        <ResourceDictionary>      <!-- Background colors -->
+            <Color x:Key="BgPrimaryColor">#0F1117</Color>
+            <Color x:Key="BgSecondaryColor">#161922</Color>
+            <Color x:Key="BgCardColor">#1C2030</Color>
+            <Color x:Key="BgHoverColor">#232838</Color>
+
+            <!-- Text colors -->
+            <Color x:Key="TextPrimaryColor">#E4E6EB</Color>
+            <Color x:Key="TextSecondaryColor">#9CA3AF</Color>
+            <Color x:Key="TextMutedColor">#6B7280</Color>
+
+            <!-- Accent & status colors -->
+            <Color x:Key="AccentColor">#3B82F6</Color>
+            <Color x:Key="AccentHoverColor">#2563EB</Color>
+            <Color x:Key="SuccessColor">#10B981</Color>
+            <Color x:Key="WarningColor">#F59E0B</Color>
+            <Color x:Key="DangerColor">#EF4444</Color>
+
+            <!-- Border colors -->
+            <Color x:Key="BorderColor">#2A2F3E</Color>
+            <Color x:Key="BorderLightColor">#353B4D</Color>
+
+            <!-- Brushes -->
+            <SolidColorBrush x:Key="BgPrimaryBrush" Color="{StaticResource BgPrimaryColor}"/>
+            <SolidColorBrush x:Key="BgSecondaryBrush" Color="{StaticResource BgSecondaryColor}"/>
+            <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCardColor}"/>
+            <SolidColorBrush x:Key="BgHoverBrush" Color="{StaticResource BgHoverColor}"/>
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
+            <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}"/>
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+            <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}"/>
+            <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+            <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+            <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+            <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+            <SolidColorBrush x:Key="BorderLightBrush" Color="{StaticResource BorderLightColor}"/>
+
+            <!-- Fonts -->
+            <FontFamily x:Key="UiFont">Segoe UI, Outfit, sans-serif</FontFamily>
+            <FontFamily x:Key="MonoFont">Consolas, JetBrains Mono, Courier New</FontFamily>
+
+            <!-- 值转换器 -->
+            <conv:BoolToVisibilityConverter x:Key="BoolToVisConverter"/>
+            <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
+
+            <!-- 自定义滚动条样式（与深色主题融合） -->
+            <Style x:Key="DarkScrollBar" TargetType="ScrollViewer">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ScrollViewer">
+                            <Grid>
+                                <ScrollContentPresenter/>
+                                <ScrollBar Name="PART_VerticalScrollBar"
+                                           HorizontalAlignment="Right"
+                                           Value="{TemplateBinding VerticalOffset}"
+                                           Maximum="{TemplateBinding ScrollableHeight}"
+                                           ViewportSize="{TemplateBinding ViewportHeight}"
+                                           Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}">
+                                    <ScrollBar.Style>
+                                        <Style TargetType="ScrollBar">
+                                            <Setter Property="Width" Value="6"/>
+                                            <Setter Property="MinWidth" Value="6"/>
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="Margin" Value="0,4,2,4"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ScrollBar">
+                                                        <Grid>
+                                                            <Border Background="Transparent" CornerRadius="3"/>
+                                                            <Track Name="PART_Track" IsDirectionReversed="True">
+                                                                <Track.Thumb>
+                                                                    <Thumb>
+                                                                        <Thumb.Style>
+                                                                            <Style TargetType="Thumb">
+                                                                                <Setter Property="Template">
+                                                                                    <Setter.Value>
+                                                                                        <ControlTemplate TargetType="Thumb">
+                                                                                            <Border Background="{StaticResource BorderLightBrush}" CornerRadius="3"/>
+                                                                                        </ControlTemplate>
+                                                                                    </Setter.Value>
+                                                                                </Setter>
+                                                                                <Style.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter Property="Template">
+                                                                                            <Setter.Value>
+                                                                                                <ControlTemplate TargetType="Thumb">
+                                                                                                    <Border Background="{StaticResource TextMutedBrush}" CornerRadius="3"/>
+                                                                                                </ControlTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </Trigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Thumb.Style>
+                                                                    </Thumb>
+                                                                </Track.Thumb>
+                                                            </Track>
+                                                        </Grid>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ScrollBar.Style>
+                                </ScrollBar>
+                                <ScrollBar Name="PART_HorizontalScrollBar"
+                                           VerticalAlignment="Bottom"
+                                           Value="{TemplateBinding HorizontalOffset}"
+                                           Maximum="{TemplateBinding ScrollableWidth}"
+                                           ViewportSize="{TemplateBinding ViewportWidth}"
+                                           Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}">
+                                    <ScrollBar.Style>
+                                        <Style TargetType="ScrollBar">
+                                            <Setter Property="Height" Value="6"/>
+                                            <Setter Property="MinHeight" Value="6"/>
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="Margin" Value="4,0,4,0"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ScrollBar">
+                                                        <Grid>
+                                                            <Border Background="Transparent" CornerRadius="3"/>
+                                                            <Track Name="PART_Track" IsDirectionReversed="False">
+                                                                <Track.Thumb>
+                                                                    <Thumb>
+                                                                        <Thumb.Style>
+                                                                            <Style TargetType="Thumb">
+                                                                                <Setter Property="Template">
+                                                                                    <Setter.Value>
+                                                                                        <ControlTemplate TargetType="Thumb">
+                                                                                            <Border Background="{StaticResource BorderLightBrush}" CornerRadius="3"/>
+                                                                                        </ControlTemplate>
+                                                                                    </Setter.Value>
+                                                                                </Setter>
+                                                                                <Style.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter Property="Template">
+                                                                                            <Setter.Value>
+                                                                                                <ControlTemplate TargetType="Thumb">
+                                                                                                    <Border Background="{StaticResource TextMutedBrush}" CornerRadius="3"/>
+                                                                                                </ControlTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </Trigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Thumb.Style>
+                                                                    </Thumb>
+                                                                </Track.Thumb>
+                                                            </Track>
+                                                        </Grid>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ScrollBar.Style>
+                                </ScrollBar>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

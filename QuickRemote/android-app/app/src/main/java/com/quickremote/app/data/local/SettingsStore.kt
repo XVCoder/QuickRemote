@@ -1,0 +1,141 @@
+package com.quickremote.app.data.local
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.quickremote.app.data.models.AppSettings
+import com.quickremote.app.data.models.Credentials
+import com.quickremote.app.data.models.ResolutionMode
+import com.quickremote.app.data.models.ServerConfig
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+// 顶层 DataStore 实例
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "quickremote_settings")
+
+/**
+ * 使用 DataStore 存储服务器配置和应用设置。
+ * 替代 SharedPreferences，提供响应式 Flow 访问。
+ */
+class SettingsStore(private val context: Context) {
+
+    private object ServerKeys {
+        val ADDRESS = stringPreferencesKey("server_address")
+        val PRE_SHARED_KEY = stringPreferencesKey("pre_shared_key")
+        val TOKEN = stringPreferencesKey("auth_token")
+    }
+
+    private object SettingsKeys {
+        val RESOLUTION_MODE = stringPreferencesKey("resolution_mode")
+        val CUSTOM_WIDTH = intPreferencesKey("custom_width")
+        val CUSTOM_HEIGHT = intPreferencesKey("custom_height")
+        val COLOR_DEPTH = intPreferencesKey("color_depth")
+        val AUDIO_REDIRECT = booleanPreferencesKey("audio_redirect")
+        val AUTO_UPDATE = booleanPreferencesKey("auto_update")
+        val MANIFEST_URL = stringPreferencesKey("manifest_url")
+    }
+
+    private object CredentialKeys {
+        fun usernameKey(deviceId: String) = stringPreferencesKey("cred_username_$deviceId")
+        fun passwordKey(deviceId: String) = stringPreferencesKey("cred_password_$deviceId")
+        fun domainKey(deviceId: String) = stringPreferencesKey("cred_domain_$deviceId")
+    }
+
+    val serverConfig: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
+        ServerConfig(
+            address = prefs[ServerKeys.ADDRESS] ?: "",
+            preSharedKey = prefs[ServerKeys.PRE_SHARED_KEY] ?: ""
+        )
+    }
+
+    val token: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[ServerKeys.TOKEN] ?: ""
+    }
+
+    val appSettings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
+        AppSettings(
+            resolutionMode = runCatching {
+                ResolutionMode.valueOf(prefs[SettingsKeys.RESOLUTION_MODE] ?: ResolutionMode.AUTO.name)
+            }.getOrDefault(ResolutionMode.AUTO),
+            customWidth = prefs[SettingsKeys.CUSTOM_WIDTH] ?: 1920,
+            customHeight = prefs[SettingsKeys.CUSTOM_HEIGHT] ?: 1080,
+            colorDepth = prefs[SettingsKeys.COLOR_DEPTH] ?: 32,
+            audioRedirect = prefs[SettingsKeys.AUDIO_REDIRECT] ?: false,
+            autoUpdate = prefs[SettingsKeys.AUTO_UPDATE] ?: true
+        )
+    }
+
+    val manifestUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SettingsKeys.MANIFEST_URL] ?: ""
+    }
+
+    suspend fun saveServerConfig(config: ServerConfig) {
+        context.dataStore.edit { prefs ->
+            prefs[ServerKeys.ADDRESS] = config.address
+            prefs[ServerKeys.PRE_SHARED_KEY] = config.preSharedKey
+        }
+    }
+
+    suspend fun saveToken(token: String) {
+        context.dataStore.edit { prefs ->
+            prefs[ServerKeys.TOKEN] = token
+        }
+    }
+
+    suspend fun clearToken() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(ServerKeys.TOKEN)
+        }
+    }
+
+    suspend fun saveAppSettings(settings: AppSettings) {
+        context.dataStore.edit { prefs ->
+            prefs[SettingsKeys.RESOLUTION_MODE] = settings.resolutionMode.name
+            prefs[SettingsKeys.CUSTOM_WIDTH] = settings.customWidth
+            prefs[SettingsKeys.CUSTOM_HEIGHT] = settings.customHeight
+            prefs[SettingsKeys.COLOR_DEPTH] = settings.colorDepth
+            prefs[SettingsKeys.AUDIO_REDIRECT] = settings.audioRedirect
+            prefs[SettingsKeys.AUTO_UPDATE] = settings.autoUpdate
+        }
+    }
+
+    suspend fun saveManifestUrl(url: String) {
+        context.dataStore.edit { prefs ->
+            prefs[SettingsKeys.MANIFEST_URL] = url
+        }
+    }
+
+    /** 读取指定设备保存的凭据；未保存时返回 null。 */
+    fun getCredentials(deviceId: String): Flow<Credentials?> = context.dataStore.data.map { prefs ->
+        val password = prefs[CredentialKeys.passwordKey(deviceId)] ?: ""
+        if (password.isNotBlank()) {
+            Credentials(
+                username = prefs[CredentialKeys.usernameKey(deviceId)] ?: "",
+                password = password,
+                domain = prefs[CredentialKeys.domainKey(deviceId)] ?: ""
+            )
+        } else {
+            null
+        }
+    }
+
+    /** 保存或清除指定设备的凭据。 */
+    suspend fun saveCredentials(deviceId: String, credentials: Credentials, save: Boolean) {
+        context.dataStore.edit { prefs ->
+            if (save) {
+                prefs[CredentialKeys.usernameKey(deviceId)] = credentials.username
+                prefs[CredentialKeys.passwordKey(deviceId)] = credentials.password
+                prefs[CredentialKeys.domainKey(deviceId)] = credentials.domain
+            } else {
+                prefs.remove(CredentialKeys.usernameKey(deviceId))
+                prefs.remove(CredentialKeys.passwordKey(deviceId))
+                prefs.remove(CredentialKeys.domainKey(deviceId))
+            }
+        }
+    }
+}

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuickRemote — 安卓远程连接 Windows 桌面的自建中转工具</title>
+<meta name="description" content="QuickRemote 通过自建中转服务器全量转发 RDP 流量，让安卓手机随时随地安全连接家中的 Windows 电脑。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a0a0a'/%3E%3Cpath d='M8 12h16v8H8z' fill='none' stroke='%236799fe' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M13 16l14-4 2 8-14 4z' fill='%236799fe'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-2: #141414;
+    --card: rgba(255,255,255,0.06);
+    --card-hover: rgba(255,255,255,0.10);
+    --border: rgba(255,255,255,0.10);
+    --border-strong: rgba(255,255,255,0.18);
+    --text: #ffffff;
+    --text-2: rgba(255,255,255,0.65);
+    --text-3: rgba(255,255,255,0.40);
+    --primary: #6799fe;
+    --primary-soft: rgba(103,153,254,0.14);
+    --success: #28c840;
+    --warning: #febe2e;
+    --error: #ff5f57;
+    --radius: 12px;
+    --maxw: 820px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  a { color: var(--primary); text-decoration: none; transition: opacity .15s; }
+  a:hover { opacity: .82; }
+  ::selection { background: var(--primary-soft); }
+
+  /* 顶部导航 */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10,10,10,0.80);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: var(--maxw); margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+  .brand .logo {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: var(--primary-soft); border: 1px solid var(--border);
+    display: grid; place-items: center; font-size: 13px;
+  }
+  .brand span { color: var(--text); }
+  .nav-links { display: flex; align-items: center; gap: 2px; }
+  .nav a.nav-item { color: var(--text-2); font-size: 14px; padding: 6px 12px; border-radius: 8px; }
+  .nav a.nav-item:hover { color: var(--text); background: var(--card); }
+
+  main { max-width: var(--maxw); margin: 0 auto; padding: 0 20px 60px; }
+
+  /* Hero */
+  .hero { padding: 96px 0 64px; text-align: center; }
+  .hero .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-2);
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 100px; padding: 5px 14px; margin-bottom: 24px;
+  }
+  .hero .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .hero h1 {
+    font-size: 44px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.15;
+  }
+  .hero .sub {
+    margin-top: 16px; font-size: 18px; color: var(--text-2); max-width: 520px; margin-left: auto; margin-right: auto;
+  }
+  .hero .tags { margin-top: 28px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .hero .tag {
+    font-size: 13px; color: var(--text-2);
+    border: 1px solid var(--border); border-radius: 100px;
+    padding: 5px 14px; background: var(--card);
+  }
+  .hero .cta { margin-top: 36px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 500;
+    border: 1px solid transparent; cursor: pointer;
+    transition: background .15s, border-color .15s, transform .12s;
+  }
+  .btn:hover { transform: translateY(-1px); opacity: 1; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: #7aa8ff; }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--card); border-color: var(--border-strong); }
+
+  /* 区块 */
+  section { margin-top: 72px; }
+  .section-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 20px; font-weight: 500; letter-spacing: -0.01em; margin-bottom: 20px;
+  }
+  .section-title .bar { width: 3px; height: 18px; border-radius: 2px; background: var(--primary); }
+  .lead { color: var(--text-2); font-size: 15px; margin-bottom: 24px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px;
+    transition: border-color .15s;
+  }
+  .card + .card { margin-top: 16px; }
+
+  /* 功能网格 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .feature {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; transition: border-color .15s, background .15s;
+  }
+  .feature:hover { border-color: var(--border-strong); background: var(--card-hover); }
+  .feature .icon {
+    width: 36px; height: 36px; border-radius: 9px; margin-bottom: 14px;
+    background: var(--primary-soft); border: 1px solid var(--border);
+    display: grid; place-items: center; font-size: 15px; color: var(--primary);
+  }
+  .feature h3 { font-weight: 500; font-size: 15px; margin-bottom: 6px; letter-spacing: -0.01em; }
+  .feature p { font-size: 13.5px; color: var(--text-2); }
+
+  /* 架构图 */
+  .arch { display: flex; align-items: stretch; justify-content: center; gap: 0; flex-wrap: wrap; }
+  .arch-node {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 22px; text-align: center; min-width: 180px;
+  }
+  .arch-node .a-title { font-weight: 500; font-size: 15px; }
+  .arch-node .a-stack { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .arch-link { display: flex; align-items: center; color: var(--text-3); font-size: 13px; padding: 0 10px; }
+  .arch-link i { font-size: 15px; }
+
+  /* 代码块 */
+  .code-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--bg-2); border: 1px solid var(--border); border-bottom: none; border-radius: 10px 10px 0 0; }
+  .code-head .lang { font-size: 12px; color: var(--text-3); font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; }
+  .copy-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-2);
+    border-radius: 7px; font-size: 12px; padding: 3px 10px; cursor: pointer; transition: all .15s;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--card); }
+  .copy-btn.copied { color: var(--success); border-color: rgba(40,200,100,0.4); }
+  pre {
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: 0 0 10px 10px;
+    padding: 16px; overflow-x: auto; line-height: 1.6; font-size: 13.5px;
+  }
+  pre code { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; color: var(--text); }
+  pre code .cmt { color: var(--text-3); }
+  pre code .k { color: var(--primary); }
+  pre code .s { color: #a5e075; }
+
+  /* 步骤列表 */
+  .steps { display: flex; flex-direction: column; gap: 12px; }
+  .step { display: flex; gap: 14px; align-items: flex-start; }
+  .step .num {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px;
+    background: var(--card); border: 1px solid var(--border);
+    display: grid; place-items: center; font-weight: 500; font-size: 13px; color: var(--primary);
+  }
+  .step .body h4 { font-weight: 500; font-size: 15px; }
+  .step .body p { font-size: 13.5px; color: var(--text-2); }
+
+  /* 命令项 */
+  .cmd-item { margin-bottom: 14px; }
+  .cmd-item .cmd-title { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; margin-bottom: 8px; }
+  .cmd-item .cmd-title i { color: var(--primary); font-size: 13px; }
+  .cmd-item .cmd-desc { font-size: 13px; color: var(--text-2); margin-top: 8px; }
+  .cmd-item .cmd-desc a { color: var(--primary); word-break: break-all; }
+
+  /* 表格 */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-2); font-weight: 500; background: var(--card); }
+  td { color: var(--text); }
+  td code { background: var(--bg-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+
+  /* 提示块 */
+  .note {
+    display: flex; gap: 12px; align-items: flex-start; min-width: 0;
+    background: var(--primary-soft); border: 1px solid rgba(103,153,254,0.3);
+    border-radius: 10px; padding: 14px 16px; font-size: 13.5px; color: var(--text-2);
+    overflow-wrap: break-word;
+  }
+  .note > i { flex: 0 0 auto; color: var(--primary); font-size: 15px; margin-top: 2px; }
+  .note > div { min-width: 0; flex: 1 1 auto; }
+  .note.success { background: rgba(40,200,100,0.08); border-color: rgba(40,200,100,0.3); }
+  .note.success > i { color: var(--success); }
+
+  /* 协议表格端点 */
+  .api-table td:first-child { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.5px; color: var(--primary); }
+
+  /* 下载区块 */
+  .download-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .dl-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px; display: flex; flex-direction: column; gap: 12px;
+    transition: border-color .15s, background .15s;
+  }
+  .dl-card:hover { border-color: var(--border-strong); background: var(--card-hover); }
+  .dl-card .dl-top { display: flex; align-items: center; justify-content: space-between; }
+  .dl-card .dl-name { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 15px; }
+  .dl-card .dl-icon {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: var(--primary-soft); border: 1px solid var(--border);
+    display: grid; place-items: center; font-size: 14px; color: var(--primary);
+  }
+  .dl-card .dl-version {
+    font-size: 12px; color: var(--primary); background: var(--primary-soft);
+    border: 1px solid rgba(103,153,254,0.3); border-radius: 100px; padding: 2px 10px;
+  }
+  .dl-card .dl-meta { font-size: 13px; color: var(--text-2); display: flex; gap: 12px; flex-wrap: wrap; }
+  .dl-card .dl-meta span { display: inline-flex; align-items: center; gap: 5px; }
+  .dl-card .dl-desc { font-size: 13px; color: var(--text-3); }
+  .dl-card .dl-action { margin-top: 4px; }
+
+  /* 页脚 */
+  footer { border-top: 1px solid var(--border); padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 14px; }
+  footer .links { margin-top: 10px; display: flex; gap: 18px; justify-content: center; }
+  footer .links a { color: var(--text-2); }
+
+  /* 入场动画 */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* 响应式 */
+  @media (max-width: 640px) {
+    .hero { padding: 64px 0 48px; }
+    .hero h1 { font-size: 32px; }
+    .download-grid { grid-template-columns: 1fr; }
+    .arch { flex-direction: column; gap: 8px; }
+    .arch-link { transform: rotate(90deg); padding: 6px 0; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <div class="logo"><i class="fa-solid fa-desktop"></i></div>
+      <span>QuickRemote</span>
+    </div>
+    <div class="nav-links">
+      <a class="nav-item" href="#intro">介绍</a>
+      <a class="nav-item" href="#download">下载</a>
+      <a class="nav-item" href="#deploy">部署</a>
+      <a class="nav-item" href="#usage">使用</a>
+      <a class="nav-item" href="#security">安全</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <!-- Hero -->
+  <div class="hero">
+    <div class="badge"><span class="dot"></span> 自建中转 · 开源实现</div>
+    <h1>QuickRemote</h1>
+    <p class="sub">安卓远程连接 Windows 桌面的自建中转工具，全量转发 RDP 流量，随时随地安全访问。</p>
+    <div class="tags">
+      <span class="tag">Android</span>
+      <span class="tag">RDP</span>
+      <span class="tag">自建中转</span>
+      <span class="tag">全量转发</span>
+      <span class="tag">Go · Kotlin · C#</span>
+    </div>
+    <div class="cta">
+      <a class="btn btn-primary" href="#download"><i class="fa-solid fa-download"></i> 下载客户端</a>
+      <a class="btn btn-ghost" href="#deploy"><i class="fa-solid fa-rocket"></i> 一键部署</a>
+      <a class="btn btn-ghost" href="#usage"><i class="fa-solid fa-book"></i> 使用说明</a>
+    </div>
+  </div>
+
+  <!-- 项目介绍 -->
+  <section id="intro" class="reveal">
+    <h2 class="section-title"><span class="bar"></span>项目介绍</h2>
+    <p class="lead">QuickRemote 通过自建中转服务器全量转发 RDP 流量，让安卓手机随时随地安全连接家中的 Windows 电脑。PC 端安装客户端并配置服务器地址后自动注册，安卓 App 配置相同服务器地址即可获取所有在线 PC 并发起远程桌面连接。</p>
+
+    <div class="grid">
+      <div class="feature">
+        <div class="icon"><i class="fa-solid fa-mobile-screen-button"></i></div>
+        <h3>Android 客户端</h3>
+        <p>Kotlin 原生 App，内置 FreeRDP，支持多点触控手势、分辨率与颜色深度调节、音频重定向。</p>
+      </div>
+      <div class="feature">
+        <div class="icon"><i class="fa-solid fa-server"></i></div>
+        <h3>中转服务器</h3>
+        <p>Go 高并发中转，负责设备注册、设备列表、TCP 隧道桥接与认证鉴权，纯 Go SQLite 无 CGO 依赖。</p>
+      </div>
+      <div class="feature">
+        <div class="icon"><i class="fa-solid fa-desktop"></i></div>
+        <h3>PC 客户端</h3>
+        <p>C# / .NET 8 WPF，托盘常驻、开机自启、一键启用 RDP、自动注册与维持心跳。</p>
+      </div>
+      <div class="feature">
+        <div class="icon"><i class="fa-solid fa-shield-halved"></i></div>
+        <h3>安全机制</h3>
+        <p>预共享密钥 SHA-256 传输、TLS 加密、JWT 令牌认证、隧道 session 验证。</p>
+      </div>
+      <div class="feature">
+        <div class="icon"><i class="fa-solid fa-arrows-left-right"></i></div>
+        <h3>全量转发</h3>
+        <p>建立隧道后双方进入裸数据转发模式，服务器仅做双向桥接 RDP 协议字节流。</p>
+      </div>
+      <div class="feature">
+        <div class="icon"><i class="fa-solid fa-rotate"></i></div>
+        <h3>版本更新</h3>
+        <p>manifest.json 统一版本清单，客户端与安装脚本自动感知最新版本并升级。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 下载 -->
+  <section id="download" class="reveal">
+    <h2 class="section-title"><span class="bar"></span>下载客户端</h2>
+    <div class="download-grid">
+      <div class="dl-card">
+        <div class="dl-top">
+          <div class="dl-name"><div class="dl-icon"><i class="fa-solid fa-desktop"></i></div>PC 客户端</div>
+          <span class="dl-version">v1.1.4</span>
+        </div>
+        <div class="dl-meta">
+          <span><i class="fa-regular fa-file-zipper"></i> ZIP · 约 937KB</span>
+          <span><i class="fa-brands fa-windows"></i> Windows</span>
+        </div>
+        <div class="dl-desc">解压后运行 QuickRemote.PCClient.exe 即可，包含 .NET 8 自包含运行时。</div>
+        <a class="btn btn-primary dl-action" href="https://quickdeploy.solutionx.top/d/p/84f480dd-4a93-45d1-b1c4-52601b7eef13" target="_blank"><i class="fa-solid fa-download"></i> 下载 ZIP</a>
+      </div>
+      <div class="dl-card">
+        <div class="dl-top">
+          <div class="dl-name"><div class="dl-icon"><i class="fa-solid fa-mobile-screen-button"></i></div>Android App</div>
+          <span class="dl-version">v1.0.13</span>
+        </div>
+        <div class="dl-meta">
+          <span><i class="fa-brands fa-android"></i> APK · 约 50MB</span>
+          <span><i class="fa-solid fa-mobile"></i> Android</span>
+        </div>
+        <div class="dl-desc">需在手机上开启「允许安装未知来源应用」后安装，支持 arm64 / armv7。</div>
+        <a class="btn btn-primary dl-action" href="https://quickdeploy.solutionx.top/d/p/7bda3213-54ac-4789-8ff0-d2586154aa74" target="_blank"><i class="fa-solid fa-download"></i> 下载 APK</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 架构 -->
+  <section class="reveal">
+    <h2 class="section-title"><span class="bar"></span>系统架构</h2>
+    <div class="card">
+      <div class="arch">
+        <div class="arch-node"><div class="a-title">Android App</div><div class="a-stack">Kotlin · FreeRDP</div></div>
+        <div class="arch-link"><i class="fa-solid fa-arrow-right"></i></div>
+        <div class="arch-node"><div class="a-title">Relay Server</div><div class="a-stack">Go · SQLite</div></div>
+        <div class="arch-link"><i class="fa-solid fa-arrow-right"></i></div>
+        <div class="arch-node"><div class="a-title">PC Client</div><div class="a-stack">C# / .NET</div></div>
+      </div>
+      <div class="steps" style="margin-top:20px;">
+        <div class="step"><div class="num">1</div><div class="body"><h4>PC 注册</h4><p>PC 客户端启动 → TCP 控制连接 → 预共享密钥认证 → 注册设备信息 → 维持心跳</p></div></div>
+        <div class="step"><div class="num">2</div><div class="body"><h4>设备发现</h4><p>安卓 App 认证 → 请求设备列表 → 服务器返回在线 PC</p></div></div>
+        <div class="step"><div class="num">3</div><div class="body"><h4>远程连接</h4><p>安卓选择 PC → 请求隧道 → 服务器通知 PC 建数据连接 → 双向桥接 RDP 流量</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 技术栈 -->
+  <section class="reveal">
+    <h2 class="section-title"><span class="bar"></span>技术栈</h2>
+    <div class="card">
+      <table>
+        <thead><tr><th>组件</th><th>技术</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>中转服务器</td><td>Go 1.22+ + SQLite</td><td>高性能并发，纯 Go SQLite 无 CGO 依赖</td></tr>
+          <tr><td>PC 客户端</td><td>C# / .NET 8 WPF</td><td>Windows 原生，UI + 后台服务一体</td></tr>
+          <tr><td>安卓 App</td><td>Kotlin + Jetpack Compose + OkHttp</td><td>原生体验，Material3 设计</td></tr>
+          <tr><td>部署分发</td><td>quickdeploy</td><td>统一包管理和分发</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 部署 -->
+  <section id="deploy" class="reveal">
+    <h2 class="section-title"><span class="bar"></span>部署方法</h2>
+
+    <h3 style="margin-bottom:12px;">Relay Server（Linux 一键部署）</h3>
+    <p class="lead">在您的 Linux 服务器（Ubuntu/Debian/CentOS 等）上执行以下命令，需要 root 权限。脚本为交互式，直接回车即可采用默认值。</p>
+
+    <div class="code-head"><span class="lang">bash</span><button class="copy-btn" data-copy="curl -fsSL -o install.sh https://quickdeploy.solutionx.top/d/p/1a72422e-9c43-4681-bcb6-dd24f90f6f7d && sudo bash install.sh">复制</button></div>
+    <pre><code>curl -fsSL -o install.sh https://quickdeploy.solutionx.top/d/p/1a72422e-9c43-4681-bcb6-dd24f90f6f7d &amp;&amp; sudo bash install.sh</code></pre>
+
+    <div class="steps" style="margin-top:16px;">
+      <div class="step"><div class="num">1</div><div class="body"><h4>下载脚本</h4><p>使用 curl 下载 install.sh 到当前目录</p></div></div>
+      <div class="step"><div class="num">2</div><div class="body"><h4>执行安装</h4><p>自动检测系统架构（amd64/arm64）并拉取对应二进制</p></div></div>
+      <div class="step"><div class="num">3</div><div class="body"><h4>交互式配置</h4><p>提示输入监听端口、预共享密钥、JWT 密钥，均可回车采用默认值</p></div></div>
+      <div class="step"><div class="num">4</div><div class="body"><h4>自动启动</h4><p>创建配置、注册 systemd 服务并启动，设置开机自启</p></div></div>
+    </div>
+
+    <div class="note" style="margin-top:16px;"><i class="fa-solid fa-circle-info"></i><div>安装路径：/opt/quickremote/ 存放二进制与版本号，/etc/quickremote/config.yaml 为配置文件，/var/lib/quickremote/ 为设备注册表，systemd 服务名为 quickremote-relay。</div></div>
+
+    <h3 style="margin:24px 0 12px;">常用命令</h3>
+    <div class="card">
+      <div class="cmd-item">
+        <div class="cmd-title"><i class="fa-solid fa-circle-play"></i>查看状态</div>
+        <div class="code-head"><span class="lang">bash</span><button class="copy-btn" data-copy="sudo systemctl status quickremote-relay">复制</button></div>
+        <pre><code>sudo systemctl status quickremote-relay</code></pre>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-title"><i class="fa-solid fa-rotate-right"></i>重启服务</div>
+        <div class="code-head"><span class="lang">bash</span><button class="copy-btn" data-copy="sudo systemctl restart quickremote-relay">复制</button></div>
+        <pre><code>sudo systemctl restart quickremote-relay</code></pre>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-title"><i class="fa-solid fa-file-lines"></i>实时日志</div>
+        <div class="code-head"><span class="lang">bash</span><button class="copy-btn" data-copy="sudo journalctl -u quickremote-relay -f">复制</button></div>
+        <pre><code>sudo journalctl -u quickremote-relay -f</code></pre>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-title"><i class="fa-solid fa-arrow-up"></i>升级到最新版本</div>
+        <div class="code-head"><span class="lang">bash</span><button class="copy-btn" data-copy="sudo bash /opt/quickremote/install.sh">复制</button></div>
+        <pre><code>sudo bash /opt/quickremote/install.sh</code></pre>
+        <div class="cmd-desc">重新执行安装脚本，选择「1) 升级到最新版本」，自动备份并拉取最新版本。</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:32px;">PC 客户端（Windows）</h3>
+    <div class="steps" style="margin:16px 0;">
+      <div class="step"><div class="num">1</div><div class="body"><h4>下载客户端</h4><p><a href="https://quickdeploy.solutionx.top/d/p/84f480dd-4a93-45d1-b1c4-52601b7eef13" target="_blank">点击下载 PC 客户端 v1.1.4</a>（ZIP），解压到任意目录</p></div></div>
+      <div class="step"><div class="num">2</div><div class="body"><h4>配置服务器</h4><p>在「设置」填入服务器地址与预共享密钥，点击「保存设置」</p></div></div>
+      <div class="step"><div class="num">3</div><div class="body"><h4>启用 RDP</h4><p>点击「检查 RDP」确认服务已启用，未启用点「一键启用」（需 UAC 提权）</p></div></div>
+    </div>
+
+    <h3 style="margin:24px 0 12px;">Android App</h3>
+    <div class="steps" style="margin:16px 0;">
+      <div class="step"><div class="num">1</div><div class="body"><h4>允许未知来源</h4><p>手机开启「允许安装未知来源应用」</p></div></div>
+      <div class="step"><div class="num">2</div><div class="body"><h4>下载安装 APK</h4><p><a href="https://quickdeploy.solutionx.top/d/p/7bda3213-54ac-4789-8ff0-d2586154aa74" target="_blank">点击下载 Android App v1.0.13</a>（APK）并点击安装</p></div></div>
+      <div class="step"><div class="num">3</div><div class="body"><h4>配置服务器</h4><p>进入「服务器配置」页，输入中转服务器地址与预共享密钥</p></div></div>
+      <div class="step"><div class="num">4</div><div class="body"><h4>测试并连接</h4><p>点击「测试连接」确认可达后保存，即可看到在线 PC 并远程连接</p></div></div>
+    </div>
+  </section>
+
+  <!-- 使用说明 -->
+  <section id="usage" class="reveal">
+    <h2 class="section-title"><span class="bar"></span>使用说明</h2>
+
+    <h3 style="margin-bottom:12px;">PC 客户端</h3>
+    <div class="card">
+      <div class="steps">
+        <div class="step"><div class="num">✦</div><div class="body"><h4>托盘常驻</h4><p>点击窗口关闭按钮(✕)最小化到托盘而非退出；双击托盘图标恢复窗口；右键可「显示主窗口」或「退出」</p></div></div>
+        <div class="step"><div class="num">✦</div><div class="body"><h4>状态提示</h4><p>托盘图标通过气泡通知提示连接状态（已连接 / 连接中 / 重连中 / 未连接）</p></div></div>
+        <div class="step"><div class="num">✦</div><div class="body"><h4>RDP 配置</h4><p>自动检查注册表与防火墙 3389 端口规则，未启用时提供一键启用按钮</p></div></div>
+        <div class="step"><div class="num">✦</div><div class="body"><h4>更新与日志</h4><p>「更新记录」查看版本变更日志，「上传日志」将本地日志发送到中转服务器</p></div></div>
+      </div>
+    </div>
+
+    <h3 style="margin:24px 0 12px;">Android App</h3>
+    <div class="card">
+      <div class="steps">
+        <div class="step"><div class="num">1</div><div class="body"><h4>设备列表（主页）</h4><p>自动获取所有在线 PC，下拉刷新；点击设备卡片发起远程连接；长按可收藏常用设备</p></div></div>
+        <div class="step"><div class="num">2</div><div class="body"><h4>远程会话页</h4><p>连接建立后显示远程桌面画面，支持多点触控手势</p></div></div>
+        <div class="step"><div class="num">3</div><div class="body"><h4>触控手势</h4><p>单指移动 = 鼠标移动；单击 = 左键；双指点击 = 右键；双指缩放 = 画面缩放</p></div></div>
+        <div class="step"><div class="num">4</div><div class="body"><h4>设置页</h4><p>服务器地址、分辨率（自适应/原分辨率/指定）、颜色深度（16/32bit）、音频重定向、版本更新、日志上传、关于</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 安全 -->
+  <section id="security" class="reveal">
+    <h2 class="section-title"><span class="bar"></span>安全机制</h2>
+    <div class="card">
+      <table>
+        <thead><tr><th>机制</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>预共享密钥</td><td>SHA-256 哈希传输，PC 与服务器双向认证</td></tr>
+          <tr><td>TLS 加密</td><td>服务器原生 TLS（8444 端口）或 nginx 反向代理 TLS</td></tr>
+          <tr><td>JWT 令牌</td><td>安卓 App 认证后签发，用于 API 访问</td></tr>
+          <tr><td>隧道验证</td><td>session_id 验证确认隧道双方身份</td></tr>
+          <tr><td>证书信任</td><td>自签名证书场景下 Android 已配置信任，PC 端信任所有证书</td></tr>
+        </tbody>
+      </table>
+
+      <div class="note success" style="margin-top:16px;"><i class="fa-solid fa-circle-check"></i><div>通信协议：PC ↔ 服务器采用 TCP 长连接（默认 8444 端口）JSON 帧协议；Android ↔ 服务器采用 HTTP API（/api/auth、/api/devices、/api/tunnel/request、/api/logs/upload）；隧道建立后进入裸数据双向桥接。</div></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div>QuickRemote · 自建远程中转 · 开源实现</div>
+  <div class="links">
+    <a href="#intro">项目介绍</a>
+    <a href="#download">下载客户端</a>
+    <a href="#deploy">部署方法</a>
+    <a href="#usage">使用说明</a>
+  </div>
+</footer>
+
+<script>
+  // 代码复制按钮
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const text = btn.getAttribute('data-copy');
+      navigator.clipboard.writeText(text).then(() => {
+        btn.classList.add('copied');
+        btn.textContent = '已复制';
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = '复制'; }, 1600);
+      });
+    });
+  });
+
+  // 滚动入场动画
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

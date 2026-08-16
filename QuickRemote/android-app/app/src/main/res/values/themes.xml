@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_primary">#FF0F1117</color>
+    <color name="bg_secondary">#FF161922</color>
+    <color name="bg_card">#FF1C2030</color>
+    <color name="accent">#FF3B82F6</color>
+    <color name="text_primary">#FFE4E6EB</color>
+
+    <style name="Theme.QuickRemote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg_primary</item>
+        <item name="android:statusBarColor">@color/bg_primary</item>
+        <item name="android:navigationBarColor">@color/bg_primary</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

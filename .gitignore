@@ -1,0 +1,35 @@
+# 迁移遗留 / 本地工具数据
+.trae/
+.codegraph/
+
+# 发布产物 / 大体积二进制
+*.apk
+*.aab
+*.zip
+*.tar.gz
+*.keystore
+
+# 构建输出 / 反编译参考产物
+**/bin/
+**/obj/
+**/dist/
+**/build/
+.gradle/
+**/publish/
+**/publish-selfcontained/
+freerdp_apk/
+
+# relay-server 编译产物（早前手动构建遗留，正式产物在 dist/）
+QuickRemote/relay-server/quickremote-relay-*
+
+# IDE / 操作系统
+.vs/
+.idea/
+*.user
+Thumbs.db
+.DS_Store
+
+# 本地配置 / 密钥
+config.yaml
+local.properties
+*.db

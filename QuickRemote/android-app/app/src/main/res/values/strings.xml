@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">QuickRemote</string>
+    <string name="app_version">0.1.0</string>
+
+    <!-- 服务器配置 -->
+    <string name="server_config_title">服务器配置</string>
+    <string name="server_address_hint">服务器地址 (host:port)</string>
+    <string name="pre_shared_key_hint">预共享密钥</string>
+    <string name="test_connection">测试连接</string>
+    <string name="save_and_continue">保存并继续</string>
+
+    <!-- 设备列表 -->
+    <string name="device_list_title">设备列表</string>
+    <string name="refresh">刷新</string>
+    <string name="settings">设置</string>
+    <string name="empty_devices">暂无在线设备</string>
+    <string name="empty_devices_hint">请确认 PC 客户端已连接到中转服务器</string>
+
+    <!-- 远程会话 -->
+    <string name="remote_session_title">远程会话</string>
+    <string name="disconnect">断开连接</string>
+    <string name="connecting_rdp">RDP 连接中…</string>
+    <string name="keyboard_toggle">键盘</string>
+    <string name="fullscreen_toggle">全屏</string>
+
+    <!-- 设置 -->
+    <string name="settings_server">服务器</string>
+    <string name="settings_display">显示</string>
+    <string name="settings_resolution">显示分辨率</string>
+    <string name="settings_color_depth">颜色深度</string>
+    <string name="settings_audio">音频重定向</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_check_update">检查更新</string>
+    <string name="settings_changelog">更新记录</string>
+    <string name="settings_upload_logs">上传日志</string>
+    <string name="settings_version">版本</string>
+
+    <!-- 分辨率选项 -->
+    <string name="resolution_auto">自适应</string>
+    <string name="resolution_original">原分辨率</string>
+    <string name="resolution_custom">指定分辨率</string>
+
+    <!-- 状态 -->
+    <string name="status_connected">已连接</string>
+    <string name="status_connecting">连接中</string>
+    <string name="status_disconnected">未连接</string>
+    <string name="status_error">连接错误</string>
+</resources>

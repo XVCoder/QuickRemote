@@ -1,0 +1,31 @@
+# Build outputs
+**/bin/
+**/obj/
+**/dist/
+
+# IDE
+.vs/
+.idea/
+*.user
+
+# Go
+*.exe
+*.exe~
+
+# Android
+*.apk
+*.aab
+*.keystore
+local.properties
+**/build/
+.gradle/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Config
+config.yaml
+*.db
