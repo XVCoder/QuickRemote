@@ -16,7 +16,6 @@ import (
 	"github.com/quickremote/relay-server/internal/control"
 	"github.com/quickremote/relay-server/internal/registry"
 	"github.com/quickremote/relay-server/internal/tunnel"
-	"github.com/quickremote/relay-server/internal/web"
 )
 
 // Handler 是 HTTP API 的处理器集合。
@@ -44,8 +43,6 @@ func New(authService *auth.Service, reg *registry.Registry, tunnelMgr *tunnel.Ma
 }
 
 // Routes 返回 HTTP 路由器。
-// 注意：Task 7 阶段 HandleAbout 内联返回简单 HTML，
-// Task 9 的 web 模块会接管 "/" 和 "/about" 路由。
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth", h.HandleAuth)
@@ -53,8 +50,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/tunnel/request", h.requireAuth(h.HandleTunnelRequest))
 	mux.HandleFunc("/api/logs/upload", h.HandleUploadLogs)
 	mux.HandleFunc("/api/changelog", h.HandleChangelog)
-	mux.HandleFunc("/about", web.AboutHandler)
-	mux.HandleFunc("/", web.AboutHandler)
+	mux.HandleFunc("/", h.HandleHealth)
 	return mux
 }
 
@@ -293,20 +289,9 @@ func (h *Handler) HandleChangelog(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleAbout 返回关于页面。
-// Task 7 阶段内联返回简单 HTML，Task 9 的 web 模块会接管此路由。
-func (h *Handler) HandleAbout(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	html := `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <title>QuickRemote</title>
-</head>
-<body>
-    <h1>QuickRemote Relay Server</h1>
-    <p>About page placeholder.</p>
-</body>
-</html>`
-	w.Write([]byte(html))
+// HandleHealth 返回健康检查响应，供就绪探测使用（根路径 /）。
+func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok"))
 }

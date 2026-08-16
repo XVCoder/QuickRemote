@@ -250,7 +250,7 @@ fix_selinux_context() {
 }
 
 # 健康检查：等待 HTTP 服务就绪（最多 6 次，间隔 2 秒）。
-# relay-server 根路径 / 返回关于页，可作就绪探测。
+# relay-server 根路径 / 返回健康检查响应（ok），可作就绪探测。
 health_check() {
     local port="$1" max_retries=6 retry=0 code
     info "健康检查 http://127.0.0.1:${port}/ ..."
