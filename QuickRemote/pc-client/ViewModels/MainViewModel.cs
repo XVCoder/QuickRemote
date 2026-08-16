@@ -32,6 +32,7 @@ public sealed class MainViewModel : BaseViewModel
     private bool _rdpEnabled;
     private int _rdpPort = 3389;
     private bool _firewallEnabled;
+    private bool _nlaEnabled;
 
     // 设置
     private string _serverAddressInput = string.Empty;
@@ -60,6 +61,7 @@ public sealed class MainViewModel : BaseViewModel
         CheckUpdateCommand = new RelayCommand(async () => await CheckUpdateAsync());
         ShowChangelogCommand = new RelayCommand(ShowChangelog);
         EnableRdpCommand = new RelayCommand(EnableRdp);
+        RecoverSessionCommand = new RelayCommand(RecoverSession);
         ViewLogsCommand = new RelayCommand(ViewLogs);
 
         // 订阅事件
@@ -174,6 +176,15 @@ public sealed class MainViewModel : BaseViewModel
 
     public string FirewallStatusText => _firewallEnabled ? "已放行" : "未放行";
 
+    public bool NlaEnabled
+    {
+        get => _nlaEnabled;
+        private set { SetField(ref _nlaEnabled, value); OnPropertyChanged(nameof(NlaStatusText)); }
+    }
+
+    /// <summary>NLA 状态文本。NLA 是避免远程连接导致本地黑屏的关键。</summary>
+    public string NlaStatusText => _nlaEnabled ? "已启用（网络级认证）" : "未启用（存在黑屏风险）";
+
     /// <summary>RDP 或防火墙未就绪时为 true，显示警告与一键启用按钮。</summary>
     public bool RdpNeedsEnable => !_rdpEnabled || !_firewallEnabled;
 
@@ -246,6 +257,7 @@ public sealed class MainViewModel : BaseViewModel
     public ICommand CheckUpdateCommand { get; }
     public ICommand ShowChangelogCommand { get; }
     public ICommand EnableRdpCommand { get; }
+    public ICommand RecoverSessionCommand { get; }
     public ICommand ViewLogsCommand { get; }
 
     // ========== 系统托盘 ==========
@@ -308,7 +320,8 @@ public sealed class MainViewModel : BaseViewModel
             RdpEnabled = RdpConfigurator.IsRdpEnabled();
             RdpPort = RdpConfigurator.GetRdpPort();
             FirewallEnabled = RdpConfigurator.IsFirewallRuleEnabled();
-            _logger.Info($"RDP status: enabled={RdpEnabled}, port={RdpPort}, firewall={FirewallEnabled}");
+            NlaEnabled = RdpConfigurator.IsNlaEnabled();
+            _logger.Info($"RDP status: enabled={RdpEnabled}, port={RdpPort}, firewall={FirewallEnabled}, nla={NlaEnabled}");
         }
         catch (Exception ex)
         {
@@ -386,7 +399,8 @@ public sealed class MainViewModel : BaseViewModel
 
             if (RdpEnabled && FirewallEnabled)
             {
-                MessageBox.Show($"RDP 已成功启用 (端口 {RdpPort})，防火墙规则已添加", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                var nlaNote = NlaEnabled ? "（网络级认证已启用）" : "（警告：网络级认证未启用，无凭据的远程连接可能导致本地黑屏）";
+                MessageBox.Show($"RDP 已成功启用 (端口 {RdpPort})，防火墙规则已添加{nlaNote}", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else if (!RdpEnabled && !FirewallEnabled)
             {
@@ -444,6 +458,49 @@ public sealed class MainViewModel : BaseViewModel
     private void ViewLogs()
     {
         Views.LogViewerWindow.ShowWindow();
+    }
+
+    /// <summary>
+    /// 紧急恢复：注销卡住的远程 RDP 会话，让本地控制台恢复正常（无需重启电脑）。
+    /// 用于应对「远程连接失败导致本地黑屏」的紧急场景。
+    /// </summary>
+    private void RecoverSession()
+    {
+        _logger.Info("Recover console session requested");
+        try
+        {
+            var result = MessageBox.Show(
+                "即将注销所有卡住的远程会话，恢复本地控制台显示。\n\n" +
+                "此操作会断开正在进行的远程连接，但不会注销你本地的登录会话，也不会重启电脑。\n\n是否继续？",
+                "紧急恢复",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            var count = RdpConfigurator.RecoverConsoleSession();
+            if (count > 0)
+            {
+                _logger.Info($"Recovered console session, logged off {count} remote session(s)");
+                MessageBox.Show($"已注销 {count} 个卡住的远程会话，本地控制台应已恢复。\n\n如果屏幕仍未恢复，请按 Ctrl+Alt+Del 进入登录界面。",
+                    "恢复完成", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else if (count == 0)
+            {
+                MessageBox.Show("未发现卡住的远程会话。\n\n如果屏幕仍然黑屏，请按 Ctrl+Alt+Del，或按 Win+Ctrl+Shift+B 重置显卡驱动。",
+                    "恢复完成", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show("恢复操作失败，可能需要管理员权限。\n\n请右键点击程序 → 以管理员身份运行后重试，或手动执行：\n  query session\n  logoff <远程会话ID>",
+                    "需要管理员权限", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Recover console session failed", ex);
+            MessageBox.Show($"恢复操作出错：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void OnSessionStarted(SessionInfo info)

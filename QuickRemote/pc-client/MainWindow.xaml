@@ -464,6 +464,69 @@
                         </Grid>
                     </Border>
 
+                    <!-- 网络级认证（NLA）状态 -->
+                    <Border Background="{StaticResource BgCardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="14,10" Margin="0,0,0,6">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="网络级认证 (NLA)" FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse Width="6" Height="6" Margin="0,0,6,0">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="{StaticResource WarningBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding NlaEnabled}" Value="True">
+                                                    <Setter Property="Fill" Value="{StaticResource SuccessBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock FontSize="12" FontWeight="Medium" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                            <Setter Property="Text" Value="{Binding NlaStatusText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding NlaEnabled}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 紧急恢复 -->
+                    <Border Background="{StaticResource BgCardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="14,10" Margin="0,0,0,6">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="远程连接导致本地黑屏？" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="注销卡住的远程会话，恢复本地控制台（无需重启）" FontSize="11"
+                                           Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="紧急恢复"
+                                    Style="{StaticResource PrimaryActionButton}"
+                                    Padding="12,6" Margin="12,0,0,0"
+                                    Command="{Binding RecoverSessionCommand}"/>
+                        </Grid>
+                    </Border>
+
                     <!-- RDP 警告 + 一键启用 -->
                     <Border Background="#1F1A0E" BorderBrush="#78350F" BorderThickness="1"
                             CornerRadius="4" Padding="12,10" Margin="0,0,0,6"

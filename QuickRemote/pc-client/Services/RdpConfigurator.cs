@@ -13,6 +13,12 @@ public static class RdpConfigurator
     private const string RdpTcpKey = @"SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp";
     private const string FirewallRuleName = "QuickRemote RDP";
 
+    // 网络级认证（NLA）：启用后远程连接必须先通过身份认证，认证在创建会话之前完成。
+    // 关键作用：FreeRDP 未提供正确凭据时会被干净拒绝，不会创建会话、不会抢占本地控制台，
+    // 从而避免「本地黑屏 + 远程连不上」的卡死问题。
+    private const string UserAuthenticationValue = "UserAuthentication";
+    private const string SecurityLayerValue = "SecurityLayer";
+
     /// <summary>RDP 是否已启用（fDenyTSConnections == 0 表示启用）。</summary>
     public static bool IsRdpEnabled()
     {
@@ -22,6 +28,46 @@ public static class RdpConfigurator
             if (key == null) return false;
             var value = key.GetValue("fDenyTSConnections");
             return value is int i && i == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>NLA（网络级认证）是否已启用（UserAuthentication == 1）。</summary>
+    public static bool IsNlaEnabled()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(RdpTcpKey, writable: false);
+            if (key == null) return false;
+            var value = key.GetValue(UserAuthenticationValue);
+            return value is int i && i == 1;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 启用 NLA 并将安全层设为 TLS。
+    /// 这是避免「远程连接导致本地黑屏」的关键：NLA 让认证在会话创建前完成，
+    /// 认证失败则直接拒绝连接，本地控制台会话不会被抢占。
+    /// 需要管理员权限。
+    /// </summary>
+    public static bool EnableNla()
+    {
+        try
+        {
+            using (var key = Registry.LocalMachine.OpenSubKey(RdpTcpKey, writable: true))
+            {
+                if (key == null) return false;
+                key.SetValue(UserAuthenticationValue, 1, RegistryValueKind.DWord);
+                key.SetValue(SecurityLayerValue, 2, RegistryValueKind.DWord);
+            }
+            return IsNlaEnabled();
         }
         catch
         {
@@ -96,7 +142,48 @@ public static class RdpConfigurator
         RunNetShWithResult("advfirewall firewall set rule group=\"远程桌面\" new enable=yes");
         RunNetShWithResult("advfirewall firewall set rule group=\"Remote Desktop\" new enable=yes");
 
+        // 启用 NLA + TLS 安全层：避免无凭据连接抢占本地控制台导致黑屏
+        EnableNla();
+
         return IsRdpEnabled() && IsFirewallRuleEnabled();
+    }
+
+    /// <summary>
+    /// 紧急恢复本地控制台：注销所有卡住的远程 RDP 会话（rdp-tcp#N），
+    /// 让 Windows 自动切回本地控制台会话，无需重启电脑。
+    /// 需要管理员权限。
+    /// </summary>
+    /// <returns>注销的远程会话数量（-1 表示执行失败）。</returns>
+    public static int RecoverConsoleSession()
+    {
+        try
+        {
+            var (stdout, _, exitCode) = RunCmdWithResult("query session");
+            if (exitCode != 0 && string.IsNullOrWhiteSpace(stdout)) return -1;
+
+            int loggedOff = 0;
+            foreach (var line in stdout.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                // 匹配 "rdp-tcp#N" 开头的远程会话行，提取会话 ID
+                if (trimmed.StartsWith("rdp-tcp#", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("rdp-tcp", StringComparison.OrdinalIgnoreCase))
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(
+                        trimmed, @"rdp-tcp#?\d*\s+\S*\s+(\d+)");
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out var sessionId))
+                    {
+                        RunCmdWithResult($"logoff {sessionId}");
+                        loggedOff++;
+                    }
+                }
+            }
+            return loggedOff;
+        }
+        catch
+        {
+            return -1;
+        }
     }
 
     /// <summary>运行 netsh 命令并返回 stdout、stderr 和退出码。</summary>
@@ -106,6 +193,26 @@ public static class RdpConfigurator
         {
             FileName = "netsh",
             Arguments = args,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        using var proc = Process.Start(psi);
+        if (proc == null) return (string.Empty, string.Empty, -1);
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(5000);
+        return (stdout, stderr, proc.ExitCode);
+    }
+
+    /// <summary>运行 cmd 命令（query session / logoff 等）并返回 stdout、stderr 和退出码。</summary>
+    private static (string stdout, string stderr, int exitCode) RunCmdWithResult(string command)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/c {command}",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
