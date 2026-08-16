@@ -181,8 +181,26 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
                 };
                 await WriteMessage(stream, registerMsg, ct);
 
-                // 读取注册确认
-                var ack = await ReadMessage(stream, ct);
+                // 读取注册确认（带 10 秒超时，防止连错端口时无限等待）
+                ControlMessage? ack;
+                using (var regCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    regCts.CancelAfter(TimeSpan.FromSeconds(10));
+                    try
+                    {
+                        ack = await ReadMessage(stream, regCts.Token);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        _logger.Warn("Register timeout: no register_ack within 10s (wrong port? control port = HTTP port + 1)");
+                        LastMessage = "注册超时：服务器未响应，请检查端口（控制连接应为 8444，而非 HTTP 端口 8443）";
+                        Status = ConnectionStatus.Disconnected;
+                        await DelayBackoff(ct, backoffIndex);
+                        backoffIndex = Math.Min(backoffIndex + 1, BackoffSeconds.Length - 1);
+                        continue;
+                    }
+                }
+
                 if (ack == null || ack.Type != "register_ack" || ack.Status != "ok")
                 {
                     var st = ack?.Status ?? "no_response";

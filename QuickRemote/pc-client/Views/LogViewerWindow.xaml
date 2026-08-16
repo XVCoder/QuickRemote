@@ -1,0 +1,58 @@
+<Window x:Class="QuickRemote.PCClient.Views.LogViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="日志查看" Height="560" Width="760"
+        Background="{StaticResource BgSecondaryBrush}"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        ShowInTaskbar="False">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏 -->
+        <Border Grid.Row="0" Background="{StaticResource BgPrimaryBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="日志查看" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           FontFamily="{StaticResource UiFont}" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="刷新" Click="BtnRefresh_Click"
+                        Background="Transparent" Foreground="{StaticResource AccentBrush}"
+                        BorderThickness="0" Cursor="Hand" Padding="10,4" FontSize="12"/>
+            </Grid>
+        </Border>
+
+        <!-- 日志内容（只读等宽） -->
+        <TextBox Grid.Row="1" x:Name="LogTextBox"
+                 Background="{StaticResource BgCardBrush}"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 BorderBrush="{StaticResource BorderBrush}"
+                 BorderThickness="1"
+                 Margin="16"
+                 IsReadOnly="True"
+                 TextWrapping="NoWrap"
+                 HorizontalScrollBarVisibility="Auto"
+                 VerticalScrollBarVisibility="Auto"
+                 FontFamily="{StaticResource MonoFont}"
+                 FontSize="12"
+                 Padding="8"/>
+
+        <!-- 底部 -->
+        <Border Grid.Row="2" Background="{StaticResource BgPrimaryBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="打开日志目录" Click="BtnOpenFolder_Click"
+                        Background="Transparent" Foreground="{StaticResource TextSecondaryBrush}"
+                        BorderThickness="0" Cursor="Hand" Padding="10,4" FontSize="12"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

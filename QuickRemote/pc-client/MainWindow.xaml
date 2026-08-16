@@ -312,7 +312,7 @@
 
                             <!-- 查看日志按钮 -->
                             <TextBlock HorizontalAlignment="Right" Margin="0,4,0,0">
-                                <Hyperlink Command="{Binding OpenLogFolderCommand}"
+                                <Hyperlink Command="{Binding ViewLogsCommand}"
                                            Foreground="{StaticResource TextMutedBrush}"
                                            TextDecorations="Underline">
                                     <Run Text="查看日志" FontSize="11"/>

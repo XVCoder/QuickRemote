@@ -60,7 +60,7 @@ public sealed class MainViewModel : BaseViewModel
         CheckUpdateCommand = new RelayCommand(async () => await CheckUpdateAsync());
         ShowChangelogCommand = new RelayCommand(ShowChangelog);
         EnableRdpCommand = new RelayCommand(EnableRdp);
-        OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        ViewLogsCommand = new RelayCommand(ViewLogs);
 
         // 订阅事件
         _relay.PropertyChanged += OnRelayPropertyChanged;
@@ -246,7 +246,7 @@ public sealed class MainViewModel : BaseViewModel
     public ICommand CheckUpdateCommand { get; }
     public ICommand ShowChangelogCommand { get; }
     public ICommand EnableRdpCommand { get; }
-    public ICommand OpenLogFolderCommand { get; }
+    public ICommand ViewLogsCommand { get; }
 
     // ========== 系统托盘 ==========
 
@@ -441,24 +441,9 @@ public sealed class MainViewModel : BaseViewModel
         });
     }
 
-    private void OpenLogFolder()
+    private void ViewLogs()
     {
-        try
-        {
-            var logDir = Logger.GetLogDirectory();
-            if (System.IO.Directory.Exists(logDir))
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = logDir,
-                    UseShellExecute = true
-                });
-            else
-                MessageBox.Show("日志目录不存在", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"打开日志目录失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        Views.LogViewerWindow.ShowWindow();
     }
 
     private void OnSessionStarted(SessionInfo info)
