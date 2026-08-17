@@ -27,6 +27,12 @@
     <Resource Include="app.png" />
   </ItemGroup>
 
+  <!-- 远程桌面：DXGI 屏幕捕获 + D3D11 纹理处理 -->
+  <ItemGroup>
+    <PackageReference Include="Vortice.DXGI" Version="3.5.0" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.5.0" />
+  </ItemGroup>
+
   <!--
     UseWindowsForms 会隐式引入 System.Windows.Forms / System.Drawing 全局 using，
     与 WPF 的 System.Windows.Application 等类型冲突，此处移除这两个全局 using，
