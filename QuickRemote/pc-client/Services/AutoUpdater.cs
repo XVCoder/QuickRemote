@@ -28,13 +28,31 @@ public static class AutoUpdater
             return false;
         }
 
-        // 临时文件路径
-        var tempDir = Path.Combine(Path.GetTempPath(), "QuickRemoteUpdate");
-        if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        Directory.CreateDirectory(tempDir);
+        // 程序根目录（下载 ZIP 放这里，用户可见）
+        var appDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
+        // 脚本目录：系统临时目录（脚本/日志不污染程序目录）
+        var scriptDir = Path.Combine(Path.GetTempPath(), "QuickRemoteUpdate");
+        if (Directory.Exists(scriptDir)) Directory.Delete(scriptDir, true);
+        Directory.CreateDirectory(scriptDir);
 
-        var zipPath = Path.Combine(tempDir, $"QuickRemote-{targetVersion}.zip");
-        var scriptPath = Path.Combine(tempDir, "update.bat");
+        // ZIP 下载位置：优先程序根目录（用户可见），权限不足时回退脚本目录
+        string zipPath;
+        try
+        {
+            var testFile = Path.Combine(appDir, ".qremote_write_test");
+            File.WriteAllText(testFile, "");
+            File.Delete(testFile);
+            zipPath = Path.Combine(appDir, $"QuickRemote-{targetVersion}.zip");
+        }
+        catch
+        {
+            zipPath = Path.Combine(scriptDir, $"QuickRemote-{targetVersion}.zip");
+        }
+        // 清理旧的下载文件
+        try { if (File.Exists(zipPath)) File.Delete(zipPath); } catch { }
+
+        var scriptPath = Path.Combine(scriptDir, "update.bat");
+        var vbsPath = Path.Combine(scriptDir, "launcher.vbs");
 
         // 1. 下载
         var progress = new UpdateProgressWindow(targetVersion);
@@ -81,12 +99,11 @@ public static class AutoUpdater
         }
 
         // 2. 生成更新脚本
-        var appDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
         var exeName = Process.GetCurrentProcess().ProcessName + ".exe";
         var exePath = Path.Combine(appDir, exeName);
         var currentPid = Environment.ProcessId;
-        var stagingDir = Path.Combine(tempDir, "staging");
-        var logFile = Path.Combine(tempDir, "update.log");
+        var stagingDir = Path.Combine(scriptDir, "staging");
+        var logFile = Path.Combine(scriptDir, "update.log");
 
         // 批处理脚本：等待旧进程退出 → 解压到暂存目录 → 检测嵌套文件夹 → robocopy 覆盖 → 验证 → 启动 → 清理
         var script = $@"@echo off
@@ -169,10 +186,10 @@ echo [%date% %time%] DLL verified >> ""%LOGFILE%""
 echo [%date% %time%] Starting new version: {exePath} >> ""%LOGFILE%""
 start """" ""{exePath}""
 
-:: === 7. 清理临时文件（延迟，保留日志文件） ===
+:: === 7. 清理脚本目录（ZIP 在程序根目录，保留供查看） ===
 timeout /t 3 /nobreak >nul
 copy ""%LOGFILE%"" ""%TEMP%\QuickRemoteUpdate-last.log"" >nul 2>&1
-rd /s /q ""{tempDir}"" 2>nul
+rd /s /q ""{scriptDir}"" 2>nul
 echo [%date% %time%] Cleanup complete >> ""%TEMP%\QuickRemoteUpdate-last.log""
 exit
 ";
@@ -181,7 +198,6 @@ exit
         logger.Info($"Update script created: {scriptPath}");
 
         // 创建 VBScript 启动器（完全隐藏窗口，创建独立进程）
-        var vbsPath = Path.Combine(tempDir, "launcher.vbs");
         // vbs 用 WshShell.Run 启动 bat，参数 0 = 隐藏窗口，False = 不等待
         // VBS 中双引号用 "" 转义，所以 """path""" 表示字符串 "path"
         var vbsContent = "Set WshShell = CreateObject(\"WScript.Shell\")\r\n" +
@@ -205,8 +221,17 @@ exit
                 UseShellExecute = true
             });
 
-            // 等待 wscript 启动 bat 脚本（wscript 会立即退出，bat 作为独立进程运行）
-            await Task.Delay(2000);
+            // 等待 bat 脚本真正启动（update.log 被创建即确认），最多 10 秒
+            // 避免 wscript/vbs 被延迟（杀软扫描等）时 C# 进程已退出导致脚本未运行
+            for (int i = 0; i < 50; i++)
+            {
+                if (File.Exists(logFile)) break;
+                await Task.Delay(200);
+            }
+            if (!File.Exists(logFile))
+            {
+                logger.Warn("Update script may not have started (update.log not created within 10s)");
+            }
 
             // C# 主动退出，bat 脚本会等待本进程退出后继续执行解压覆盖
             logger.Info("Exiting process for update");
