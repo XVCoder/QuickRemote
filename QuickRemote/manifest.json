@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.8",
-    "changelog": "修复间歇性 TLS 握手失败：RDP 安全层由强制 TLS 改为协商，避免与 FreeRDP 的 NLA 认证双层 TLS 冲突（需重新点「一键启用 RDP」生效）",
+    "latest_version": "1.1.9",
+    "changelog": "修复自动更新（更新包下载到程序根目录、确认脚本启动后再退出）；修复导出配置在剪贴板被占用时失败",
     "versions": {
+      "1.1.9": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/8aed076c-ae79-4a54-ac26-17710d4c8974"
+      },
       "1.1.8": {
         "zip": "https://quickdeploy.solutionx.top/d/p/2e1c62af-ed2a-4150-8068-b4dc3186d05f"
       },
       "1.1.7": {
         "zip": "https://quickdeploy.solutionx.top/d/p/3ce0079f-cbb8-4826-b4eb-a17a67f11edc"
-      },
-      "1.1.6": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/80ec2a29-74b1-4631-9d57-a908681bab0d"
       }
     }
   },
