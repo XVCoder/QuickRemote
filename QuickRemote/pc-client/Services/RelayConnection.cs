@@ -29,6 +29,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
 
     private readonly Logger _logger;
     private readonly TunnelManager _tunnelManager;
+    private readonly RemoteSessionManager _remoteSessionManager;
     private CancellationTokenSource? _cts;
     private int _rdpPort = 3389;
 
@@ -96,9 +97,10 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-    public RelayConnection(TunnelManager tunnelManager, Logger logger)
+    public RelayConnection(TunnelManager tunnelManager, RemoteSessionManager remoteSessionManager, Logger logger)
     {
         _tunnelManager = tunnelManager;
+        _remoteSessionManager = remoteSessionManager;
         _logger = logger;
     }
 
@@ -311,7 +313,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>处理隧道建立请求：交由 TunnelManager 建立数据连接。</summary>
+    /// <summary>处理隧道建立请求：启动远程会话（截屏方案）。</summary>
     private void HandleTunnelRequest(ControlMessage msg)
     {
         var sessionId = msg.SessionId ?? string.Empty;
@@ -319,9 +321,12 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         var (host, _, useTls) = ParseAddress(ServerAddress);
 
         // 隧道连接直连服务器返回的端口（明文，隧道数据不加密）
-        // 控制连接已加密，隧道数据明文不影响安全性（RDP 本身有加密）
+        // 控制连接已加密，隧道数据明文不影响安全性（H.264 视频流本身敏感度低，
+        // 且隧道只在会话期间开放）
         _logger.Info($"Tunnel request received: session={sessionId}, tunnel_port={tunnelPort}, tls={useTls}");
-        _tunnelManager.EstablishTunnel(sessionId, host, tunnelPort, _rdpPort, false, _tlsHost);
+
+        // 远程模式：截屏方案（不再连接本地 RDP 3389）
+        _ = _remoteSessionManager.StartAsync(sessionId, host, tunnelPort);
     }
 
     /// <summary>计算 auth_key = SHA256(preSharedKey) 的 hex 小写。</summary>

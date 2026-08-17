@@ -17,6 +17,7 @@ public sealed class MainViewModel : BaseViewModel
     private readonly Logger _logger;
     private readonly ConfigService _configService;
     private readonly TunnelManager _tunnelManager;
+    private readonly RemoteSessionManager _remoteSessionManager;
     private readonly RelayConnection _relay;
     private readonly UpdateChecker _updateChecker;
     private readonly DispatcherTimer _refreshTimer;
@@ -51,7 +52,8 @@ public sealed class MainViewModel : BaseViewModel
         _configService = App.ConfigService;
 
         _tunnelManager = new TunnelManager(_logger);
-        _relay = new RelayConnection(_tunnelManager, _logger);
+        _remoteSessionManager = new RemoteSessionManager(_logger);
+        _relay = new RelayConnection(_tunnelManager, _remoteSessionManager, _logger);
         _updateChecker = new UpdateChecker(App.Version, _logger);
 
         Sessions = new ObservableCollection<SessionInfo>();
