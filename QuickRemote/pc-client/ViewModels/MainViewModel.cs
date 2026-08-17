@@ -466,14 +466,40 @@ public sealed class MainViewModel : BaseViewModel
         try
         {
             var json = _configService.ExportJson();
-            System.Windows.Clipboard.SetText(json);
+            SetClipboardWithRetry(json);
             _logger.Info("Config exported to clipboard");
             Views.DialogWindow.Show("当前配置已复制到剪贴板，可直接粘贴到其他机器或分享。", "导出配置", Views.DialogWindow.DialogType.Success);
         }
         catch (Exception ex)
         {
             _logger.Error("Export config failed", ex);
-            Views.DialogWindow.Show($"导出配置失败：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
+            Views.DialogWindow.Show(
+                "导出配置失败：剪贴板被其他程序占用（如远程控制工具、剪贴板管理器、输入法），请稍后重试或暂时关闭相关程序。\n\n详细信息：" + ex.Message,
+                "错误", Views.DialogWindow.DialogType.Error);
+        }
+    }
+
+    /// <summary>
+    /// 写入剪贴板，带重试。剪贴板是独占资源，常被远程控制/剪贴板工具短暂占用，
+    /// OpenClipboard 失败（CLIPBRD_E_CANT_OPEN）多为临时现象，重试几次即可。
+    /// </summary>
+    private static void SetClipboardWithRetry(string text)
+    {
+        const int maxRetries = 10;
+        for (int i = 0; i < maxRetries; i++)
+        {
+            try
+            {
+                System.Windows.Clipboard.SetText(text);
+                return;
+            }
+            catch (System.Runtime.InteropServices.COMException ex)
+                when (ex.HResult == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
+            {
+                if (i == maxRetries - 1) throw;
+                // 递增延迟，给占用剪贴板的进程时间释放
+                System.Threading.Thread.Sleep(50 + i * 20);
+            }
         }
     }
 
