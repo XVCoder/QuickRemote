@@ -156,9 +156,23 @@ fun RemoteSessionScreen(
                         onSurfaceChanged = { surface, _, _ ->
                             viewModel.setSurface(surface)
                         }
-                        touchListener = { event, pointerCount ->
-                            handleTouchEvent(viewModel, event, pointerCount)
+                        onMouseMove = { x, y -> sendMouseAction(viewModel, 0, x, y) }
+                        onLeftClick = { x, y ->
+                            sendMouseAction(viewModel, 1, x, y)  // 左按下
+                            sendMouseAction(viewModel, 2, x, y)  // 左释放
                         }
+                        onRightClick = { x, y ->
+                            sendMouseAction(viewModel, 3, x, y)  // 右按下
+                            sendMouseAction(viewModel, 4, x, y)  // 右释放
+                        }
+                        onWheel = { x, y, delta -> sendWheel(viewModel, x, y, delta) }
+                    }
+                },
+                update = { view ->
+                    // 分辨率变化时更新坐标映射
+                    if (videoWidth > 0 && videoHeight > 0) {
+                        view.remoteWidth = videoWidth
+                        view.remoteHeight = videoHeight
                     }
                 }
             )
@@ -175,22 +189,34 @@ fun RemoteSessionScreen(
     }
 }
 
-/** 触摸事件 → 输入帧（阶段 5 完整实现，先发送鼠标移动/点击基础事件）。 */
-private fun handleTouchEvent(
+/** 发送鼠标事件帧：[action 1B][x 2B][y 2B]（远程坐标）。 */
+private fun sendMouseAction(
     viewModel: SessionViewModel,
-    event: android.view.MotionEvent,
-    pointerCount: Int
+    action: Int,
+    x: Int,
+    y: Int
 ) {
-    // TODO(阶段5): 完整输入协议（坐标映射、手势识别）
-    // 当前预留：发送鼠标事件帧
-    val x = event.x.toInt()
-    val y = event.y.toInt()
     val data = ByteBuffer.allocate(5).order(ByteOrder.LITTLE_ENDIAN)
-        .put(event.actionMasked.toByte())
+        .put(action.toByte())
         .putShort(x.toShort())
         .putShort(y.toShort())
         .array()
     viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_MOUSE, data)
+}
+
+/** 发送滚轮事件帧：[delta 2B(有符号)][x 2B][y 2B]（远程坐标）。 */
+private fun sendWheel(
+    viewModel: SessionViewModel,
+    x: Int,
+    y: Int,
+    delta: Int
+) {
+    val data = ByteBuffer.allocate(6).order(ByteOrder.LITTLE_ENDIAN)
+        .putShort(delta.toShort())
+        .putShort(x.toShort())
+        .putShort(y.toShort())
+        .array()
+    viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_WHEEL, data)
 }
 
 @Composable

@@ -17,6 +17,7 @@ public sealed class RemoteSessionManager : IDisposable
     private IRemoteTransport? _transport;
     private ScreenCaptureService? _capture;
     private H264Encoder? _encoder;
+    private readonly RemoteInputHandler _inputHandler = new();
     private Thread? _captureThread;
     private volatile bool _running;
     private bool _disposed;
@@ -124,7 +125,7 @@ public sealed class RemoteSessionManager : IDisposable
         SessionEnded?.Invoke();
     }
 
-    /// <summary>接收帧（输入事件等）。阶段 5 实现 SendInput 模拟。</summary>
+    /// <summary>接收帧（输入事件等），转发给输入处理器用 SendInput 模拟。</summary>
     private void OnFrameReceived(byte type, byte[] data)
     {
         switch (type)
@@ -132,8 +133,7 @@ public sealed class RemoteSessionManager : IDisposable
             case RemoteFrameProtocol.TYPE_INPUT_MOUSE:
             case RemoteFrameProtocol.TYPE_INPUT_KEY:
             case RemoteFrameProtocol.TYPE_INPUT_WHEEL:
-                // TODO(阶段5): 转发给 RemoteInputHandler 用 SendInput 模拟
-                _logger.Info($"Input event received: type=0x{type:X2}, size={data.Length}");
+                _inputHandler.HandleFrame(type, data);
                 break;
             case RemoteFrameProtocol.TYPE_CONTROL:
                 _logger.Info($"Control frame received: {Encoding.UTF8.GetString(data)}");
