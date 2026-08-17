@@ -290,6 +290,14 @@ public sealed class MainViewModel : BaseViewModel
         {
             EnableRdp();
         }
+        else if (RdpEnabled && NlaEnabled)
+        {
+            // RDP 已启用时，确保 NLA 安全层配置正确（升级后 SecurityLayer 可能还是旧值）
+            // EnableNla 是幂等操作，重复设置无副作用
+            _logger.Info("Ensuring NLA security layer is up-to-date");
+            RdpConfigurator.EnableNla();
+            RefreshRdpStatus();
+        }
 
         // 启动连接
         StartConnection();
