@@ -52,9 +52,10 @@ public static class RdpConfigurator
     }
 
     /// <summary>
-    /// 启用 NLA 并将安全层设为 TLS。
-    /// 这是避免「远程连接导致本地黑屏」的关键：NLA 让认证在会话创建前完成，
-    /// 认证失败则直接拒绝连接，本地控制台会话不会被抢占。
+    /// 启用 NLA 并将安全层设为协商（Negotiate）。
+    /// NLA 让认证在会话创建前完成（防黑屏的关键）：认证失败则直接拒绝连接，
+    /// 本地控制台会话不会被抢占。安全层用 Negotiate 而非强制 TLS，
+    /// 避免与 FreeRDP 的安全协商冲突导致 TLS 握手失败。
     /// 需要管理员权限。
     /// </summary>
     public static bool EnableNla()
@@ -65,7 +66,8 @@ public static class RdpConfigurator
             {
                 if (key == null) return false;
                 key.SetValue(UserAuthenticationValue, 1, RegistryValueKind.DWord);
-                key.SetValue(SecurityLayerValue, 2, RegistryValueKind.DWord);
+                // SecurityLayer: 0=RDP安全层 1=协商 2=强制TLS；用 1 让双方自然协商
+                key.SetValue(SecurityLayerValue, 1, RegistryValueKind.DWord);
             }
             return IsNlaEnabled();
         }

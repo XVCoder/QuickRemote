@@ -147,10 +147,8 @@ class FreeRdpClient(
         // 注意：FreeRDP 3.x 的 /sec 只接受 rdp|tls|nla|ext，不接受 negotiate
         //（安全协商本就是默认行为），传 /sec:negotiate 会导致参数解析失败。
         args.add("/tls:seclevel:0")
-        // 强制 TLS 1.0：FreeRDP 3.27+ 默认最低 TLS 1.2，而 Windows RDP 服务(TermService)
-        // 仍使用 TLS 1.0 协商，版本不匹配会导致 TLS 握手失败。enforce:1.0 强制降级兼容。
-        args.add("/tls:enforce:1.0")
-        args.add("/log-level:WARN")
+        // 详细日志：便于定位 TLS 握手失败的确切原因（输出到 logcat）。
+        args.add("/log-level:DEBUG")
         return args.toTypedArray()
     }
 
@@ -299,7 +297,9 @@ class FreeRdpClient(
             err.isBlank() -> "未知错误"
             else -> err
         }
-        listener?.onDisconnected("连接失败：$friendly")
+        // 附加完整错误码，便于精确定位（如 ERRCONNECT_TLS_CONNECT_FAILED）
+        val detail = if (err.isNotBlank()) "\n\n原始错误：$err" else ""
+        listener?.onDisconnected("连接失败：$friendly$detail")
     }
 
     override fun OnDisconnecting(inst: Long) {
