@@ -577,7 +577,7 @@ private fun ChangelogMarkdown(content: String, modifier: Modifier = Modifier) {
                         line,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = TextPrimary,
+                        color = Accent,
                         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                     )
 
