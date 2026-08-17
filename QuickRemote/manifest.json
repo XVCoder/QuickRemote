@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.7",
-    "changelog": "修复远程连接导致本地黑屏：启用 NLA 网络级认证，无凭据连接被干净拒绝不再抢占本地控制台；新增紧急恢复、自定义主题弹窗、导出配置、窗口置顶，滚动条与托盘菜单统一深色主题",
+    "latest_version": "1.1.8",
+    "changelog": "修复间歇性 TLS 握手失败：RDP 安全层由强制 TLS 改为协商，避免与 FreeRDP 的 NLA 认证双层 TLS 冲突（需重新点「一键启用 RDP」生效）",
     "versions": {
+      "1.1.8": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/2e1c62af-ed2a-4150-8068-b4dc3186d05f"
+      },
       "1.1.7": {
         "zip": "https://quickdeploy.solutionx.top/d/p/3ce0079f-cbb8-4826-b4eb-a17a67f11edc"
       },
       "1.1.6": {
         "zip": "https://quickdeploy.solutionx.top/d/p/80ec2a29-74b1-4631-9d57-a908681bab0d"
-      },
-      "1.1.5": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/d1395e2b-57f1-474b-8fb4-fb63aa9480b2"
       }
     }
   },

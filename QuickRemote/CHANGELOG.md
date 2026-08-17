@@ -1,5 +1,10 @@
 # QuickRemote 更新记录
 
+## v1.1.8
+
+- 修复间歇性「TLS 握手失败」：RDP 安全层由「强制 TLS」改为「协商」，避免与 FreeRDP 的 NLA 认证双层 TLS 冲突
+- 重新启用 RDP（点「一键启用 RDP」）后生效
+
 ## v1.0.15 (Android App)
 
 - 修正 TLS 握手参数：移除强制 TLS 1.0 的错误配置，改用与 Windows 10/11（TLS 1.2）兼容的协商方式
