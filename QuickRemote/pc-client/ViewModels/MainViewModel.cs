@@ -460,22 +460,49 @@ public sealed class MainViewModel : BaseViewModel
         Views.LogViewerWindow.ShowWindow();
     }
 
-    /// <summary>导出当前配置为 JSON 并复制到剪贴板。</summary>
+    /// <summary>导出当前配置为 JSON：优先复制到剪贴板，剪贴板被占用时回退到导出文件。</summary>
     private void ExportConfig()
     {
+        string json;
         try
         {
-            var json = _configService.ExportJson();
-            SetClipboardWithRetry(json);
-            _logger.Info("Config exported to clipboard");
-            Views.DialogWindow.Show("当前配置已复制到剪贴板，可直接粘贴到其他机器或分享。", "导出配置", Views.DialogWindow.DialogType.Success);
+            json = _configService.ExportJson();
         }
         catch (Exception ex)
         {
             _logger.Error("Export config failed", ex);
+            Views.DialogWindow.Show($"导出配置失败：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
+            return;
+        }
+
+        // 优先复制到剪贴板（带重试）
+        try
+        {
+            SetClipboardWithRetry(json);
+            _logger.Info("Config exported to clipboard");
+            Views.DialogWindow.Show("当前配置已复制到剪贴板，可直接粘贴到其他机器或分享。", "导出配置", Views.DialogWindow.DialogType.Success);
+            return;
+        }
+        catch (Exception clipEx)
+        {
+            // 剪贴板被持续占用（远程控制/剪贴板工具），回退到导出文件
+            _logger.Warn($"Clipboard unavailable, exporting to file: {clipEx.Message}");
+        }
+
+        // 回退：写入程序目录的配置文件
+        try
+        {
+            var exportPath = System.IO.Path.Combine(AppContext.BaseDirectory, "config-export.json");
+            System.IO.File.WriteAllText(exportPath, json);
+            _logger.Info($"Config exported to file: {exportPath}");
             Views.DialogWindow.Show(
-                "导出配置失败：剪贴板被其他程序占用（如远程控制工具、剪贴板管理器、输入法），请稍后重试或暂时关闭相关程序。\n\n详细信息：" + ex.Message,
-                "错误", Views.DialogWindow.DialogType.Error);
+                $"剪贴板被其他程序持续占用（远程控制工具/剪贴板管理器），无法复制。\n\n配置已导出到文件：\n{exportPath}\n\n可直接打开该文件复制内容。",
+                "导出配置", Views.DialogWindow.DialogType.Warning);
+        }
+        catch (Exception fileEx)
+        {
+            _logger.Error("Export config to file also failed", fileEx);
+            Views.DialogWindow.Show($"导出配置失败：剪贴板被占用且写入文件也失败。\n\n{fileEx.Message}", "错误", Views.DialogWindow.DialogType.Error);
         }
     }
 
