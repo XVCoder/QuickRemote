@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.9",
-    "changelog": "修复自动更新（更新包下载到程序根目录、确认脚本启动后再退出）；修复导出配置在剪贴板被占用时失败",
+    "latest_version": "1.1.10",
+    "changelog": "修复远程连接 TLS 握手失败：启动时自动将 RDP 安全层设为协商，新增重新应用按钮；导出配置剪贴板被占用时回退到文件",
     "versions": {
+      "1.1.10": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/aeea94a7-69cf-4cb4-973a-a8528d3a776d"
+      },
       "1.1.9": {
         "zip": "https://quickdeploy.solutionx.top/d/p/8aed076c-ae79-4a54-ac26-17710d4c8974"
       },
       "1.1.8": {
         "zip": "https://quickdeploy.solutionx.top/d/p/2e1c62af-ed2a-4150-8068-b4dc3186d05f"
-      },
-      "1.1.7": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/3ce0079f-cbb8-4826-b4eb-a17a67f11edc"
       }
     }
   },
