@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.13",
-    "changelog": "远程桌面连接支持保存用户名和密码：勾选后按设备保存凭据，下次连接自动预填；取消勾选后连接将清除已保存凭据",
+    "latest_version": "1.0.14",
+    "changelog": "修复远程连接 TLS 握手失败（强制 TLS 1.0 兼容 Windows RDP）；更新记录补全至 1.0.13 并优化渲染",
     "versions": {
+      "1.0.14": {
+        "apk": "https://quickdeploy.solutionx.top/d/p/e4fbda5d-a557-48cb-96eb-e7c2cc72b2c6"
+      },
       "1.0.13": {
         "apk": "https://quickdeploy.solutionx.top/d/p/7bda3213-54ac-4789-8ff0-d2586154aa74"
       },
       "1.0.12": {
         "apk": "https://quickdeploy.solutionx.top/d/p/9a515770-cced-4443-b3d7-0ed96dae2c0f"
-      },
-      "1.0.11": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/19ca6fcf-dd29-4195-ae30-4a004a5e4504"
       }
     }
   }

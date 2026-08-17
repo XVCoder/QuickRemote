@@ -1,5 +1,10 @@
 # QuickRemote 更新记录
 
+## v1.0.14 (Android App)
+
+- 修复远程连接 "the connection failed at tls connect"：新增 `/tls:enforce:1.0` 强制 TLS 1.0，兼容 Windows RDP 服务的 TLS 版本（FreeRDP 3.27+ 默认最低 TLS 1.2 导致握手失败）
+- 更新记录补全至 v1.0.13 并优化渲染：版本号以主题色高亮显示
+
 ## v1.0.4 (中转服务器)
 
 - 移除内置关于页：删除 internal/web 模块，根路径 `/` 由返回关于页改为返回健康检查响应（`ok`），保留部署脚本的就绪探测能力
