@@ -1,6 +1,8 @@
 package com.quickremote.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,14 +29,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.quickremote.app.data.models.Device
 import com.quickremote.app.ui.components.DeviceCard
 import com.quickremote.app.ui.components.StatusColor
@@ -49,18 +56,30 @@ import com.quickremote.app.viewmodels.ConnectionState
 import com.quickremote.app.viewmodels.MainViewModel
 
 /**
- * 设备列表页（主页）：服务器状态、在线设备卡片、下拉刷新、设置入口。
+ * 设备列表页（主页）：服务器状态、在线设备卡片（远程模式）、
+ * 内网直连设备卡片（同一局域网发现，RDP 直连模式）、下拉刷新、设置入口。
  */
 @Composable
 fun DeviceListScreen(
     viewModel: MainViewModel,
     onDeviceClick: (Device) -> Unit,
+    onLanDeviceClick: (com.quickremote.app.services.LanDiscovery.LanDevice) -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val devices by viewModel.devices.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val serverConfig by viewModel.serverConfig.collectAsState()
+
+    // 内网发现：启动监听，发现后刷新状态触发重组
+    var lanDevices by remember { mutableStateOf(emptyList<com.quickremote.app.services.LanDiscovery.LanDevice>()) }
+    DisposableEffect(Unit) {
+        com.quickremote.app.services.LanDiscovery.onDeviceFound = { _ ->
+            lanDevices = com.quickremote.app.services.LanDiscovery.devices
+        }
+        com.quickremote.app.services.LanDiscovery.start()
+        onDispose { com.quickremote.app.services.LanDiscovery.stop() }
+    }
 
     val statusColor = when (connectionState) {
         ConnectionState.CONNECTED -> StatusColor.GREEN
@@ -139,7 +158,7 @@ fun DeviceListScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (devices.isEmpty() && !isRefreshing) {
+            if (devices.isEmpty() && lanDevices.isEmpty() && !isRefreshing) {
                 EmptyState()
             } else {
                 LazyColumn(
@@ -150,12 +169,28 @@ fun DeviceListScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // 内网直连设备（局域网发现，RDP 直连，不经中继）
+                    if (lanDevices.isNotEmpty()) {
+                        item {
+                            Text(
+                                "内网直连 (${lanDevices.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Accent,
+                                modifier = Modifier.padding(start = 2.dp, bottom = 4.dp)
+                            )
+                        }
+                        items(lanDevices, key = { "lan_${it.deviceId}" }) { lan ->
+                            LanDeviceCard(lan = lan, onClick = onLanDeviceClick)
+                        }
+                    }
+
+                    // 远程设备（经中继，截屏方案）
                     item {
                         Text(
                             "在线设备 (${devices.size})",
                             style = MaterialTheme.typography.labelMedium,
                             color = TextMuted,
-                            modifier = Modifier.padding(start = 2.dp, bottom = 4.dp)
+                            modifier = Modifier.padding(start = 2.dp, top = if (lanDevices.isNotEmpty()) 12.dp else 0.dp, bottom = 4.dp)
                         )
                     }
                     items(devices, key = { it.device_id }) { device ->
@@ -167,6 +202,54 @@ fun DeviceListScreen(
     }
 
     ToastHost(viewModel)
+}
+
+/** 内网直连设备卡片。 */
+@Composable
+private fun LanDeviceCard(
+    lan: com.quickremote.app.services.LanDiscovery.LanDevice,
+    onClick: (com.quickremote.app.services.LanDiscovery.LanDevice) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(BgCard)
+            .border(1.dp, Border, RoundedCornerShape(10.dp))
+            .clickable { onClick(lan) }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Accent.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("🖥", fontSize = 18.sp)
+        }
+        Spacer(modifier = Modifier.size(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                lan.hostname,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextPrimary,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                "${lan.ip}:${lan.rdpPort} · 同一局域网直连",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
+        }
+        Text(
+            "内网直连",
+            style = MaterialTheme.typography.labelSmall,
+            color = Accent
+        )
+    }
 }
 
 @Composable

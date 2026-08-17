@@ -187,6 +187,94 @@ class RdpSessionManager(
     }
 
     /**
+     * 内网直连：FreeRDP 直接连接局域网主机的 RDP 端口（不经中继隧道）。
+     * 用于同一局域网内自动发现的主机，保留原生 RDP 体验。
+     */
+    fun startLanDirect(
+        host: String,
+        port: Int,
+        username: String = "",
+        password: String = "",
+        domain: String = ""
+    ) {
+        this.deviceId = "lan_$host"
+        this.hostname = host
+        this.errorMessage = ""
+        this.state = SessionState.CONNECTING
+        logger.info("RDP LAN direct: host=$host port=$port")
+        listener?.onStateChanged(state)
+
+        try {
+            // FreeRDP 库不可用时降级为占位模式
+            if (!freeRdpClient.isAvailable) {
+                logger.warn("FreeRDP .so not loaded, running in placeholder mode")
+                val loadErr = freeRdpClient.loadError
+                this.errorMessage = if (loadErr.isNullOrBlank()) {
+                    "FreeRDP 库未加载，仅展示隧道信息"
+                } else {
+                    "FreeRDP 库加载失败: $loadErr"
+                }
+                this.state = SessionState.CONNECTED
+                listener?.onStateChanged(state)
+                return
+            }
+
+            // 配置 FreeRDP 直连内网主机
+            val rdpConfig = FreeRdpClient.ConnectConfig(
+                hostname = host,
+                port = port,
+                username = username,
+                password = password,
+                domain = domain,
+                width = 1280,
+                height = 720,
+                colorDepth = 32
+            )
+
+            freeRdpClient.listener = object : FreeRdpClient.Listener {
+                override fun onConnecting() {
+                    logger.info("FreeRDP connecting")
+                }
+
+                override fun onConnected() {
+                    logger.info("FreeRDP connected")
+                    state = SessionState.CONNECTED
+                    listener?.onStateChanged(state)
+                }
+
+                override fun onDisconnected(error: String?) {
+                    logger.info("FreeRDP disconnected: $error")
+                    state = if (error != null) {
+                        errorMessage = error
+                        SessionState.FAILED
+                    } else {
+                        SessionState.DISCONNECTED
+                    }
+                    listener?.onStateChanged(state)
+                }
+
+                override fun onGraphicsUpdated(x: Int, y: Int, width: Int, height: Int) {
+                    listener?.onGraphicsUpdated(x, y, width, height)
+                }
+            }
+
+            val ok = freeRdpClient.connect(rdpConfig, surface)
+            if (!ok) {
+                this.state = SessionState.FAILED
+                if (this.errorMessage.isBlank()) {
+                    this.errorMessage = "FreeRDP 连接启动失败"
+                }
+                listener?.onStateChanged(state)
+            }
+        } catch (e: Exception) {
+            this.errorMessage = e.message ?: "连接失败"
+            this.state = SessionState.FAILED
+            logger.warn("RDP LAN direct failed: ${e.message}")
+            listener?.onStateChanged(state)
+        }
+    }
+
+    /**
      * 打开到隧道服务器的连接，发送 [0x02][session_id] 握手，
      * 并在 127.0.0.1 上启动本地代理，返回本地端口。
      */

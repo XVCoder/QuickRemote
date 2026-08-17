@@ -18,6 +18,7 @@ public sealed class MainViewModel : BaseViewModel
     private readonly ConfigService _configService;
     private readonly TunnelManager _tunnelManager;
     private readonly RemoteSessionManager _remoteSessionManager;
+    private readonly LanDiscoveryService _lanDiscovery = new();
     private readonly RelayConnection _relay;
     private readonly UpdateChecker _updateChecker;
     private readonly DispatcherTimer _refreshTimer;
@@ -349,6 +350,9 @@ public sealed class MainViewModel : BaseViewModel
         var addr = string.IsNullOrWhiteSpace(ServerAddressInput) ? cfg.Server.Address : ServerAddressInput;
         ServerAddressDisplay = addr;
         _relay.Start(addr, cfg.Server.PreSharedKey, cfg.MachineId, cfg.Rdp.Port, App.Version);
+
+        // 启动局域网发现广播（内网 RDP 直连模式）
+        _lanDiscovery.Start(cfg.MachineId, SystemInfo.Hostname, cfg.Rdp.Port);
     }
 
     // ========== 命令实现 ==========
