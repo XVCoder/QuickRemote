@@ -61,6 +61,7 @@ public sealed class MainViewModel : BaseViewModel
         CheckUpdateCommand = new RelayCommand(async () => await CheckUpdateAsync());
         ShowChangelogCommand = new RelayCommand(ShowChangelog);
         EnableRdpCommand = new RelayCommand(EnableRdp);
+        ReapplyNlaCommand = new RelayCommand(ReapplyNla);
         RecoverSessionCommand = new RelayCommand(RecoverSession);
         ExportConfigCommand = new RelayCommand(ExportConfig);
         ViewLogsCommand = new RelayCommand(ViewLogs);
@@ -258,6 +259,7 @@ public sealed class MainViewModel : BaseViewModel
     public ICommand CheckUpdateCommand { get; }
     public ICommand ShowChangelogCommand { get; }
     public ICommand EnableRdpCommand { get; }
+    public ICommand ReapplyNlaCommand { get; }
     public ICommand RecoverSessionCommand { get; }
     public ICommand ExportConfigCommand { get; }
     public ICommand ViewLogsCommand { get; }
@@ -432,6 +434,34 @@ public sealed class MainViewModel : BaseViewModel
             _logger.Error("RDP enable failed", ex);
             Views.DialogWindow.Show($"启用 RDP 时发生错误：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
             RefreshRdpStatus();
+        }
+    }
+
+    /// <summary>重新应用 NLA 配置（安全层设为协商），用于升级后刷新注册表中的旧配置。</summary>
+    private void ReapplyNla()
+    {
+        _logger.Info("Reapplying NLA config");
+        try
+        {
+            var ok = RdpConfigurator.EnableNla();
+            RefreshRdpStatus();
+            if (ok)
+            {
+                Views.DialogWindow.Show(
+                    "RDP 配置已重新应用（安全层已设为协商）。\n\n请重新连接远程设备验证。",
+                    "完成", Views.DialogWindow.DialogType.Success);
+            }
+            else
+            {
+                Views.DialogWindow.Show(
+                    "重新应用配置失败，可能需要管理员权限。\n请右键点击程序 → 以管理员身份运行后重试。",
+                    "需要管理员权限", Views.DialogWindow.DialogType.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Reapply NLA failed", ex);
+            Views.DialogWindow.Show($"重新应用失败：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
         }
     }
 
