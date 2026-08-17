@@ -1,8 +1,6 @@
 package com.quickremote.app.ui.screens
 
-import android.view.SurfaceHolder
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,67 +14,54 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LinkOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.quickremote.app.data.models.Device
-import com.quickremote.app.freerdp.RdpSurfaceView
-import com.quickremote.app.services.RdpSessionManager
+import com.quickremote.app.services.RemoteFrameProtocol
+import com.quickremote.app.services.RemoteSessionManager
+import com.quickremote.app.ui.components.RemoteDisplayView
 import com.quickremote.app.ui.components.StatusColor
 import com.quickremote.app.ui.components.StatusIndicator
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
-import com.quickremote.app.ui.theme.TextSecondary
 import com.quickremote.app.ui.theme.Warning
 import com.quickremote.app.viewmodels.SessionViewModel
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
- * RDP 远程桌面会话页。
+ * 远程桌面会话页（截屏方案）。
  *
  * - 顶部工具栏: 返回、设备名、断开连接
- * - 中间: RdpSurfaceView（FreeRDP 渲染目标）
+ * - 中间: RemoteDisplayView（MediaCodec 渲染目标）
  * - 底部工具栏: 键盘切换、全屏切换
  *
- * FreeRDP .so 库可用时，实际渲染远程桌面画面；
- * 不可用时，降级显示连接状态和隧道信息。
+ * 触摸事件转换为输入帧发送（阶段 5 完整实现）。
  */
 @Composable
 fun RemoteSessionScreen(
@@ -89,35 +74,8 @@ fun RemoteSessionScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val isFullscreen by viewModel.isFullscreen.collectAsState()
     val isKeyboardVisible by viewModel.isKeyboardVisible.collectAsState()
-    val isFreeRdpAvailable = viewModel.isFreeRdpAvailable
-
-    // 凭据输入状态
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var domain by remember { mutableStateOf("") }
-    var saveCredentials by remember { mutableStateOf(false) }
-    val savedCred by viewModel.savedCredentials.collectAsState()
-
-    // 进入页面时加载该设备已保存的凭据
-    LaunchedEffect(device.device_id) {
-        viewModel.loadCredentials(device.device_id)
-    }
-
-    // 已保存凭据加载完成后预填表单（仅在字段为空时填充，避免覆盖用户输入）
-    LaunchedEffect(savedCred) {
-        savedCred?.let { cred ->
-            if (username.isBlank() && password.isBlank()) {
-                username = cred.username
-                password = cred.password
-                domain = cred.domain
-            }
-            saveCredentials = true
-        }
-    }
-
-    // 会话未开始或失败时展示凭据输入表单（NLA 认证需要 Windows 用户名/密码）
-    val showCredentialForm = state == RdpSessionManager.SessionState.IDLE ||
-        state == RdpSessionManager.SessionState.FAILED
+    val videoWidth by viewModel.videoWidth.collectAsState()
+    val videoHeight by viewModel.videoHeight.collectAsState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -146,7 +104,7 @@ fun RemoteSessionScreen(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            device.os.ifBlank { "Remote Desktop" },
+                            if (videoWidth > 0) "$videoWidth x $videoHeight" else "远程桌面",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted
                         )
@@ -190,171 +148,49 @@ fun RemoteSessionScreen(
                 .background(Color.Black)
                 .padding(padding)
         ) {
-            // FreeRDP 渲染视图（始终渲染，Surface 创建时自动传递给 FreeRDP）
+            // 渲染视图（MediaCodec 解码渲染目标）
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
-                    RdpSurfaceView(
-                        context = ctx,
-                        client = viewModel.getFreeRdpClient()
-                    ).apply {
-                        holder.addCallback(object : SurfaceHolder.Callback {
-                            override fun surfaceCreated(holder: SurfaceHolder) {
-                                viewModel.setSurface(holder.surface)
-                            }
-                            override fun surfaceChanged(
-                                holder: SurfaceHolder, format: Int, width: Int, height: Int
-                            ) {
-                                viewModel.setSurface(holder.surface)
-                            }
-                            override fun surfaceDestroyed(holder: SurfaceHolder) {
-                                viewModel.setSurface(null)
-                            }
-                        })
+                    RemoteDisplayView(context = ctx).apply {
+                        onSurfaceChanged = { surface, _, _ ->
+                            viewModel.setSurface(surface)
+                        }
+                        touchListener = { event, pointerCount ->
+                            handleTouchEvent(viewModel, event, pointerCount)
+                        }
                     }
                 }
             )
 
-            // 凭据输入表单（会话未开始时显示）
-            if (showCredentialForm) {
-                CredentialForm(
-                    device = device,
-                    username = username,
-                    password = password,
-                    domain = domain,
-                    saveCredentials = saveCredentials,
-                    errorMessage = errorMessage,
-                    onUsernameChange = { username = it },
-                    onPasswordChange = { password = it },
-                    onDomainChange = { domain = it },
-                    onSaveCredentialsChange = { saveCredentials = it },
-                    onConnect = {
-                        viewModel.startSession(device, username, password, domain)
-                        viewModel.saveCredentials(
-                            device.device_id, username, password, domain, saveCredentials
-                        )
-                    }
-                )
-            } else if (state != RdpSessionManager.SessionState.CONNECTED || !isFreeRdpAvailable) {
-                // 状态覆盖层（连接中/失败/FreeRDP 不可用时显示）
+            // 状态覆盖层（连接中/失败时显示）
+            if (state != RemoteSessionManager.SessionState.CONNECTED) {
                 SessionOverlay(
                     state = state,
                     tunnel = tunnel,
-                    errorMessage = errorMessage,
-                    isFreeRdpAvailable = isFreeRdpAvailable
+                    errorMessage = errorMessage
                 )
             }
         }
     }
 }
 
-@Composable
-private fun CredentialForm(
-    device: Device,
-    username: String,
-    password: String,
-    domain: String,
-    saveCredentials: Boolean,
-    errorMessage: String,
-    onUsernameChange: (String) -> Unit,
-    onPasswordChange: (String) -> Unit,
-    onDomainChange: (String) -> Unit,
-    onSaveCredentialsChange: (Boolean) -> Unit,
-    onConnect: () -> Unit
+/** 触摸事件 → 输入帧（阶段 5 完整实现，先发送鼠标移动/点击基础事件）。 */
+private fun handleTouchEvent(
+    viewModel: SessionViewModel,
+    event: android.view.MotionEvent,
+    pointerCount: Int
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.85f))
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            device.hostname.ifBlank { device.device_id },
-            style = MaterialTheme.typography.titleMedium,
-            color = TextPrimary,
-            fontWeight = FontWeight.SemiBold
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            "请输入 Windows 登录凭据以建立远程连接",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted
-        )
-
-        // 连接失败时展示错误详情
-        if (errorMessage.isNotBlank()) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                errorMessage,
-                style = MaterialTheme.typography.bodySmall,
-                color = Warning
-            )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        OutlinedTextField(
-            value = username,
-            onValueChange = onUsernameChange,
-            label = { Text("用户名") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-            value = password,
-            onValueChange = onPasswordChange,
-            label = { Text("密码") },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-            value = domain,
-            onValueChange = onDomainChange,
-            label = { Text("域（可选）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // 保存用户名和密码选项
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = saveCredentials,
-                onCheckedChange = onSaveCredentialsChange
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                "保存用户名和密码",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = onConnect,
-            enabled = username.isNotBlank() && password.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().height(48.dp)
-        ) {
-            Text("连接远程桌面", fontWeight = FontWeight.Medium)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "提示：Windows 默认开启 NLA 认证，必须输入正确的用户名和密码。",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted
-        )
-    }
+    // TODO(阶段5): 完整输入协议（坐标映射、手势识别）
+    // 当前预留：发送鼠标事件帧
+    val x = event.x.toInt()
+    val y = event.y.toInt()
+    val data = ByteBuffer.allocate(5).order(ByteOrder.LITTLE_ENDIAN)
+        .put(event.actionMasked.toByte())
+        .putShort(x.toShort())
+        .putShort(y.toShort())
+        .array()
+    viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_MOUSE, data)
 }
 
 @Composable
@@ -380,17 +216,16 @@ private fun ToolBarButton(
 
 @Composable
 private fun SessionOverlay(
-    state: RdpSessionManager.SessionState,
+    state: RemoteSessionManager.SessionState,
     tunnel: com.quickremote.app.data.models.TunnelResponse?,
-    errorMessage: String,
-    isFreeRdpAvailable: Boolean
+    errorMessage: String
 ) {
     val (color, text) = when (state) {
-        RdpSessionManager.SessionState.CONNECTING -> StatusColor.YELLOW to "RDP 连接中…"
-        RdpSessionManager.SessionState.CONNECTED -> StatusColor.GREEN to "隧道已建立"
-        RdpSessionManager.SessionState.FAILED -> StatusColor.RED to "连接失败"
-        RdpSessionManager.SessionState.DISCONNECTED -> StatusColor.RED to "已断开"
-        RdpSessionManager.SessionState.IDLE -> StatusColor.YELLOW to "等待中…"
+        RemoteSessionManager.SessionState.CONNECTING -> StatusColor.YELLOW to "连接中…"
+        RemoteSessionManager.SessionState.CONNECTED -> StatusColor.GREEN to "隧道已建立"
+        RemoteSessionManager.SessionState.FAILED -> StatusColor.RED to "连接失败"
+        RemoteSessionManager.SessionState.DISCONNECTED -> StatusColor.RED to "已断开"
+        RemoteSessionManager.SessionState.IDLE -> StatusColor.YELLOW to "等待中…"
     }
 
     Column(
@@ -398,7 +233,7 @@ private fun SessionOverlay(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        if (state == RdpSessionManager.SessionState.CONNECTING) {
+        if (state == RemoteSessionManager.SessionState.CONNECTING) {
             CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp, color = TextPrimary)
             Spacer(modifier = Modifier.height(16.dp))
         } else {
@@ -407,8 +242,7 @@ private fun SessionOverlay(
         }
         Text(text, style = MaterialTheme.typography.titleSmall, color = TextPrimary, fontWeight = FontWeight.Medium)
 
-        // 失败时展示错误详情
-        if (state == RdpSessionManager.SessionState.FAILED && errorMessage.isNotBlank()) {
+        if (state == RemoteSessionManager.SessionState.FAILED && errorMessage.isNotBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 errorMessage,
@@ -417,7 +251,6 @@ private fun SessionOverlay(
             )
         }
 
-        // 隧道信息卡片
         tunnel?.let { t ->
             Spacer(modifier = Modifier.height(20.dp))
             Column(
@@ -434,38 +267,6 @@ private fun SessionOverlay(
                 InfoRow("隧道端口", if (t.tunnel_port > 0) t.tunnel_port.toString() else "待分配")
             }
         }
-
-        // FreeRDP 不可用提示（仅 .so 库未加载时显示）
-        if (!isFreeRdpAvailable && state == RdpSessionManager.SessionState.CONNECTED) {
-            Spacer(modifier = Modifier.height(24.dp))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Warning.copy(alpha = 0.1f))
-                    .border(1.dp, Warning.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "FreeRDP 库未加载",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Warning,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    if (errorMessage.startsWith("FreeRDP 库加载失败")) {
-                        errorMessage
-                    } else {
-                        "远程桌面渲染需要 libfreerdp-android.so 库。" +
-                        "请从 FreeRDP APK 提取 .so 文件放置到 app/src/main/jniLibs/<abi>/ 目录。"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
-                )
-            }
-        }
     }
 }
 
@@ -475,13 +276,13 @@ private fun InfoRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-        Spacer(modifier = Modifier.width(16.dp))
+        Text(label, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        Spacer(modifier = Modifier.weight(1f))
         Text(
             value,
             style = MaterialTheme.typography.bodySmall,
             color = TextPrimary,
-            fontFamily = FontFamily.Monospace
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
         )
     }
 }

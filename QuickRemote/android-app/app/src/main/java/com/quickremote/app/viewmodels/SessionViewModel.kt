@@ -5,10 +5,9 @@ import android.view.Surface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.quickremote.app.data.local.SettingsStore
-import com.quickremote.app.data.models.Credentials
 import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.Logger
-import com.quickremote.app.services.RdpSessionManager
+import com.quickremote.app.services.RemoteSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,16 +17,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 管理 RDP 会话状态。封装 RdpSessionManager 并暴露响应式状态。
+ * 管理截屏远程会话状态。封装 RemoteSessionManager 并暴露响应式状态。
+ * 截屏方案不需要 Windows 凭据（远程画面直接传输，不走 NLA 认证）。
  */
 class SessionViewModel(
     app: Application,
     private val settingsStore: SettingsStore,
-    private val sessionManager: RdpSessionManager = RdpSessionManager(app, logger = Logger())
+    private val sessionManager: RemoteSessionManager = RemoteSessionManager(logger = Logger())
 ) : AndroidViewModel(app) {
 
-    val state: StateFlow<RdpSessionManager.SessionState> get() = _state
-    private val _state = MutableStateFlow(RdpSessionManager.SessionState.IDLE)
+    val state: StateFlow<RemoteSessionManager.SessionState> get() = _state
+    private val _state = MutableStateFlow(RemoteSessionManager.SessionState.IDLE)
 
     val tunnel get() = _tunnel
     private val _tunnel = MutableStateFlow<com.quickremote.app.data.models.TunnelResponse?>(null)
@@ -44,30 +44,29 @@ class SessionViewModel(
     private val _isKeyboardVisible = MutableStateFlow(false)
     val isKeyboardVisible: StateFlow<Boolean> = _isKeyboardVisible.asStateFlow()
 
-    private val _savedCredentials = MutableStateFlow<Credentials?>(null)
-    val savedCredentials: StateFlow<Credentials?> = _savedCredentials.asStateFlow()
+    /** 远程画面分辨率（收到控制帧后更新）。 */
+    private val _videoWidth = MutableStateFlow(0)
+    val videoWidth: StateFlow<Int> = _videoWidth.asStateFlow()
 
-    /** FreeRDP 是否可用。 */
-    val isFreeRdpAvailable: Boolean get() = sessionManager.isFreeRdpAvailable
-
-    /** 获取 FreeRDP 客户端（供 RdpSurfaceView 使用）。 */
-    fun getFreeRdpClient(): com.quickremote.app.freerdp.FreeRdpClient = sessionManager.freeRdpClient
+    private val _videoHeight = MutableStateFlow(0)
+    val videoHeight: StateFlow<Int> = _videoHeight.asStateFlow()
 
     /** 会话状态变更监听器。 */
-    private val stateListener = object : RdpSessionManager.Listener {
-        override fun onStateChanged(state: RdpSessionManager.SessionState) {
+    private val stateListener = object : RemoteSessionManager.Listener {
+        override fun onStateChanged(state: RemoteSessionManager.SessionState) {
             _state.value = state
             _errorMessage.value = sessionManager.errorMessage
-            if (state == RdpSessionManager.SessionState.DISCONNECTED ||
-                state == RdpSessionManager.SessionState.IDLE) {
+            if (state == RemoteSessionManager.SessionState.DISCONNECTED ||
+                state == RemoteSessionManager.SessionState.IDLE) {
                 _tunnel.value = null
             } else {
                 _tunnel.value = sessionManager.tunnel
             }
         }
 
-        override fun onGraphicsUpdated(x: Int, y: Int, width: Int, height: Int) {
-            // 图形更新由 SurfaceView 自动渲染，无需 UI 层处理
+        override fun onVideoFrame(w: Int, h: Int) {
+            _videoWidth.value = w
+            _videoHeight.value = h
         }
     }
 
@@ -75,60 +74,17 @@ class SessionViewModel(
         sessionManager.listener = stateListener
     }
 
-    /** 开始一个远程会话。
-     *
-     * @param username Windows 登录用户名（NLA 认证需要）
-     * @param password Windows 登录密码
-     * @param domain   可选域
-     */
-    fun startSession(
-        device: Device,
-        username: String = "",
-        password: String = "",
-        domain: String = ""
-    ) {
+    /** 开始一个截屏远程会话（不需要凭据）。 */
+    fun startSession(device: Device) {
         _device.value = device
-        _state.value = RdpSessionManager.SessionState.CONNECTING
+        _state.value = RemoteSessionManager.SessionState.CONNECTING
         _errorMessage.value = ""
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 val config = settingsStore.serverConfig.first()
-                sessionManager.start(
-                    device.device_id, device.hostname, config,
-                    username, password, domain
-                )
+                sessionManager.start(device.device_id, device.hostname, config)
                 _state.value = sessionManager.state
                 _errorMessage.value = sessionManager.errorMessage
-            }
-        }
-    }
-
-    /** 加载指定设备保存的凭据，供凭据表单预填。 */
-    fun loadCredentials(deviceId: String) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                _savedCredentials.value = settingsStore.getCredentials(deviceId).first()
-            }
-        }
-    }
-
-    /** 保存或清除指定设备的凭据。
-     *
-     * @param save true 保存，false 清除已保存凭据。
-     */
-    fun saveCredentials(
-        deviceId: String,
-        username: String,
-        password: String,
-        domain: String,
-        save: Boolean
-    ) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                settingsStore.saveCredentials(
-                    deviceId, Credentials(username, password, domain), save
-                )
-                _savedCredentials.value = if (save) Credentials(username, password, domain) else null
             }
         }
     }
@@ -136,6 +92,11 @@ class SessionViewModel(
     /** 设置渲染 Surface（由 UI 层在 SurfaceView 创建时调用）。 */
     fun setSurface(surface: Surface?) {
         sessionManager.setSurface(surface)
+    }
+
+    /** 发送输入事件（阶段 5 接入触摸捕获后调用）。 */
+    fun sendInput(type: Byte, data: ByteArray) {
+        sessionManager.sendInput(type, data)
     }
 
     /** 断开当前会话。 */
