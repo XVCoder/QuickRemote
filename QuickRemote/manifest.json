@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.12",
-    "changelog": "修复远程画面卡顿（捕获/编码分线程）；修复输入位置错误（坐标归一化）；局域网发现遍历所有网卡广播",
+    "latest_version": "1.1.13",
+    "changelog": "局域网发现增加诊断日志（广播目标、启动状态），便于排查内网发现失败",
     "versions": {
+      "1.1.13": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/3589c28a-3d3c-4f55-a0e7-c6aee6e36d56"
+      },
       "1.1.12": {
         "zip": "https://quickdeploy.solutionx.top/d/p/43d56acb-f972-4ec0-bdd3-028604dfea97"
       },
       "1.1.11": {
         "zip": "https://quickdeploy.solutionx.top/d/p/122356a6-4316-40a6-bbda-71adb0608afa"
-      },
-      "1.1.10": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/aeea94a7-69cf-4cb4-973a-a8528d3a776d"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.17",
-    "changelog": "修复远程画面黑屏（SPS/PPS 以 CODEC_CONFIG 提交）；修复连接时序；修复双指滚轮误触发；内网发现改响应式数据流",
+    "latest_version": "1.0.18",
+    "changelog": "修复远程连接一直等待中（进入会话页自动发起连接）；局域网发现增加诊断日志",
     "versions": {
+      "1.0.18": {
+        "apk": "https://quickdeploy.solutionx.top/d/p/799b973c-0c89-4be5-8ba7-6ebac6d7257d"
+      },
       "1.0.17": {
         "apk": "https://quickdeploy.solutionx.top/d/p/324ad496-dfbb-48ae-8bc4-ca01882df89d"
       },
       "1.0.16": {
         "apk": "https://quickdeploy.solutionx.top/d/p/9423dc7f-536e-4daa-baef-76395ce4a16a"
-      },
-      "1.0.15": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/93ca4163-4c71-4902-99fc-107b1f94e4df"
       }
     }
   }

@@ -49,14 +49,19 @@ object LanDiscovery {
     /** 当前发现的主机列表（去重，按 device_id），多观察者安全。 */
     val devices: StateFlow<List<LanDevice>> = _devices.asStateFlow()
 
+    /** 日志回调（可空，用于诊断）。 */
+    var onLog: ((String) -> Unit)? = null
+
     /** 启动监听（后台线程）。 */
     fun start() {
         if (running) return
         running = true
+        onLog?.invoke("LanDiscovery start, listening on port $PORT")
         thread = Thread {
             try {
                 val socket = DatagramSocket(PORT)
                 socket.soTimeout = 2000
+                socket.broadcast = true
                 val buffer = ByteArray(1024)
                 val packet = DatagramPacket(buffer, buffer.size)
                 while (running) {
@@ -71,8 +76,8 @@ object LanDiscovery {
                     }
                 }
                 socket.close()
-            } catch (_: Exception) {
-                // 端口占用或权限问题，静默退出
+            } catch (e: Exception) {
+                onLog?.invoke("LanDiscovery socket error: ${e.message}")
             }
         }.apply { isDaemon = true }
         thread?.start()
@@ -100,6 +105,7 @@ object LanDiscovery {
                 val current = _devices.value
                 if (current.none { it.deviceId == deviceId }) {
                     _devices.value = current + device
+                    onLog?.invoke("LanDevice discovered: ${device.hostname} @ ${device.ip}:${device.rdpPort}")
                 }
             }
         } catch (_: Exception) {

@@ -20,6 +20,9 @@ public sealed class LanDiscoveryService : IDisposable
     private CancellationTokenSource? _cts;
     private bool _disposed;
 
+    /// <summary>日志回调（由上层注入，用于诊断广播状态）。</summary>
+    public static Action<string>? LogInfo;
+
     /// <summary>启动广播（后台任务，失败不影响主功能）。</summary>
     public void Start(string deviceId, string hostname, int rdpPort)
     {
@@ -29,11 +32,11 @@ public sealed class LanDiscoveryService : IDisposable
             _udp = new UdpClient { EnableBroadcast = true };
             _cts = new CancellationTokenSource();
             _ = Task.Run(() => BroadcastLoop(deviceId, hostname, rdpPort, _cts.Token));
+            LogInfo?.Invoke($"LanDiscovery started: {hostname} (port {rdpPort})");
         }
         catch (Exception ex)
         {
-            // 广播失败（如无网络）不影响主功能
-            System.Diagnostics.Debug.WriteLine($"LanDiscovery start failed: {ex.Message}");
+            LogInfo?.Invoke($"LanDiscovery start failed: {ex.Message}");
         }
     }
 
@@ -42,11 +45,17 @@ public sealed class LanDiscoveryService : IDisposable
         var payload = Encoding.UTF8.GetBytes(
             $"{{\"t\":\"qr_discover\",\"id\":\"{deviceId}\",\"host\":\"{hostname}\",\"port\":{rdpPort}}}");
 
+        var loggedTargets = false;
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                var targets = GetBroadcastTargets();
+                var targets = GetBroadcastTargets().ToList();
+                if (!loggedTargets)
+                {
+                    LogInfo?.Invoke($"LanDiscovery broadcasting to {targets.Count} target(s): {string.Join(", ", targets.Select(t => t.Address))}");
+                    loggedTargets = true;
+                }
                 foreach (var target in targets)
                 {
                     try

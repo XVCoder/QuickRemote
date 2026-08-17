@@ -352,6 +352,7 @@ public sealed class MainViewModel : BaseViewModel
         _relay.Start(addr, cfg.Server.PreSharedKey, cfg.MachineId, cfg.Rdp.Port, App.Version);
 
         // 启动局域网发现广播（内网 RDP 直连模式）
+        LanDiscoveryService.LogInfo = msg => _logger.Info(msg);
         _lanDiscovery.Start(cfg.MachineId, SystemInfo.Hostname, cfg.Rdp.Port);
     }
 

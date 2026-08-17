@@ -74,6 +74,8 @@ fun DeviceListScreen(
     // 内网发现：启动监听，StateFlow 观察设备列表（多观察者安全，页面切换不丢失）
     val lanDevices by com.quickremote.app.services.LanDiscovery.devices.collectAsState()
     DisposableEffect(Unit) {
+        val logger = com.quickremote.app.services.Logger()
+        com.quickremote.app.services.LanDiscovery.onLog = { msg -> logger.info(msg) }
         com.quickremote.app.services.LanDiscovery.start()
         onDispose { com.quickremote.app.services.LanDiscovery.stop() }
     }
