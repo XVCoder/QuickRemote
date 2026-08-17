@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.10",
-    "changelog": "修复远程连接 TLS 握手失败：启动时自动将 RDP 安全层设为协商，新增重新应用按钮；导出配置剪贴板被占用时回退到文件",
+    "latest_version": "1.1.11",
+    "changelog": "新增向日葵式远程桌面：DXGI屏幕捕获+H.264硬编码经中继隧道实时传输，SendInput远程输入，UDP局域网发现",
     "versions": {
+      "1.1.11": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/122356a6-4316-40a6-bbda-71adb0608afa"
+      },
       "1.1.10": {
         "zip": "https://quickdeploy.solutionx.top/d/p/aeea94a7-69cf-4cb4-973a-a8528d3a776d"
       },
       "1.1.9": {
         "zip": "https://quickdeploy.solutionx.top/d/p/8aed076c-ae79-4a54-ac26-17710d4c8974"
-      },
-      "1.1.8": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/2e1c62af-ed2a-4150-8068-b4dc3186d05f"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.15",
-    "changelog": "修正 TLS 握手参数（移除强制 TLS 1.0，改用与 Windows 10/11 兼容的协商方式）；新增查看日志功能（可复制）",
+    "latest_version": "1.0.16",
+    "changelog": "新增向日葵式远程桌面：H.264视频流MediaCodec硬解渲染（无需凭据），触摸远程控制，内网UDP自动发现+FreeRDP直连",
     "versions": {
+      "1.0.16": {
+        "apk": "https://quickdeploy.solutionx.top/d/p/9423dc7f-536e-4daa-baef-76395ce4a16a"
+      },
       "1.0.15": {
         "apk": "https://quickdeploy.solutionx.top/d/p/93ca4163-4c71-4902-99fc-107b1f94e4df"
       },
       "1.0.14": {
         "apk": "https://quickdeploy.solutionx.top/d/p/e4fbda5d-a557-48cb-96eb-e7c2cc72b2c6"
-      },
-      "1.0.13": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/7bda3213-54ac-4789-8ff0-d2586154aa74"
       }
     }
   }
