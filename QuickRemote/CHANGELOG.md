@@ -1,5 +1,11 @@
 # QuickRemote 更新记录
 
+## v1.0.15 (Android App)
+
+- 修正 TLS 握手参数：移除强制 TLS 1.0 的错误配置，改用与 Windows 10/11（TLS 1.2）兼容的协商方式
+- 新增「查看日志」功能：设置页可直接查看本地日志并一键复制
+- 连接失败提示附加完整错误码，日志级别提升便于排查
+
 ## v1.0.14 (Android App)
 
 - 修复远程连接 "the connection failed at tls connect"：新增 `/tls:enforce:1.0` 强制 TLS 1.0，兼容 Windows RDP 服务的 TLS 版本（FreeRDP 3.27+ 默认最低 TLS 1.2 导致握手失败）

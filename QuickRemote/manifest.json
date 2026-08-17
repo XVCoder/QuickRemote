@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.14",
-    "changelog": "修复远程连接 TLS 握手失败（强制 TLS 1.0 兼容 Windows RDP）；更新记录补全至 1.0.13 并优化渲染",
+    "latest_version": "1.0.15",
+    "changelog": "修正 TLS 握手参数（移除强制 TLS 1.0，改用与 Windows 10/11 兼容的协商方式）；新增查看日志功能（可复制）",
     "versions": {
+      "1.0.15": {
+        "apk": "https://quickdeploy.solutionx.top/d/p/93ca4163-4c71-4902-99fc-107b1f94e4df"
+      },
       "1.0.14": {
         "apk": "https://quickdeploy.solutionx.top/d/p/e4fbda5d-a557-48cb-96eb-e7c2cc72b2c6"
       },
       "1.0.13": {
         "apk": "https://quickdeploy.solutionx.top/d/p/7bda3213-54ac-4789-8ff0-d2586154aa74"
-      },
-      "1.0.12": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/9a515770-cced-4443-b3d7-0ed96dae2c0f"
       }
     }
   }
