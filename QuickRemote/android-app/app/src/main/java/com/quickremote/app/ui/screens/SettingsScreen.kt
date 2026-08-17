@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -51,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,6 +92,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showChangelog by remember { mutableStateOf(false) }
     var changelogContent by remember { mutableStateOf("") }
+    // 查看日志对话框
+    var showLogs by remember { mutableStateOf(false) }
+    var logContent by remember { mutableStateOf("") }
     // 本地保存最近一次操作结果消息（独立于 toast 的即时消费）
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
@@ -263,24 +268,38 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = {
-                        isUploadingLogs = true
-                        viewModel.uploadLogs(deviceId = "android")
-                    },
-                    enabled = !isUploadingLogs,
-                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, BorderLight)
-                ) {
-                    if (isUploadingLogs) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = TextPrimary
-                        )
-                    } else {
-                        Text("上传日志", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                Row {
+                    OutlinedButton(
+                        onClick = {
+                            isUploadingLogs = true
+                            viewModel.uploadLogs(deviceId = "android")
+                        },
+                        enabled = !isUploadingLogs,
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, BorderLight)
+                    ) {
+                        if (isUploadingLogs) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = TextPrimary
+                            )
+                        } else {
+                            Text("上传日志", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            logContent = viewModel.readLogContent()
+                            showLogs = true
+                        },
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, BorderLight)
+                    ) {
+                        Text("查看日志", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 // 操作结果显示区（成功或失败的消息）
@@ -362,6 +381,52 @@ fun SettingsScreen(
                 confirmButton = {
                     TextButton(onClick = { showChangelog = false }) {
                         Text("关闭", color = Accent)
+                    }
+                },
+                containerColor = BgCard,
+                titleContentColor = TextPrimary,
+                textContentColor = TextPrimary
+            )
+        }
+
+        // 查看日志对话框（显示本地日志 + 复制按钮）
+        if (showLogs) {
+            AlertDialog(
+                onDismissRequest = { showLogs = false },
+                title = { Text("查看日志", color = TextPrimary) },
+                text = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                    ) {
+                        Text(
+                            logContent.ifBlank { "暂无日志" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .verticalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(
+                            android.content.ClipData.newPlainText("QuickRemote 日志", logContent)
+                        )
+                        statusMessage = "日志已复制到剪贴板"
+                        isError = false
+                    }) {
+                        Text("复制", color = Accent)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLogs = false }) {
+                        Text("关闭", color = TextSecondary)
                     }
                 },
                 containerColor = BgCard,

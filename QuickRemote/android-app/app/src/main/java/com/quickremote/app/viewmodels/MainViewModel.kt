@@ -173,6 +173,9 @@ class MainViewModel(
         }
     }
 
+    /** 读取本地日志内容（用于「查看日志」弹窗）。 */
+    fun readLogContent(): String = logger.readAll()
+
     fun updateSettings(settings: AppSettings) {
         viewModelScope.launch {
             settingsStore.saveAppSettings(settings)
