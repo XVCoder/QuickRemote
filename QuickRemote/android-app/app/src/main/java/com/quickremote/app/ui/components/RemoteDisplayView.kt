@@ -111,15 +111,15 @@ class RemoteDisplayView(
         scaleDetector.onTouchEvent(event)
         gestureDetector.onTouchEvent(event)
 
-        // 双指垂直移动 = 滚轮
+        // 双指垂直移动 = 滚轮（阈值 30px，避免双指缩放/普通操作误触发）
         if (event.pointerCount == 2 && event.actionMasked == MotionEvent.ACTION_MOVE) {
             val dy = event.getY(1) - event.getY(0)
-            if (abs(dy) > 10) {
+            if (abs(dy) > 30) {
                 val (rx, ry) = mapToRemote(
                     (event.getX(0) + event.getX(1)) / 2f,
                     (event.getY(0) + event.getY(1)) / 2f
                 )
-                onWheel?.invoke(rx, ry, -dy.toInt() / 10)
+                onWheel?.invoke(rx, ry, -dy.toInt() / 30)
             }
         }
 

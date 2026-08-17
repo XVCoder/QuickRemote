@@ -61,15 +61,17 @@ internal static class MFInterop
     }
 }
 
-/// <summary>IMFAttributes（vtable 33 个槽：3 IUnknown + 30 自身）。</summary>
+/// <summary>IMFAttributes（继承 IUnknown，vtable 33 槽：3 IUnknown + 30 自身）。</summary>
 [ComImport]
 [Guid("2cd2d921-c447-44a7-a13c-4adabfc247e3")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 internal interface IMFAttributes
 {
-    [PreserveSig] int q1();
-    [PreserveSig] int q2();
-    [PreserveSig] int q3();
+    // IUnknown
+    [PreserveSig] int QueryInterface(ref Guid riid, out IntPtr ppv);
+    [PreserveSig] int AddRef();
+    [PreserveSig] int Release();
+    // IMFAttributes（按 vtable 顺序，未用方法占位）
     [PreserveSig] int GetItem_();
     [PreserveSig] int GetItemType_();
     [PreserveSig] int CompareItem_();
@@ -115,15 +117,17 @@ internal interface IMFMediaType : IMFAttributes
     [PreserveSig] new int FreeRepresentation_();
 }
 
-/// <summary>IMFMediaBuffer（vtable 8 槽）。</summary>
+/// <summary>IMFMediaBuffer（继承 IUnknown，vtable 8 槽）。</summary>
 [ComImport]
 [Guid("045fa593-8799-42b8-bc8d-8968c6453507")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 internal interface IMFMediaBuffer
 {
-    [PreserveSig] int q1();
-    [PreserveSig] int q2();
-    [PreserveSig] int q3();
+    // IUnknown
+    [PreserveSig] int QueryInterface(ref Guid riid, out IntPtr ppv);
+    [PreserveSig] int AddRef();
+    [PreserveSig] int Release();
+    // IMFMediaBuffer
     [PreserveSig] int Lock(out IntPtr ppbBuffer, out int pcbMaxLength, out int pcbCurrentLength);
     [PreserveSig] int Unlock();
     [PreserveSig] int GetCurrentLength(out int pcbCurrentLength);
@@ -131,11 +135,14 @@ internal interface IMFMediaBuffer
     [PreserveSig] int GetMaxLength(out int pcbMaxLength);
 }
 
-/// <summary>IMFSample（继承 IMFMediaBuffer，+14 方法，共 22 槽）。</summary>
+/// <summary>
+/// IMFSample（继承 IMFAttributes，+14 个方法，共 47 槽）。
+/// 注意：IMFSample 的父接口是 IMFAttributes，不是 IMFMediaBuffer。
+/// </summary>
 [ComImport]
 [Guid("c40a00f2-b93a-4d80-ae8c-5a1c634f58e4")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-internal interface IMFSample : IMFMediaBuffer
+internal interface IMFSample : IMFAttributes
 {
     [PreserveSig] new int GetSampleTime_();
     [PreserveSig] new int SetSampleTime(long hnsSampleTime);
@@ -153,15 +160,17 @@ internal interface IMFSample : IMFMediaBuffer
     [PreserveSig] new int CopyToBuffer_();
 }
 
-/// <summary>IMFTransform（vtable 26 槽）。</summary>
+/// <summary>IMFTransform（继承 IUnknown，vtable 26 槽）。</summary>
 [ComImport]
 [Guid("6ff27a4d-114f-4e62-b7cd-b59a5a02777c")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 internal interface IMFTransform
 {
-    [PreserveSig] int q1();
-    [PreserveSig] int q2();
-    [PreserveSig] int q3();
+    // IUnknown
+    [PreserveSig] int QueryInterface(ref Guid riid, out IntPtr ppv);
+    [PreserveSig] int AddRef();
+    [PreserveSig] int Release();
+    // IMFTransform（按 vtable 顺序）
     [PreserveSig] int GetStreamLimits_();
     [PreserveSig] int GetStreamCount_();
     [PreserveSig] int GetStreamIDs_();

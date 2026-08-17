@@ -24,6 +24,12 @@ public sealed class RemoteInputHandler
 
     private readonly object _lock = new();
 
+    /// <summary>远程画面宽度（像素），用于坐标归一化。</summary>
+    public int VideoWidth { get; set; } = 1920;
+
+    /// <summary>远程画面高度（像素），用于坐标归一化。</summary>
+    public int VideoHeight { get; set; } = 1080;
+
     /// <summary>处理一帧输入数据。</summary>
     public void HandleFrame(byte type, byte[] data)
     {
@@ -82,9 +88,20 @@ public sealed class RemoteInputHandler
         }
     }
 
-    /// <summary>绝对坐标移动鼠标（0-65535 归一化）。</summary>
+    /// <summary>像素坐标 → SendInput 归一化坐标（0-65535，配合 MOUSEEVENTF_ABSOLUTE）。</summary>
+    private (int dx, int dy) Normalize(int x, int y)
+    {
+        var vw = VideoWidth > 0 ? VideoWidth : 1920;
+        var vh = VideoHeight > 0 ? VideoHeight : 1080;
+        var dx = (int)((long)Math.Clamp(x, 0, vw - 1) * 65535 / vw);
+        var dy = (int)((long)Math.Clamp(y, 0, vh - 1) * 65535 / vh);
+        return (dx, dy);
+    }
+
+    /// <summary>绝对坐标移动鼠标（像素坐标 → 归一化）。</summary>
     private void MoveMouse(int x, int y)
     {
+        var (dx, dy) = Normalize(x, y);
         var input = new INPUT
         {
             type = INPUT_MOUSE,
@@ -92,8 +109,8 @@ public sealed class RemoteInputHandler
             {
                 mi = new MOUSEINPUT
                 {
-                    dx = x,
-                    dy = y,
+                    dx = dx,
+                    dy = dy,
                     dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     dwExtraInfo = IntPtr.Zero
                 }
@@ -104,6 +121,7 @@ public sealed class RemoteInputHandler
 
     private void SendMouse(int x, int y, uint flags)
     {
+        var (dx, dy) = Normalize(x, y);
         var input = new INPUT
         {
             type = INPUT_MOUSE,
@@ -111,8 +129,8 @@ public sealed class RemoteInputHandler
             {
                 mi = new MOUSEINPUT
                 {
-                    dx = x,
-                    dy = y,
+                    dx = dx,
+                    dy = dy,
                     dwFlags = flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     dwExtraInfo = IntPtr.Zero
                 }
@@ -151,6 +169,7 @@ public sealed class RemoteInputHandler
         var delta = (short)(data[0] | data[1] << 8);
         var x = (ushort)(data[2] | data[3] << 8);
         var y = (ushort)(data[4] | data[5] << 8);
+        var (dx, dy) = Normalize(x, y);
 
         var input = new INPUT
         {
@@ -159,8 +178,8 @@ public sealed class RemoteInputHandler
             {
                 mi = new MOUSEINPUT
                 {
-                    dx = x,
-                    dy = y,
+                    dx = dx,
+                    dy = dy,
                     mouseData = unchecked((uint)delta),
                     dwFlags = MOUSEEVENTF_WHEEL | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     dwExtraInfo = IntPtr.Zero

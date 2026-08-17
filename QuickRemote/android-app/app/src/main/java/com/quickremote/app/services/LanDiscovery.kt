@@ -1,6 +1,9 @@
 package com.quickremote.app.services
 
 import com.quickremote.app.data.models.Device
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import org.json.JSONObject
 import java.net.DatagramPacket
@@ -10,6 +13,9 @@ import java.net.InetAddress
 /**
  * 局域网发现：监听 PC 端的 UDP 广播（端口 8446），
  * 发现同一局域网内的 QuickRemote 主机（内网 RDP 直连模式）。
+ *
+ * 用 StateFlow 暴露设备列表，多观察者安全；生命周期独立于页面
+ * （stop() 只停监听不清列表，避免页面切换丢失已发现设备）。
  */
 object LanDiscovery {
 
@@ -38,13 +44,10 @@ object LanDiscovery {
     private var running = false
     private var thread: Thread? = null
 
-    /** 当前发现的主机列表（去重，按 device_id）。 */
-    @Volatile
-    var devices: List<LanDevice> = emptyList()
-        private set
+    private val _devices = MutableStateFlow<List<LanDevice>>(emptyList())
 
-    /** 发现新主机时回调（可空）。 */
-    var onDeviceFound: ((LanDevice) -> Unit)? = null
+    /** 当前发现的主机列表（去重，按 device_id），多观察者安全。 */
+    val devices: StateFlow<List<LanDevice>> = _devices.asStateFlow()
 
     /** 启动监听（后台线程）。 */
     fun start() {
@@ -75,11 +78,10 @@ object LanDiscovery {
         thread?.start()
     }
 
-    /** 停止监听。 */
+    /** 停止监听（保留已发现设备，供返回页面时继续显示）。 */
     fun stop() {
         running = false
         thread = null
-        devices = emptyList()
     }
 
     private fun parseAndAdd(data: String, source: InetAddress) {
@@ -95,9 +97,9 @@ object LanDiscovery {
                 rdpPort = json.optInt("port", 3389)
             )
             synchronized(this) {
-                if (devices.none { it.deviceId == deviceId }) {
-                    devices = devices + device
-                    onDeviceFound?.invoke(device)
+                val current = _devices.value
+                if (current.none { it.deviceId == deviceId }) {
+                    _devices.value = current + device
                 }
             }
         } catch (_: Exception) {

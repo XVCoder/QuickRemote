@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.11",
-    "changelog": "新增向日葵式远程桌面：DXGI屏幕捕获+H.264硬编码经中继隧道实时传输，SendInput远程输入，UDP局域网发现",
+    "latest_version": "1.1.12",
+    "changelog": "修复远程画面卡顿（捕获/编码分线程）；修复输入位置错误（坐标归一化）；局域网发现遍历所有网卡广播",
     "versions": {
+      "1.1.12": {
+        "zip": "https://quickdeploy.solutionx.top/d/p/43d56acb-f972-4ec0-bdd3-028604dfea97"
+      },
       "1.1.11": {
         "zip": "https://quickdeploy.solutionx.top/d/p/122356a6-4316-40a6-bbda-71adb0608afa"
       },
       "1.1.10": {
         "zip": "https://quickdeploy.solutionx.top/d/p/aeea94a7-69cf-4cb4-973a-a8528d3a776d"
-      },
-      "1.1.9": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/8aed076c-ae79-4a54-ac26-17710d4c8974"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.16",
-    "changelog": "新增向日葵式远程桌面：H.264视频流MediaCodec硬解渲染（无需凭据），触摸远程控制，内网UDP自动发现+FreeRDP直连",
+    "latest_version": "1.0.17",
+    "changelog": "修复远程画面黑屏（SPS/PPS 以 CODEC_CONFIG 提交）；修复连接时序；修复双指滚轮误触发；内网发现改响应式数据流",
     "versions": {
+      "1.0.17": {
+        "apk": "https://quickdeploy.solutionx.top/d/p/324ad496-dfbb-48ae-8bc4-ca01882df89d"
+      },
       "1.0.16": {
         "apk": "https://quickdeploy.solutionx.top/d/p/9423dc7f-536e-4daa-baef-76395ce4a16a"
       },
       "1.0.15": {
         "apk": "https://quickdeploy.solutionx.top/d/p/93ca4163-4c71-4902-99fc-107b1f94e4df"
-      },
-      "1.0.14": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/e4fbda5d-a557-48cb-96eb-e7c2cc72b2c6"
       }
     }
   }

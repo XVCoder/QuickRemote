@@ -12,6 +12,9 @@ public sealed class RelayRemoteTransport : IRemoteTransport
     private const int SessionIdLen = 37;
     private const byte TypePCTunnel = 0x01;
 
+    /// <summary>日志回调（由上层注入，用于记录底层连接异常）。</summary>
+    public static Action<string>? LogError;
+
     private readonly TcpClient _client;
     private readonly NetworkStream _stream;
     private readonly Thread _readThread;
@@ -87,7 +90,11 @@ public sealed class RelayRemoteTransport : IRemoteTransport
                 if (!ReadExactly(header, header.Length)) break;
                 var type = header[0];
                 var len = RemoteFrameProtocol.DecodeLength(header);
-                if (len < 0 || len > RemoteFrameProtocol.MAX_PAYLOAD) break;
+                if (len < 0 || len > RemoteFrameProtocol.MAX_PAYLOAD)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Invalid frame length: {len}");
+                    break;
+                }
 
                 var data = new byte[len];
                 if (len > 0 && !ReadExactly(data, len)) break;
@@ -95,9 +102,10 @@ public sealed class RelayRemoteTransport : IRemoteTransport
                 FrameReceived?.Invoke(type, data);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 连接异常，静默退出
+            // 连接异常（网络断开/重置），记录便于排查
+            LogError?.Invoke($"RelayRemoteTransport read loop error: {ex.Message}");
         }
         finally
         {

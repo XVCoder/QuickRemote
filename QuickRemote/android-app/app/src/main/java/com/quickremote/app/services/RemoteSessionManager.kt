@@ -164,10 +164,17 @@ class RemoteSessionManager(
             val json = JSONObject(String(data, Charsets.UTF_8))
             val w = json.optInt("width", 1280)
             val h = json.optInt("height", 720)
+            // 先保存分辨率（即使 surface 未就绪也不丢失），setSurface 时用最新值
             videoWidth = w
             videoHeight = h
-            surface?.let { decoder.start(it, w, h) }
-            logger.info("Control: resolution=$w x $h")
+            val surf = surface
+            if (surf != null) {
+                decoder.start(surf, w, h)
+                logger.info("Control: resolution=$w x $h, decoder started on existing surface")
+            } else {
+                // surface 未就绪：等 SurfaceView surfaceCreated → setSurface 时启动解码器
+                logger.info("Control: resolution=$w x $h saved (surface not ready yet)")
+            }
             listener?.onVideoFrame(w, h)
         } catch (e: Exception) {
             logger.warn("Control parse failed: ${e.message}")
@@ -178,8 +185,13 @@ class RemoteSessionManager(
     fun setSurface(surface: Surface?) {
         this.surface = surface
         if (surface != null && state == SessionState.CONNECTED) {
-            // 会话已连接时，surface 就绪即启动解码器
-            decoder.start(surface, videoWidth, videoHeight)
+            // 会话已连接时，surface 就绪即用已保存的分辨率启动解码器
+            if (videoWidth > 0 && videoHeight > 0) {
+                decoder.start(surface, videoWidth, videoHeight)
+                logger.info("Surface ready, decoder started: ${videoWidth}x${videoHeight}")
+            } else {
+                logger.info("Surface ready but no resolution yet (waiting CONTROL frame)")
+            }
         }
     }
 

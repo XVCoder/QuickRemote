@@ -71,12 +71,9 @@ fun DeviceListScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val serverConfig by viewModel.serverConfig.collectAsState()
 
-    // 内网发现：启动监听，发现后刷新状态触发重组
-    var lanDevices by remember { mutableStateOf(emptyList<com.quickremote.app.services.LanDiscovery.LanDevice>()) }
+    // 内网发现：启动监听，StateFlow 观察设备列表（多观察者安全，页面切换不丢失）
+    val lanDevices by com.quickremote.app.services.LanDiscovery.devices.collectAsState()
     DisposableEffect(Unit) {
-        com.quickremote.app.services.LanDiscovery.onDeviceFound = { _ ->
-            lanDevices = com.quickremote.app.services.LanDiscovery.devices
-        }
         com.quickremote.app.services.LanDiscovery.start()
         onDispose { com.quickremote.app.services.LanDiscovery.stop() }
     }

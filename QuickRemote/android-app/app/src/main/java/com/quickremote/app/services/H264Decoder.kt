@@ -43,7 +43,16 @@ class H264Decoder(private val logger: Logger = Logger()) {
                 inputBuffer.clear()
                 inputBuffer.put(nalData)
                 val ptsUs = System.nanoTime() / 1000
-                dec.queueInputBuffer(inputIndex, 0, nalData.size, ptsUs, 0)
+
+                // CSD 处理：SPS(7)/PPS(8) NAL 必须带 BUFFER_FLAG_CODEC_CONFIG，
+                // 否则解码器无法初始化参数集（否则画面黑屏或解码失败）
+                val nalType = detectNalType(nalData)
+                val flags = if (nalType == 7 || nalType == 8) {
+                    MediaCodec.BUFFER_FLAG_CODEC_CONFIG
+                } else {
+                    0
+                }
+                dec.queueInputBuffer(inputIndex, 0, nalData.size, ptsUs, flags)
             }
 
             // 输出（释放到 Surface 渲染）
@@ -55,6 +64,23 @@ class H264Decoder(private val logger: Logger = Logger()) {
         } catch (e: Exception) {
             // 解码器可能已释放，忽略
         }
+    }
+
+    /** 检测 NAL unit 类型（7=SPS, 8=PPS），支持 00 00 00 01 / 00 00 01 / 4字节长度前缀。 */
+    private fun detectNalType(data: ByteArray): Int {
+        if (data.isEmpty()) return -1
+        // 起始码后第一个字节
+        var idx = 0
+        if (data.size >= 4 &&
+            data[0] == 0.toByte() && data[1] == 0.toByte() &&
+            data[2] == 0.toByte() && data[3] == 1.toByte()) {
+            idx = 4
+        } else if (data.size >= 3 &&
+            data[0] == 0.toByte() && data[1] == 0.toByte() && data[2] == 1.toByte()) {
+            idx = 3
+        }
+        if (idx >= data.size) return -1
+        return data[idx].toInt() and 0x1F
     }
 
     /** 停止解码器并释放资源。 */
