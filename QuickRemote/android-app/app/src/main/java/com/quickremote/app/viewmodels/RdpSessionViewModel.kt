@@ -10,6 +10,7 @@ import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.Logger
 import com.quickremote.app.services.RdpSessionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,10 @@ class RdpSessionViewModel(
     private val _savedCredentials = MutableStateFlow<Credentials?>(null)
     val savedCredentials: StateFlow<Credentials?> = _savedCredentials.asStateFlow()
 
+    /** 已连接但尚未收到首帧（可能停在 Windows 登录界面）。 */
+    private val _waitingForFirstFrame = MutableStateFlow(false)
+    val waitingForFirstFrame: StateFlow<Boolean> = _waitingForFirstFrame.asStateFlow()
+
     /** FreeRDP 是否可用。 */
     val isFreeRdpAvailable: Boolean get() = sessionManager.isFreeRdpAvailable
 
@@ -62,13 +67,34 @@ class RdpSessionViewModel(
             if (state == RdpSessionManager.SessionState.DISCONNECTED ||
                 state == RdpSessionManager.SessionState.IDLE) {
                 _tunnel.value = null
+                _waitingForFirstFrame.value = false
             } else {
                 _tunnel.value = sessionManager.tunnel
+                if (state == RdpSessionManager.SessionState.CONNECTED) {
+                    observeFirstFrame()
+                }
             }
         }
 
         override fun onGraphicsUpdated(x: Int, y: Int, width: Int, height: Int) {
-            // 图形更新由 SurfaceView 自动渲染，无需 UI 层处理
+            // 收到任意图形更新 → 首帧已到达，取消观察
+            _waitingForFirstFrame.value = false
+        }
+    }
+
+    /**
+     * 连接成功(CONNECTED)后启动观察：10 秒内未收到任何图形更新，
+     * 判定可能停在 Windows 登录/认证界面（NLA 凭据等待），向 UI 推送提示。
+     */
+    private var firstFrameJob: kotlinx.coroutines.Job? = null
+    private fun observeFirstFrame() {
+        firstFrameJob?.cancel()
+        _waitingForFirstFrame.value = false
+        firstFrameJob = viewModelScope.launch {
+            delay(10_000)
+            // 10 秒后仍未收到首帧 → 提示，并捕获 native 日志供定位
+            _waitingForFirstFrame.value = true
+            sessionManager.freeRdpClient.captureNativeLogs()
         }
     }
 
@@ -158,6 +184,8 @@ class RdpSessionViewModel(
 
     /** 断开当前会话。 */
     fun disconnect() {
+        firstFrameJob?.cancel()
+        _waitingForFirstFrame.value = false
         viewModelScope.launch {
             withContext(Dispatchers.IO) { sessionManager.disconnect() }
             _state.value = sessionManager.state
@@ -174,6 +202,7 @@ class RdpSessionViewModel(
     }
 
     override fun onCleared() {
+        firstFrameJob?.cancel()
         sessionManager.reset()
         super.onCleared()
     }

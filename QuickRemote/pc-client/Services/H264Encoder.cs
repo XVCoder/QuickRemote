@@ -7,9 +7,14 @@ namespace QuickRemote.PCClient.Services;
 /// H.264 硬件编码器（Media Foundation IMFTransform 直接调用）。
 /// 输入 BGRA 帧，输出 H.264 NAL unit 流（elementary stream）。
 /// 使用系统 H.264 编码器 MFT（含硬件加速，如 NVENC/AMF/QSV）。
+/// 系统无 H.264 编码器时 CoCreateInstance 会失败（E_NOINTERFACE），
+/// 由调用方回退到 JpegFrameEncoder。
 /// </summary>
-public sealed class H264Encoder : IDisposable
+public sealed class H264Encoder : IFrameEncoder
 {
+    /// <inheritdoc/>
+    public string CodecName => "h264";
+
     private IMFTransform? _encoder;
     private IMFMediaType? _inputType;
     private bool _initialized;

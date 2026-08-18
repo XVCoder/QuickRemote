@@ -18,7 +18,8 @@ import java.net.Socket
 class RemoteSessionManager(
     private val relay: RelayConnection = RelayConnection(),
     private val logger: Logger = Logger(),
-    val decoder: H264Decoder = H264Decoder(logger)
+    val decoder: H264Decoder = H264Decoder(logger),
+    private val jpegDecoder: JpegDecoder = JpegDecoder(logger)
 ) {
 
     enum class SessionState { IDLE, CONNECTING, CONNECTED, DISCONNECTED, FAILED }
@@ -45,6 +46,11 @@ class RemoteSessionManager(
 
     @Volatile
     var deviceId: String = ""
+        private set
+
+    /** 当前视频编码格式（从控制帧解析）：h264 或 jpeg。 */
+    @Volatile
+    var codec: String = "h264"
         private set
 
     /** 当前渲染 Surface。 */
@@ -145,7 +151,14 @@ class RemoteSessionManager(
                 if (len > 0) readExactly(ins, data, len)
 
                 when (type) {
-                    RemoteFrameProtocol.TYPE_VIDEO_FRAME -> decoder.decode(data)
+                    RemoteFrameProtocol.TYPE_VIDEO_FRAME -> {
+                        // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory
+                        if (codec == "jpeg") {
+                            jpegDecoder.decodeToSurface(data, surface)
+                        } else {
+                            decoder.decode(data)
+                        }
+                    }
                     RemoteFrameProtocol.TYPE_CONTROL -> handleControl(data)
                     RemoteFrameProtocol.TYPE_HEARTBEAT -> { /* 心跳，忽略 */ }
                     else -> logger.warn("Unknown frame type: 0x${type.toString(16)}")
@@ -158,22 +171,24 @@ class RemoteSessionManager(
         }
     }
 
-    /** 处理控制帧（分辨率/帧率信息）。 */
+    /** 处理控制帧（分辨率/帧率/编码格式信息）。 */
     private fun handleControl(data: ByteArray) {
         try {
             val json = JSONObject(String(data, Charsets.UTF_8))
             val w = json.optInt("width", 1280)
             val h = json.optInt("height", 720)
+            val c = json.optString("codec", "h264")
             // 先保存分辨率（即使 surface 未就绪也不丢失），setSurface 时用最新值
             videoWidth = w
             videoHeight = h
+            codec = c
             val surf = surface
-            if (surf != null) {
+            if (surf != null && c != "jpeg") {
+                // JPEG 不需要预启动解码器（BitmapFactory 直接画）；H.264 需要 MediaCodec
                 decoder.start(surf, w, h)
-                logger.info("Control: resolution=$w x $h, decoder started on existing surface")
+                logger.info("Control: resolution=$w x $h, codec=$c, decoder started on existing surface")
             } else {
-                // surface 未就绪：等 SurfaceView surfaceCreated → setSurface 时启动解码器
-                logger.info("Control: resolution=$w x $h saved (surface not ready yet)")
+                logger.info("Control: resolution=$w x $h, codec=$c saved (surface not ready or jpeg)")
             }
             listener?.onVideoFrame(w, h)
         } catch (e: Exception) {

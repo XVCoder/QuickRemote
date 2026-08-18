@@ -19,7 +19,7 @@ public sealed class RemoteSessionManager : IDisposable
 
     private IRemoteTransport? _transport;
     private ScreenCaptureService? _capture;
-    private H264Encoder? _encoder;
+    private IFrameEncoder? _encoder;
     private readonly RemoteInputHandler _inputHandler = new();
     private Thread? _captureThread;
     private Thread? _encodeThread;
@@ -65,14 +65,28 @@ public sealed class RemoteSessionManager : IDisposable
             _inputHandler.VideoWidth = _capture.Width;
             _inputHandler.VideoHeight = _capture.Height;
 
-            // 3. 初始化编码器
-            _encoder = new H264Encoder();
-            _encoder.Initialize(_capture.Width, _capture.Height, _fps, _bitrateKbps);
-            _logger.Info($"H.264 encoder initialized: {_fps}fps, {_bitrateKbps}kbps");
+            // 3. 初始化编码器：优先 H.264（系统支持时），失败回退 JPEG
+            var encoderName = "h264";
+            try
+            {
+                var h264 = new H264Encoder();
+                h264.Initialize(_capture.Width, _capture.Height, _fps, _bitrateKbps);
+                _encoder = h264;
+                _logger.Info($"H.264 encoder initialized: {_fps}fps, {_bitrateKbps}kbps");
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"H.264 encoder unavailable ({ex.Message}), falling back to JPEG");
+                var jpeg = new JpegFrameEncoder();
+                jpeg.Initialize(_capture.Width, _capture.Height, _fps, _bitrateKbps);
+                _encoder = jpeg;
+                encoderName = "jpeg";
+                _logger.Info($"JPEG encoder initialized (fallback): {_fps}fps");
+            }
 
-            // 4. 发送控制帧（握手：分辨率/帧率信息给 Android 端）
+            // 4. 发送控制帧（握手：分辨率/帧率/编码器信息给 Android 端）
             var control = Encoding.UTF8.GetBytes(
-                $"{{\"width\":{_capture.Width},\"height\":{_capture.Height},\"fps\":{_fps}}}");
+                $"{{\"width\":{_capture.Width},\"height\":{_capture.Height},\"fps\":{_fps},\"codec\":\"{encoderName}\"}}");
             _transport.Send(RemoteFrameProtocol.TYPE_CONTROL, control);
 
             // 5. 启动捕获线程（抓帧入队）与编码线程（消费发送）

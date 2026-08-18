@@ -34,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -243,6 +244,26 @@ fun RdpSessionScreen(
                     errorMessage = errorMessage,
                     isFreeRdpAvailable = isFreeRdpAvailable
                 )
+            }
+
+            // 已连接但长时间未收到画面（可能停在 Windows 登录/认证界面）
+            val waitingForFirstFrame by viewModel.waitingForFirstFrame.collectAsState()
+            if (state == RdpSessionManager.SessionState.CONNECTED && waitingForFirstFrame) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Black.copy(alpha = 0.75f)
+                ) {
+                    Text(
+                        "连接已建立，但暂未收到画面。\n若一直无画面，请确认 Windows 登录凭据正确（PC 处于锁屏/登录界面时需通过 NLA 认证）。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
             }
         }
     }

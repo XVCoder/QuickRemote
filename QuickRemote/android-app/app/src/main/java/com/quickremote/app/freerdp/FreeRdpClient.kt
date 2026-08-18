@@ -68,6 +68,17 @@ class FreeRdpClient(
 
     private val renderLock = Any()
 
+    /** 连接启动时刻（毫秒），用于计算首帧耗时。 */
+    private var connectStartedAt: Long = 0L
+
+    /** 首帧到达时刻（毫秒），0 表示尚未收到。 */
+    @Volatile
+    var firstFrameAt: Long = 0L
+        private set
+
+    /** 上次图形日志时刻（节流用）。 */
+    private var lastGraphicLogAt: Long = 0L
+
     /** .so 库是否可用。 */
     val isAvailable: Boolean get() = LibFreeRDP.isLoaded()
 
@@ -117,6 +128,8 @@ class FreeRdpClient(
 
         listener?.onConnecting()
         logger.info("Connecting to ${config.hostname}:${config.port}")
+        connectStartedAt = System.currentTimeMillis()
+        firstFrameAt = 0L
         val ok = LibFreeRDP.connect(instance)
         if (!ok) {
             logger.error("FreeRDP connect failed immediately")
@@ -286,6 +299,8 @@ class FreeRdpClient(
     override fun OnConnectionFailure(inst: Long) {
         val err = runCatching { LibFreeRDP.getLastErrorString(inst) }.getOrDefault("")
         logger.error("FreeRDP connection failed: $err")
+        // 捕获 native 层 logcat 输出（FreeRDP DEBUG 日志），便于定位 TLS/NLA 协商失败
+        captureNativeLogs()
         val friendly = when {
             err.contains("tls", ignoreCase = true) ->
                 "TLS 握手失败。可能原因：PC 端 RDP 服务未启用（请在 PC 客户端点「一键启用 RDP」），" +
@@ -306,6 +321,35 @@ class FreeRdpClient(
         // 断开中
     }
 
+    /**
+     * 捕获本进程 logcat 中 FreeRDP 相关日志（native 层 DEBUG 输出），
+     * 追加到应用日志，便于上传后定位 TLS/NLA 协商细节。
+     * Android 允许应用读取自身进程的 logcat（无需 READ_LOGS 权限）。
+     */
+    fun captureNativeLogs() {
+        try {
+            val pid = android.os.Process.myPid()
+            val process = Runtime.getRuntime().exec(
+                arrayOf("logcat", "-d", "-t", "300", "--pid=$pid")
+            )
+            val reader = process.inputStream.bufferedReader()
+            val lines = reader.use { it.readLines() }
+            val relevant = lines.filter { line ->
+                line.contains("freerdp", ignoreCase = true) ||
+                    line.contains("winpr", ignoreCase = true) ||
+                    line.contains("TLS", ignoreCase = true) ||
+                    line.contains("NLA", ignoreCase = true) ||
+                    line.contains("CredSSP", ignoreCase = true)
+            }
+            if (relevant.isNotEmpty()) {
+                logger.info("=== FreeRDP native log (${relevant.size} lines) ===")
+                relevant.takeLast(60).forEach { logger.info("  $it") }
+            }
+        } catch (_: Exception) {
+            // logcat 捕获失败不影响流程
+        }
+    }
+
     override fun OnDisconnected(inst: Long) {
         logger.info("FreeRDP disconnected")
         listener?.onDisconnected(null)
@@ -322,6 +366,15 @@ class FreeRdpClient(
     }
 
     override fun OnGraphicsUpdate(inst: Long, x: Int, y: Int, width: Int, height: Int) {
+        // 渲染链路诊断：记录首帧与后续帧（节流，避免刷屏）
+        val now = System.currentTimeMillis()
+        if (firstFrameAt == 0L) {
+            firstFrameAt = now
+            logger.info("Graphics first frame: ($x,$y) ${width}x${height} (connect+${(now - connectStartedAt) / 1000}s)")
+        } else if (now - lastGraphicLogAt > 5000) {
+            logger.info("Graphics update: ($x,$y) ${width}x${height}")
+            lastGraphicLogAt = now
+        }
         val bmp = synchronized(renderLock) { bitmap } ?: return
         if (LibFreeRDP.isLoaded()) {
             LibFreeRDP.updateGraphics(inst, bmp, x, y, width, height)
@@ -331,7 +384,7 @@ class FreeRdpClient(
     }
 
     override fun OnSettingsChanged(inst: Long, width: Int, height: Int, bpp: Int) {
-        // 可选：根据设置更新分辨率
+        logger.info("FreeRDP settings changed: ${width}x${height}@$bpp")
     }
 
     override fun OnAuthenticate(
