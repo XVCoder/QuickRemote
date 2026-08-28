@@ -224,7 +224,7 @@ class MainViewModel(
     }
 
     companion object {
-        /** quickdeploy manifest 地址（硬编码，用户无需也不应修改）。 */
-        const val MANIFEST_URL = "https://quickdeploy.solutionx.top/d/p/f9af7eed-f7e6-4ffa-a645-0d7d1eaa15c3"
+        /** qdrl manifest 地址（硬编码，用户无需也不应修改）。 */
+        const val MANIFEST_URL = "https://qd.solutionx.top/d/p/609d4fcb-7415-4d70-96d1-18f2201631b6"
     }
 }

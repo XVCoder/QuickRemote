@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.13",
-    "changelog": "局域网发现增加诊断日志（广播目标、启动状态），便于排查内网发现失败",
+    "latest_version": "1.1.14",
+    "changelog": "修复远程连接失败：系统无 H.264 编码器时自动回退 JPEG 编码（解决 E_NOINTERFACE 导致的连接即断开）",
     "versions": {
+      "1.1.14": {
+        "zip": "https://qd.solutionx.top/d/p/2dc75cdf-de32-46b8-8ac8-be27fcd1140b"
+      },
       "1.1.13": {
         "zip": "https://quickdeploy.solutionx.top/d/p/3589c28a-3d3c-4f55-a0e7-c6aee6e36d56"
       },
       "1.1.12": {
         "zip": "https://quickdeploy.solutionx.top/d/p/43d56acb-f972-4ec0-bdd3-028604dfea97"
-      },
-      "1.1.11": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/122356a6-4316-40a6-bbda-71adb0608afa"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.18",
-    "changelog": "修复远程连接一直等待中（进入会话页自动发起连接）；局域网发现增加诊断日志",
+    "latest_version": "1.0.19",
+    "changelog": "支持 JPEG 视频帧解码（PC 端无 H.264 编码器时的回退）；内网直连诊断增强：10 秒无画面提示确认凭据，自动捕获 FreeRDP native 日志",
     "versions": {
+      "1.0.19": {
+        "apk": "https://qd.solutionx.top/d/p/c8fe10b1-d7de-4cdb-85b8-b91d10edffd7"
+      },
       "1.0.18": {
         "apk": "https://quickdeploy.solutionx.top/d/p/799b973c-0c89-4be5-8ba7-6ebac6d7257d"
       },
       "1.0.17": {
         "apk": "https://quickdeploy.solutionx.top/d/p/324ad496-dfbb-48ae-8bc4-ca01882df89d"
-      },
-      "1.0.16": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/9423dc7f-536e-4daa-baef-76395ce4a16a"
       }
     }
   }

@@ -37,7 +37,7 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 CONFIG_FILE="${CONFIG_DIR}/config.yaml"
 
 # manifest.json 的固定分享 URL（通过 overwrite=true 保持不变）
-MANIFEST_URL="https://quickdeploy.solutionx.top/d/p/f9af7eed-f7e6-4ffa-a645-0d7d1eaa15c3"
+MANIFEST_URL="https://qd.solutionx.top/d/p/609d4fcb-7415-4d70-96d1-18f2201631b6"
 
 # 颜色定义
 RED='\033[0;31m'
