@@ -10,9 +10,12 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.14",
-    "changelog": "修复远程连接失败：系统无 H.264 编码器时自动回退 JPEG 编码（解决 E_NOINTERFACE 导致的连接即断开）",
+    "latest_version": "1.1.15",
+    "changelog": "重写自动更新：改用独立更新程序 update.exe 完成下载/解压/覆盖/重启，替代批处理脚本方案；修复部分文件占用导致的更新假成功",
     "versions": {
+      "1.1.15": {
+        "zip": "https://qd.solutionx.top/d/p/fffc8edc-7e97-4ce5-a4c2-851deda6e43d"
+      },
       "1.1.14": {
         "zip": "https://qd.solutionx.top/d/p/2dc75cdf-de32-46b8-8ac8-be27fcd1140b"
       }

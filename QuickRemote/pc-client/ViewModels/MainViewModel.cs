@@ -392,7 +392,10 @@ public sealed class MainViewModel : BaseViewModel
                 Views.DialogWindow.DialogType.Question);
             if (result && !string.IsNullOrEmpty(_updateChecker.DownloadUrl))
             {
-                await Services.AutoUpdater.UpdateAsync(_updateChecker.DownloadUrl, _updateChecker.LatestVersion, _logger);
+                // 启动独立更新程序（update.exe）完成下载/解压/覆盖/重启，
+                // 成功后主进程会退出，因此这行之后的代码不会执行。
+                Services.AutoUpdater.StartUpdate(
+                    _updateChecker.DownloadUrl, _updateChecker.LatestVersion, _logger);
             }
         }
         else

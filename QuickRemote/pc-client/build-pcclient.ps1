@@ -44,6 +44,18 @@ Get-ChildItem -Path $PublishDir -File | Where-Object { $_.Extension -ne '.pdb' }
     Copy-Item $_.FullName -Destination $StagingDir
 }
 
+# 3.1 纳入独立更新程序 update.exe（自动更新依赖它，缺失则无法自动升级）
+#     单文件发布产物，运行不依赖同目录的其他文件
+$UpdaterProject = Join-Path (Split-Path -Parent $ScriptDir) "pc-updater"
+$UpdaterExe = Join-Path $UpdaterProject "bin\publish\update.exe"
+if (Test-Path $UpdaterExe) {
+    Copy-Item $UpdaterExe -Destination (Join-Path $StagingDir "update.exe") -Force
+    Write-Host "  + update.exe (updater)" -ForegroundColor DarkGray
+} else {
+    Write-Host "  [WARN] update.exe not found at $UpdaterExe - run: dotnet build pc-updater -c Release" -ForegroundColor Red
+    Write-Host "         The release package will NOT support automatic update!" -ForegroundColor Red
+}
+
 # 列出暂存目录内容
 Write-Host "  Staging contents:" -ForegroundColor DarkGray
 Get-ChildItem $StagingDir | ForEach-Object { Write-Host "    $($_.Name)" -ForegroundColor DarkGray }

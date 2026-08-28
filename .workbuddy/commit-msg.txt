@@ -1,0 +1,12 @@
+feat(pc-update): 新增独立更新程序 update.exe, 发布 PC v1.1.15
+
+问题: 原更新流程依赖 bat脚本+VBS启动器+PowerShell Expand-Archive+robocopy, 链路长且脆弱
+
+新增 pc-updater 项目(单文件发布 update.exe):
+- 等待主进程退出 -> 下载ZIP -> 解压staging -> 覆盖应用目录 -> 启动新版本
+- 控制台可视化进度, 日志写 %TEMP%/QuickRemoteUpdate/update.log
+- 跳过自身避免自覆盖, 复制重试10次x800ms
+- 任一文件覆盖失败即判定失败(修复"部分成功"假象), 失败时重启旧版本
+
+AutoUpdater 改为: 复制 update.exe 到临时目录运行(避免自覆盖) -> 传参 -> 主程序退出
+build-pcclient.ps1 集成 update.exe 入包, 缺失时告警
