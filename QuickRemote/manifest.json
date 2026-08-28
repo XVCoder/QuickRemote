@@ -4,16 +4,8 @@
     "changelog": "移除内置关于页（根路径 / 改为健康检查响应 ok，保留部署脚本就绪探测），精简服务体积与攻击面",
     "versions": {
       "1.0.4": {
-        "amd64": "https://quickdeploy.solutionx.top/d/p/afd3b5b7-560b-4d63-afca-7f55f0a570da",
-        "arm64": "https://quickdeploy.solutionx.top/d/p/34888eb1-a359-4c75-90ca-6024e1f636b7"
-      },
-      "1.0.3": {
-        "amd64": "https://quickdeploy.solutionx.top/d/p/996791e2-bfd4-4fbc-a477-90ae6f2739c8",
-        "arm64": "https://quickdeploy.solutionx.top/d/p/9f7b3739-8090-480b-8346-bb7c63f68172"
-      },
-      "1.0.2": {
-        "amd64": "https://quickdeploy.solutionx.top/d/p/501d726e-16cb-4e78-bb6d-042bf090b975",
-        "arm64": "https://quickdeploy.solutionx.top/d/p/d12a4e25-06ef-446d-aebc-f7de8c362346"
+        "amd64": "https://qd.solutionx.top/d/p/05d961f9-5a59-489c-b059-d06047251dc8",
+        "arm64": "https://qd.solutionx.top/d/p/ff5bdda8-ee0b-4fdb-b797-672d1e1e04b8"
       }
     }
   },
@@ -23,12 +15,6 @@
     "versions": {
       "1.1.14": {
         "zip": "https://qd.solutionx.top/d/p/2dc75cdf-de32-46b8-8ac8-be27fcd1140b"
-      },
-      "1.1.13": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/3589c28a-3d3c-4f55-a0e7-c6aee6e36d56"
-      },
-      "1.1.12": {
-        "zip": "https://quickdeploy.solutionx.top/d/p/43d56acb-f972-4ec0-bdd3-028604dfea97"
       }
     }
   },
@@ -38,12 +24,6 @@
     "versions": {
       "1.0.19": {
         "apk": "https://qd.solutionx.top/d/p/c8fe10b1-d7de-4cdb-85b8-b91d10edffd7"
-      },
-      "1.0.18": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/799b973c-0c89-4be5-8ba7-6ebac6d7257d"
-      },
-      "1.0.17": {
-        "apk": "https://quickdeploy.solutionx.top/d/p/324ad496-dfbb-48ae-8bc4-ca01882df89d"
       }
     }
   }
