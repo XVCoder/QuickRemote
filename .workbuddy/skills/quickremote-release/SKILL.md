@@ -21,6 +21,19 @@ agent_created: true
 - **Android**：`./gradlew.bat :app:assembleRelease`，产物 `app/build/outputs/apk/release/app-release.apk`（已签名）。aapt 验证 `versionCode/versionName` + apksigner 验证签名后重命名。
 - **relay**：Go 交叉编译 amd64/arm64（见下文步骤 2.1）。
 
+### 1.1 updater（update.exe，PC 自动更新依赖）
+
+`pc-updater` 项目产出 `update.exe`，**必须打进 PC 发布包**，否则用户无法自动升级（主程序会提示"未找到更新程序"）。
+
+```bash
+cd pc-updater && dotnet publish -c Release -o bin/publish   # 产物：bin/publish/update.exe
+```
+然后复制到 `publish/` 后一起打进 ZIP（`build-pcclient.ps1` 已内置该步骤）。
+
+> ⚠️ **必须单文件发布**（csproj 里 `PublishSingleFile=true` + `RuntimeIdentifier=win-x64` + `SelfContained=false`）。
+> 主程序更新时会把 `update.exe` 单独复制到临时目录运行（避免更新时覆盖自身）；
+> 非单文件模式下复制后缺少 `update.dll`，启动直接失败（实测坑）。
+
 ### 2. 上传（qdrl MCP）
 
 工具：`mcp__qdrl__create_dir` / `create_upload_token` / `curl` 上传 / `list_files` / `delete_file`。
