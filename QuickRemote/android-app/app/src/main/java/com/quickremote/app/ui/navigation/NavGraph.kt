@@ -10,16 +10,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.quickremote.app.data.local.SettingsStore
 import com.quickremote.app.data.models.Device
-import com.quickremote.app.services.LanDiscovery
 import com.quickremote.app.ui.screens.DeviceListScreen
-import com.quickremote.app.ui.screens.RdpSessionScreen
 import com.quickremote.app.ui.screens.RemoteSessionScreen
 import com.quickremote.app.ui.screens.ServerConfigScreen
 import com.quickremote.app.ui.screens.SettingsScreen
 import com.quickremote.app.viewmodels.MainViewModel
 import com.quickremote.app.viewmodels.MainViewModelFactory
-import com.quickremote.app.viewmodels.RdpSessionViewModel
-import com.quickremote.app.viewmodels.RdpSessionViewModelFactory
 import com.quickremote.app.viewmodels.SessionViewModel
 import com.quickremote.app.viewmodels.SessionViewModelFactory
 import android.app.Application
@@ -34,11 +30,9 @@ object Routes {
     const val SERVER_CONFIG = "server_config"
     const val DEVICE_LIST = "device_list"
     const val REMOTE_SESSION = "remote_session/{device}"
-    const val LAN_RDP_SESSION = "lan_rdp_session/{lan}"
     const val SETTINGS = "settings"
 
     fun remoteSession(device: String) = "remote_session/${Uri.encode(device)}"
-    fun lanRdpSession(lan: String) = "lan_rdp_session/${Uri.encode(lan)}"
 }
 
 /**
@@ -47,6 +41,9 @@ object Routes {
  * 首次启动根据是否已配置服务器配置决定起始页面：
  * - 未配置 → server_config
  * - 已配置 → device_list
+ *
+ * 所有远程连接统一走截屏方案（DXGI 捕获 + 编码 + 中继隧道），
+ * 不再使用内网 RDP 直连（曾导致 PC 端黑屏，已彻底移除）。
  */
 @Composable
 fun NavGraph(
@@ -83,30 +80,7 @@ fun NavGraph(
                     val encoded = Json.encodeToString(Device.serializer(), device)
                     navController.navigate(Routes.remoteSession(encoded))
                 },
-                onLanDeviceClick = { lan ->
-                    val encoded = Json.encodeToString(LanDiscovery.LanDevice.serializer(), lan)
-                    navController.navigate(Routes.lanRdpSession(encoded))
-                },
                 onSettingsClick = { navController.navigate(Routes.SETTINGS) }
-            )
-        }
-
-        // 内网 RDP 会话（局域网直连，FreeRDP + 凭据）
-        composable(
-            route = Routes.LAN_RDP_SESSION,
-            arguments = listOf(navArgument("lan") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val lanJson = backStackEntry.arguments?.getString("lan").orEmpty()
-            val decoded = Uri.decode(lanJson)
-            val lan = Json.decodeFromString(LanDiscovery.LanDevice.serializer(), decoded)
-            val app = LocalContext.current.applicationContext as Application
-            val viewModel: RdpSessionViewModel = viewModel(
-                factory = RdpSessionViewModelFactory(app, settingsStore, lan)
-            )
-            RdpSessionScreen(
-                device = lan.toDevice(),
-                viewModel = viewModel,
-                onBack = { navController.popBackStack() }
             )
         }
 

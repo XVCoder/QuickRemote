@@ -10,13 +10,6 @@ data class ServerConfig(
     val preSharedKey: String = ""
 )
 
-// 保存的 RDP 登录凭据（按设备维度存储）
-data class Credentials(
-    val username: String = "",
-    val password: String = "",
-    val domain: String = ""
-)
-
 // 在线 PC 设备（字段与 relay-server registry.Device 对齐）
 @Serializable
 data class Device(

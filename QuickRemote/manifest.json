@@ -10,21 +10,24 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.15",
-    "changelog": "重写自动更新：改用独立更新程序 update.exe 完成下载/解压/覆盖/重启，替代批处理脚本方案；修复部分文件占用导致的更新假成功",
+    "latest_version": "1.1.16",
+    "changelog": "彻底移除 RDP 实现（RdpConfigurator/LanDiscovery），不再动系统 RDP 配置——这是导致 PC 黑屏的根源；远程连接统一走截屏方案",
     "versions": {
+      "1.1.16": {
+        "zip": "https://qd.solutionx.top/d/p/55341a30-942a-42d9-87a8-350210bcc88c"
+      },
       "1.1.15": {
         "zip": "https://qd.solutionx.top/d/p/fffc8edc-7e97-4ce5-a4c2-851deda6e43d"
-      },
-      "1.1.14": {
-        "zip": "https://qd.solutionx.top/d/p/2dc75cdf-de32-46b8-8ac8-be27fcd1140b"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.19",
-    "changelog": "支持 JPEG 视频帧解码（PC 端无 H.264 编码器时的回退）；内网直连诊断增强：10 秒无画面提示确认凭据，自动捕获 FreeRDP native 日志",
+    "latest_version": "1.0.20",
+    "changelog": "彻底移除 RDP/FreeRDP 实现与 39MB native 库；设备列表不再显示内网直连分区，统一走截屏方案",
     "versions": {
+      "1.0.20": {
+        "apk": "https://qd.solutionx.top/d/p/2104d930-bfa1-4330-a003-73730435085e"
+      },
       "1.0.19": {
         "apk": "https://qd.solutionx.top/d/p/c8fe10b1-d7de-4cdb-85b8-b91d10edffd7"
       }

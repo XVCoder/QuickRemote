@@ -1,5 +1,17 @@
 # QuickRemote 更新记录
 
+## v1.1.16
+
+- 彻底移除 RDP 相关实现：删除 RdpConfigurator（注册表/防火墙/NLA 操作）、LanDiscoveryService（内网 UDP 广播），不再动系统 RDP 配置——这是导致 PC 黑屏的根源
+- 远程连接统一走截屏方案（DXGI 捕获 + H.264/JPEG 编码 + 中继隧道），不再有内网 RDP 直连
+- 移除主界面 RDP 状态卡片、一键启用、紧急恢复等 UI（已无对应功能）
+
+## v1.0.20 (Android App)
+
+- 彻底移除 RDP/FreeRDP 实现：删除 FreeRdpClient、RdpSurfaceView、RdpSessionManager、RdpSessionScreen、LanDiscovery 及凭据存储
+- 移除 39MB 的 FreeRDP native 库（jniLibs），APK 体积大幅缩小
+- 设备列表不再显示「内网直连」分区，所有设备统一走截屏方案连接
+
 ## v1.1.15
 
 - 重写自动更新：改用独立更新程序 update.exe 完成「下载 → 解压 → 覆盖 → 重启」，替代原先的批处理脚本 + VBS 启动器方案，不再依赖脚本引擎与 PowerShell 执行策略

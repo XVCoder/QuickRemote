@@ -9,7 +9,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.quickremote.app.data.models.AppSettings
-import com.quickremote.app.data.models.Credentials
 import com.quickremote.app.data.models.ResolutionMode
 import com.quickremote.app.data.models.ServerConfig
 import kotlinx.coroutines.flow.Flow
@@ -38,12 +37,6 @@ class SettingsStore(private val context: Context) {
         val AUDIO_REDIRECT = booleanPreferencesKey("audio_redirect")
         val AUTO_UPDATE = booleanPreferencesKey("auto_update")
         val MANIFEST_URL = stringPreferencesKey("manifest_url")
-    }
-
-    private object CredentialKeys {
-        fun usernameKey(deviceId: String) = stringPreferencesKey("cred_username_$deviceId")
-        fun passwordKey(deviceId: String) = stringPreferencesKey("cred_password_$deviceId")
-        fun domainKey(deviceId: String) = stringPreferencesKey("cred_domain_$deviceId")
     }
 
     val serverConfig: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
@@ -107,35 +100,6 @@ class SettingsStore(private val context: Context) {
     suspend fun saveManifestUrl(url: String) {
         context.dataStore.edit { prefs ->
             prefs[SettingsKeys.MANIFEST_URL] = url
-        }
-    }
-
-    /** 读取指定设备保存的凭据；未保存时返回 null。 */
-    fun getCredentials(deviceId: String): Flow<Credentials?> = context.dataStore.data.map { prefs ->
-        val password = prefs[CredentialKeys.passwordKey(deviceId)] ?: ""
-        if (password.isNotBlank()) {
-            Credentials(
-                username = prefs[CredentialKeys.usernameKey(deviceId)] ?: "",
-                password = password,
-                domain = prefs[CredentialKeys.domainKey(deviceId)] ?: ""
-            )
-        } else {
-            null
-        }
-    }
-
-    /** 保存或清除指定设备的凭据。 */
-    suspend fun saveCredentials(deviceId: String, credentials: Credentials, save: Boolean) {
-        context.dataStore.edit { prefs ->
-            if (save) {
-                prefs[CredentialKeys.usernameKey(deviceId)] = credentials.username
-                prefs[CredentialKeys.passwordKey(deviceId)] = credentials.password
-                prefs[CredentialKeys.domainKey(deviceId)] = credentials.domain
-            } else {
-                prefs.remove(CredentialKeys.usernameKey(deviceId))
-                prefs.remove(CredentialKeys.passwordKey(deviceId))
-                prefs.remove(CredentialKeys.domainKey(deviceId))
-            }
         }
     }
 }

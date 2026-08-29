@@ -10,9 +10,6 @@ public class AppConfig
     [JsonPropertyName("Server")]
     public ServerConfig Server { get; set; } = new();
 
-    [JsonPropertyName("Rdp")]
-    public RdpConfig Rdp { get; set; } = new();
-
     [JsonPropertyName("AutoStart")]
     public bool AutoStart { get; set; }
 
@@ -36,15 +33,6 @@ public class ServerConfig
 
     [JsonPropertyName("PreSharedKey")]
     public string PreSharedKey { get; set; } = "change-me-please";
-}
-
-public class RdpConfig
-{
-    [JsonPropertyName("Port")]
-    public int Port { get; set; } = 3389;
-
-    [JsonPropertyName("AutoEnable")]
-    public bool AutoEnable { get; set; }
 }
 
 public class QuickDeployConfig
