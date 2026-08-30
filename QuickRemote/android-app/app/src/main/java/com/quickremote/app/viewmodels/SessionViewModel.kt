@@ -74,8 +74,13 @@ class SessionViewModel(
         sessionManager.listener = stateListener
     }
 
-    /** 开始一个截屏远程会话（不需要凭据）。 */
+    /** 开始一个截屏远程会话（不需要凭据）。幂等：已在连接中/已连接时直接返回，避免重复建连。 */
     fun startSession(device: Device) {
+        val cur = sessionManager.state
+        if (cur == RemoteSessionManager.SessionState.CONNECTING ||
+            cur == RemoteSessionManager.SessionState.CONNECTED) {
+            return
+        }
         _device.value = device
         _state.value = RemoteSessionManager.SessionState.CONNECTING
         _errorMessage.value = ""

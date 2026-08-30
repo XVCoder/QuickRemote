@@ -1,5 +1,11 @@
 # QuickRemote 更新记录
 
+## v1.0.24 (Android App)
+
+- 修复连接后秒断（surface destroyed）：进入会话不再强制横屏（v1.0.22 强制横屏会触发 Activity 重建导致会话中断），横竖屏改为按钮切换
+- MainActivity 增加 configChanges：旋转/方向切换不再重建页面，Surface 与连接保持稳定
+- 会话启动幂等：已在连接中/已连接时跳过重复建连
+
 ## v1.1.19
 
 - 修复托盘「退出」后进程仍存活：逐项清理加异常保护，Shutdown 后兜底强制结束进程

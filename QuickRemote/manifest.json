@@ -26,14 +26,14 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.23",
-    "changelog": "支持键盘输入（软键盘+物理键盘，字符实时发送）；会话页「旋转」按钮切换横竖屏，不再默认横屏",
+    "latest_version": "1.0.24",
+    "changelog": "修复连接后秒断：方向切换不再重建页面（configChanges），会话保持不断；会话启动幂等保护",
     "versions": {
+      "1.0.24": {
+        "apk": "https://qd.solutionx.top/d/p/1f648e84-bbe0-4b41-8e86-4bef30c4c9d5"
+      },
       "1.0.23": {
         "apk": "https://qd.solutionx.top/d/p/f34c91fe-6fe0-4f7b-880d-26cbeca1917f"
-      },
-      "1.0.22": {
-        "apk": "https://qd.solutionx.top/d/p/493009ab-f787-4cb6-84a9-01e6c466afd7"
       }
     }
   }
