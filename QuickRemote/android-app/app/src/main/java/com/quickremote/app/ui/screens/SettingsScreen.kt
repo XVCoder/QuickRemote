@@ -85,9 +85,14 @@ fun SettingsScreen(
     val updateInfo by viewModel.updateInfo.collectAsState()
 
     var serverAddress by remember(serverConfig.address) { mutableStateOf(serverConfig.address) }
+    var pskInput by remember(serverConfig.preSharedKey) { mutableStateOf(serverConfig.preSharedKey) }
     var settings by remember(appSettings) { mutableStateOf(appSettings) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var isUploadingLogs by remember { mutableStateOf(false) }
+    // 重置预共享密钥确认对话框
+    var showResetPsk by remember { mutableStateOf(false) }
+    // 清空日志确认对话框
+    var showClearLogs by remember { mutableStateOf(false) }
     // 更新记录对话框（从 APK 内置资源读取）
     val context = LocalContext.current
     var showChangelog by remember { mutableStateOf(false) }
@@ -153,6 +158,28 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(4.dp),
                     textStyle = MaterialTheme.typography.bodyMedium
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("预共享密钥", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = pskInput,
+                    onValueChange = { pskInput = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(4.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    placeholder = { Text("未设置，请输入", style = MaterialTheme.typography.bodyMedium, color = TextMuted) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { showResetPsk = true },
+                    modifier = Modifier.fillMaxWidth().height(40.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, Danger.copy(alpha = 0.5f))
+                ) {
+                    Text("重置预共享密钥", color = Danger, style = MaterialTheme.typography.labelMedium)
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -268,7 +295,7 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                Row {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = {
                             isUploadingLogs = true
@@ -289,7 +316,6 @@ fun SettingsScreen(
                             Text("上传日志", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
                         }
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
                     OutlinedButton(
                         onClick = {
                             logContent = viewModel.readLogContent()
@@ -300,6 +326,14 @@ fun SettingsScreen(
                         border = BorderStroke(1.dp, BorderLight)
                     ) {
                         Text("查看日志", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = { showClearLogs = true },
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, Danger.copy(alpha = 0.5f))
+                    ) {
+                        Text("清空日志", color = Danger, style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 // 操作结果显示区（成功或失败的消息）
@@ -344,7 +378,7 @@ fun SettingsScreen(
                     viewModel.saveAndContinue(
                         com.quickremote.app.data.models.ServerConfig(
                             address = serverAddress.trim(),
-                            preSharedKey = serverConfig.preSharedKey
+                            preSharedKey = pskInput.trim()
                         )
                     )
                     viewModel.updateSettings(settings)
@@ -427,6 +461,68 @@ fun SettingsScreen(
                 dismissButton = {
                     TextButton(onClick = { showLogs = false }) {
                         Text("关闭", color = TextSecondary)
+                    }
+                },
+                containerColor = BgCard,
+                titleContentColor = TextPrimary,
+                textContentColor = TextPrimary
+            )
+        }
+
+        // 重置预共享密钥确认对话框
+        if (showResetPsk) {
+            AlertDialog(
+                onDismissRequest = { showResetPsk = false },
+                title = { Text("重置预共享密钥", color = TextPrimary) },
+                text = {
+                    Text(
+                        "将清除已保存的密钥和登录令牌，并断开设备列表。\n\n重置后请输入新密钥并保存，重新连接服务器。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showResetPsk = false
+                        viewModel.resetPreSharedKey()
+                    }) {
+                        Text("确认重置", color = Danger)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showResetPsk = false }) {
+                        Text("取消", color = TextSecondary)
+                    }
+                },
+                containerColor = BgCard,
+                titleContentColor = TextPrimary,
+                textContentColor = TextPrimary
+            )
+        }
+
+        // 清空日志确认对话框
+        if (showClearLogs) {
+            AlertDialog(
+                onDismissRequest = { showClearLogs = false },
+                title = { Text("清空日志", color = TextPrimary) },
+                text = {
+                    Text(
+                        "将删除本地全部日志文件（含最近 7 天），此操作不可恢复。\n\n如需保留用于排查，请先「上传日志」或「查看日志」复制。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showClearLogs = false
+                        viewModel.clearLogs()
+                    }) {
+                        Text("确认清空", color = Danger)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearLogs = false }) {
+                        Text("取消", color = TextSecondary)
                     }
                 },
                 containerColor = BgCard,

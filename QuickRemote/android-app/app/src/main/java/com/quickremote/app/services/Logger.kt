@@ -66,6 +66,15 @@ class Logger {
         }
     }
 
+    /** 清空全部日志文件（下次写入时自动重建当前日志文件）。 */
+    fun clearAll() {
+        try {
+            dir.listFiles { f -> f.name.endsWith(".log") }?.forEach { f -> f.delete() }
+        } catch (_: Exception) {
+            // ignore
+        }
+    }
+
     private fun currentLogFileName(): String {
         val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         return "quickremote-$dateStr.log"

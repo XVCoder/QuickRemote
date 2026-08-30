@@ -176,6 +176,27 @@ class MainViewModel(
     /** 读取本地日志内容（用于「查看日志」弹窗）。 */
     fun readLogContent(): String = logger.readAll()
 
+    /** 清空本地日志文件。 */
+    fun clearLogs() {
+        logger.clearAll()
+        _toast.value = "日志已清空"
+    }
+
+    /**
+     * 重置预共享密钥：清除已保存的密钥与认证令牌，断开设备列表。
+     * 用户需在设置页输入新密钥并保存后重新连接。
+     */
+    fun resetPreSharedKey() {
+        viewModelScope.launch {
+            settingsStore.clearPreSharedKey()
+            _serverConfig.value = _serverConfig.value.copy(preSharedKey = "")
+            _devices.value = emptyList()
+            _connectionState.value = ConnectionState.DISCONNECTED
+            _lastError.value = ""
+            _toast.value = "预共享密钥已重置"
+        }
+    }
+
     fun updateSettings(settings: AppSettings) {
         viewModelScope.launch {
             settingsStore.saveAppSettings(settings)

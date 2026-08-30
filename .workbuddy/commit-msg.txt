@@ -1,0 +1,11 @@
+feat(android): 设置页新增重置预共享密钥与清空日志功能
+
+1. 重置预共享密钥:
+   - 设置页服务器卡片新增 PSK 输入框(掩码显示,可直接改密钥)
+   - 「重置预共享密钥」按钮: 确认后清除已保存密钥+认证令牌,断开设备列表
+   - SettingsStore.clearPreSharedKey(), MainViewModel.resetPreSharedKey()
+   - 保存按钮改用输入框值,改密钥后保存即重新认证
+
+2. 清空日志:
+   - 日志行改三按钮(上传/查看/清空),清空带确认对话框(提示不可恢复+先上传建议)
+   - Logger.clearAll() 删除全部 .log 文件

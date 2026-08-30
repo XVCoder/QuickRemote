@@ -86,6 +86,14 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    /** 重置预共享密钥：清除已保存密钥与认证令牌。 */
+    suspend fun clearPreSharedKey() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(ServerKeys.PRE_SHARED_KEY)
+            prefs.remove(ServerKeys.TOKEN)
+        }
+    }
+
     suspend fun saveAppSettings(settings: AppSettings) {
         context.dataStore.edit { prefs ->
             prefs[SettingsKeys.RESOLUTION_MODE] = settings.resolutionMode.name
