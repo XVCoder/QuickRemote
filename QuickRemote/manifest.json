@@ -4,7 +4,8 @@
     "changelog": "注册消息与设备列表新增 lan_ip 字段（Android 端用于区分局域网/公网设备）；旧库自动迁移",
     "versions": {
       "1.0.5": {
-        "amd64": "https://qd.solutionx.top/d/p/398c030e-82f0-4f99-b657-36a8a46e8d80"
+        "amd64": "https://qd.solutionx.top/d/p/398c030e-82f0-4f99-b657-36a8a46e8d80",
+        "arm64": "https://qd.solutionx.top/d/p/5ba5dbca-384b-4356-9537-5032d40e8e5e"
       },
       "1.0.4": {
         "amd64": "https://qd.solutionx.top/d/p/05d961f9-5a59-489c-b059-d06047251dc8",

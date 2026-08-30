@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +34,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,10 +91,11 @@ fun RemoteSessionScreen(
         viewModel.startSession(device)
     }
 
-    // 会话页强制横屏 + 沉浸全屏（隐藏系统栏），退出时恢复
+    // 会话页沉浸全屏（隐藏系统栏），退出时恢复。
+    // 屏幕方向不自动横屏：由工具栏「旋转」按钮手动切换横竖屏。
     val activity = LocalContext.current.findActivity()
+    var isLandscape by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         activity?.window?.let { win ->
             androidx.core.view.WindowInsetsControllerCompat(
                 win, win.decorView
@@ -109,6 +114,16 @@ fun RemoteSessionScreen(
                     win, win.decorView
                 ).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             }
+        }
+    }
+
+    /** 切换横屏/竖屏。 */
+    fun toggleOrientation() {
+        isLandscape = !isLandscape
+        activity?.requestedOrientation = if (isLandscape) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
@@ -166,6 +181,12 @@ fun RemoteSessionScreen(
                         label = "键盘",
                         active = isKeyboardVisible,
                         onClick = { viewModel.toggleKeyboard() }
+                    )
+                    ToolBarButton(
+                        icon = Icons.Filled.ScreenRotation,
+                        label = "旋转",
+                        active = isLandscape,
+                        onClick = { toggleOrientation() }
                     )
                     ToolBarButton(
                         icon = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
