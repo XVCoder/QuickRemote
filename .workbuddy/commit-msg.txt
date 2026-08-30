@@ -1,5 +1,0 @@
-release: 发布 PC v1.1.17 + Android v1.0.21
-
-- PC v1.1.17: 修复第二次连接即断开(帧队列跨会话复用已 CompleteAdding 的队列)
-- Android v1.0.21: 设置页新增重置预共享密钥 + 清空日志; PSK 掩码输入可直改
-- manifest/CHANGELOG 更新, about v1.0.23 部署, 旧包清理保留最近3版
