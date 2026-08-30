@@ -1,0 +1,14 @@
+feat: 托盘退出必终止 + Android 横屏/缩放/操作 + 局域网标注
+
+PC (v1.1.19):
+- 修复托盘退出后进程仍存活: 清理步骤逐项 try-catch, Shutdown 后兜底 Environment.Exit
+- 注册上报本机局域网 IP (SystemInfo.GetLanIp), 支持 Android 区分局域网/公网
+
+Android (v1.0.22):
+- 会话页强制横屏 + 沉浸全屏(隐藏系统栏), 退出恢复
+- RemoteDisplayView 重写触摸: 单指拖动即时鼠标移动, 轻点左键, 长按右键,
+  双指缩放(1x-5x)+平移, 双指滑动滚轮(流式处理不依赖手势阈值)
+- DeviceCard 标注连接类型: 同网段=局域网(绿), 否则公网
+
+relay-server (v1.0.5):
+- 注册消息/存储/列表返回新增 lan_ip 字段, 旧库自动 ALTER TABLE 迁移

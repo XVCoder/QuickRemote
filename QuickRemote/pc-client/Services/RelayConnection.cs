@@ -177,6 +177,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
                     MachineId = machineId,
                     Hostname = SystemInfo.Hostname,
                     OS = SystemInfo.OsInfo,
+                    LanIp = SystemInfo.GetLanIp(),
                     RDPPort = rdpPort,
                     Version = version,
                     AuthKey = authKey
@@ -439,6 +440,9 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
 
         [JsonPropertyName("os")]
         public string? OS { get; set; }
+
+        [JsonPropertyName("lan_ip")]
+        public string? LanIp { get; set; }
 
         [JsonPropertyName("rdp_port")]
         public int RDPPort { get; set; }

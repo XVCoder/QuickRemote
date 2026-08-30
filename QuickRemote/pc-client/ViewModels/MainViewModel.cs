@@ -481,17 +481,33 @@ public sealed class MainViewModel : BaseViewModel
         });
     }
 
+    /// <summary>
+    /// 托盘「退出」：终止进程。逐项清理均加保护，任何一步异常都不影响退出；
+    /// Shutdown 优雅关闭后兜底 Environment.Exit 强杀，确保托盘退出后进程必然终止。
+    /// </summary>
     private void OnExitRequested()
     {
-        Application.Current?.Dispatcher.InvokeAsync(() =>
+        _logger.Info("Exit requested from tray");
+        try
         {
-            _logger.Info("Exit requested from tray");
+            // 先标记 IsExiting，让主窗口 OnClosing 放行（不再隐藏到托盘）
             IsExiting = true;
-            _relay.Stop();
-            _tunnelManager.Dispose();
-            Tray?.Dispose();
-            Application.Current.Shutdown();
-        });
+
+            try { _relay.Stop(); } catch (Exception ex) { _logger.Warn($"Relay stop error: {ex.Message}"); }
+            try { _tunnelManager.Dispose(); } catch (Exception ex) { _logger.Warn($"Tunnel dispose error: {ex.Message}"); }
+            try { _remoteSessionManager.Dispose(); } catch (Exception ex) { _logger.Warn($"Session dispose error: {ex.Message}"); }
+            try { Tray?.Dispose(); } catch (Exception ex) { _logger.Warn($"Tray dispose error: {ex.Message}"); }
+        }
+        finally
+        {
+            // 优雅关闭（触发 OnClosing 与 OnExit）；若被任何原因阻断，1.5s 后强制结束进程
+            try { Application.Current?.Shutdown(); } catch { }
+            Task.Run(async () =>
+            {
+                await Task.Delay(1500);
+                try { Environment.Exit(0); } catch { }
+            });
+        }
     }
 
     public void Dispose()

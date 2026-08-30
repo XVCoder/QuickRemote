@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +41,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.RemoteFrameProtocol
 import com.quickremote.app.services.RemoteSessionManager
@@ -81,6 +85,31 @@ fun RemoteSessionScreen(
     // 进入页面自动开始截屏远程会话（无需凭据）
     LaunchedEffect(device.device_id) {
         viewModel.startSession(device)
+    }
+
+    // 会话页强制横屏 + 沉浸全屏（隐藏系统栏），退出时恢复
+    val activity = LocalContext.current.findActivity()
+    LaunchedEffect(Unit) {
+        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity?.window?.let { win ->
+            androidx.core.view.WindowInsetsControllerCompat(
+                win, win.decorView
+            ).apply {
+                hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior =
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            activity?.window?.let { win ->
+                androidx.core.view.WindowInsetsControllerCompat(
+                    win, win.decorView
+                ).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
 
     Scaffold(
@@ -193,6 +222,16 @@ fun RemoteSessionScreen(
             }
         }
     }
+}
+
+/** 从 Context 向上查找宿主 Activity。 */
+private fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }
 
 /** 发送鼠标事件帧：[action 1B][x 2B][y 2B]（远程坐标）。 */

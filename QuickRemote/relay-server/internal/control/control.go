@@ -29,6 +29,7 @@ type Message struct {
 	MachineID  string `json:"machine_id,omitempty"`
 	Hostname   string `json:"hostname,omitempty"`
 	OS         string `json:"os,omitempty"`
+	LanIP      string `json:"lan_ip,omitempty"`
 	RDPPort    int    `json:"rdp_port,omitempty"`
 	Version    string `json:"version,omitempty"`
 	AuthKey    string `json:"auth_key,omitempty"`
@@ -144,6 +145,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		MachineID: msg.MachineID,
 		Hostname:  msg.Hostname,
 		OS:        msg.OS,
+		LanIP:     msg.LanIP,
 		RDPPort:   msg.RDPPort,
 		Version:   msg.Version,
 	}

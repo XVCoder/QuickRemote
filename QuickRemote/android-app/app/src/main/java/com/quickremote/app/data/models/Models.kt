@@ -17,6 +17,7 @@ data class Device(
     val machine_id: String = "",
     val hostname: String = "",
     val os: String = "",
+    val lan_ip: String = "",
     val rdp_port: Int = 3389,
     val version: String = "",
     val status: String = "online",
