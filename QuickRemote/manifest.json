@@ -10,14 +10,14 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.17",
-    "changelog": "修复第二次连接即断开：帧队列在会话结束后被永久关闭，现改为每次会话启动时重建",
+    "latest_version": "1.1.18",
+    "changelog": "更新不再覆盖配置文件：升级自动备份 appsettings.json.bak，新配置项自动迁移（保留用户已有值）",
     "versions": {
+      "1.1.18": {
+        "zip": "https://qd.solutionx.top/d/p/62eae682-bf98-4a76-ac1d-af16f0f3896a"
+      },
       "1.1.17": {
         "zip": "https://qd.solutionx.top/d/p/1596acd1-ad57-4beb-84e8-2ac35bcf0ce1"
-      },
-      "1.1.16": {
-        "zip": "https://qd.solutionx.top/d/p/55341a30-942a-42d9-87a8-350210bcc88c"
       }
     }
   },
