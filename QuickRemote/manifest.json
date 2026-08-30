@@ -1,8 +1,11 @@
 {
   "relay-server": {
-    "latest_version": "1.0.4",
-    "changelog": "移除内置关于页（根路径 / 改为健康检查响应 ok，保留部署脚本就绪探测），精简服务体积与攻击面",
+    "latest_version": "1.0.5",
+    "changelog": "注册消息与设备列表新增 lan_ip 字段（Android 端用于区分局域网/公网设备）；旧库自动迁移",
     "versions": {
+      "1.0.5": {
+        "amd64": "https://qd.solutionx.top/d/p/398c030e-82f0-4f99-b657-36a8a46e8d80"
+      },
       "1.0.4": {
         "amd64": "https://qd.solutionx.top/d/p/05d961f9-5a59-489c-b059-d06047251dc8",
         "arm64": "https://qd.solutionx.top/d/p/ff5bdda8-ee0b-4fdb-b797-672d1e1e04b8"
@@ -10,26 +13,26 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.18",
-    "changelog": "更新不再覆盖配置文件：升级自动备份 appsettings.json.bak，新配置项自动迁移（保留用户已有值）",
+    "latest_version": "1.1.19",
+    "changelog": "修复托盘退出后进程仍存活；注册上报本机局域网 IP，支持区分局域网/公网设备",
     "versions": {
+      "1.1.19": {
+        "zip": "https://qd.solutionx.top/d/p/1fcb6432-1ca7-4c09-926c-2b2699a2ee7d"
+      },
       "1.1.18": {
         "zip": "https://qd.solutionx.top/d/p/62eae682-bf98-4a76-ac1d-af16f0f3896a"
-      },
-      "1.1.17": {
-        "zip": "https://qd.solutionx.top/d/p/1596acd1-ad57-4beb-84e8-2ac35bcf0ce1"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.21",
-    "changelog": "设置页新增「重置预共享密钥」与「清空日志」；预共享密钥支持掩码输入直接修改",
+    "latest_version": "1.0.22",
+    "changelog": "会话页强制横屏+沉浸全屏；双指缩放/平移；触摸操作（拖动鼠标/点击/右键/滚轮）；设备标注局域网/公网",
     "versions": {
+      "1.0.22": {
+        "apk": "https://qd.solutionx.top/d/p/493009ab-f787-4cb6-84a9-01e6c466afd7"
+      },
       "1.0.21": {
         "apk": "https://qd.solutionx.top/d/p/6c663c36-0d8e-43d5-8311-30f1fa4fa8cf"
-      },
-      "1.0.20": {
-        "apk": "https://qd.solutionx.top/d/p/2104d930-bfa1-4330-a003-73730435085e"
       }
     }
   }

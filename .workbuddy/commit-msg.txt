@@ -1,0 +1,6 @@
+release: 发布 PC v1.1.19 + Android v1.0.22 + relay 1.0.5
+
+- PC v1.1.19: 托盘退出兜底强杀进程; SystemInfo.GetLanIp 上报局域网 IP
+- Android v1.0.22: 横屏沉浸全屏 + 双指缩放/平移 + 流式触摸操作 + 设备标注局域网/公网
+- relay 1.0.5: lan_ip 字段(注册/存储/返回/旧库迁移), manifest 已发布(arm64 待补编译)
+- about v1.0.25 部署, manifest/CHANGELOG 更新
