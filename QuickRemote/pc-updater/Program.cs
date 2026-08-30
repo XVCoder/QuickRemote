@@ -255,6 +255,25 @@ internal static class Program
                 continue;
             }
 
+            // 保护用户配置文件：更新不覆盖 appsettings.json，
+            // 仅把旧配置备份为 appsettings.json.bak（新配置项由应用启动时自动迁移补齐）。
+            if (string.Equals(Path.GetFileName(dest), "appsettings.json", StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(dest))
+            {
+                try
+                {
+                    var bak = Path.Combine(target, "appsettings.json.bak");
+                    File.Copy(dest, bak, overwrite: true);
+                    Log($"Backup config: {dest} -> {bak}");
+                }
+                catch (Exception ex)
+                {
+                    Log($"WARN: backup config failed: {ex.Message}");
+                }
+                Log($"Skip overwrite config: {dest} (user config preserved)");
+                continue;
+            }
+
             var destDir = Path.GetDirectoryName(dest);
             if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
 
