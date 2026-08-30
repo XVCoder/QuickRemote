@@ -49,6 +49,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import com.quickremote.app.data.models.Device
+import com.quickremote.app.services.KeyMapper
 import com.quickremote.app.services.RemoteFrameProtocol
 import com.quickremote.app.services.RemoteSessionManager
 import com.quickremote.app.ui.components.RemoteDisplayView
@@ -127,6 +128,53 @@ fun RemoteSessionScreen(
         }
     }
 
+    // 隐藏键盘输入框引用（软键盘字符/物理键盘按键捕获）
+    var keyInput by remember { mutableStateOf<android.widget.EditText?>(null) }
+    var lastKeyText by remember { mutableStateOf("") }
+
+    /** 发送键盘事件帧：[vkCode 2B][down 1B]。 */
+    fun sendKeyRaw(vk: Int, down: Boolean) {
+        val data = ByteBuffer.allocate(3).order(ByteOrder.LITTLE_ENDIAN)
+            .putShort(vk.toShort())
+            .put(if (down) 1 else 0)
+            .array()
+        viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_KEY, data)
+    }
+
+    /** 发送一次按键（含 Shift 组合与按下/释放）。 */
+    fun sendKeyPress(vk: Int, needShift: Boolean) {
+        if (needShift) sendKeyRaw(0x10, true)  // VK_SHIFT down
+        sendKeyRaw(vk, true)
+        sendKeyRaw(vk, false)
+        if (needShift) sendKeyRaw(0x10, false)
+    }
+
+    /** 物理键盘按键按下：映射 VK 并发送（含修饰键状态）。 */
+    fun handleAndroidKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        // 修饰键单独处理（维持按下状态）
+        KeyMapper.androidModifierToVk(keyCode)?.let { vk ->
+            sendKeyRaw(vk, true)
+            return true
+        }
+        val vk = KeyMapper.androidKeyToVk(keyCode) ?: return false
+        val needShift = event.isShiftPressed
+        if (needShift) sendKeyRaw(0x10, true)
+        sendKeyRaw(vk, true)
+        if (needShift) sendKeyRaw(0x10, false)
+        return true
+    }
+
+    /** 物理键盘按键释放。 */
+    fun handleAndroidKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        KeyMapper.androidModifierToVk(keyCode)?.let { vk ->
+            sendKeyRaw(vk, false)
+            return true
+        }
+        val vk = KeyMapper.androidKeyToVk(keyCode) ?: return false
+        sendKeyRaw(vk, false)
+        return true
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -180,7 +228,20 @@ fun RemoteSessionScreen(
                         icon = Icons.Filled.Keyboard,
                         label = "键盘",
                         active = isKeyboardVisible,
-                        onClick = { viewModel.toggleKeyboard() }
+                        onClick = {
+                            // 先根据当前状态决定动作，再翻转（避免读到旧状态）
+                            val willShow = !isKeyboardVisible
+                            viewModel.toggleKeyboard()
+                            val ime = activity?.getSystemService(Context.INPUT_METHOD_SERVICE)
+                                    as? android.view.inputmethod.InputMethodManager
+                            if (willShow) {
+                                keyInput?.requestFocus()
+                                ime?.showSoftInput(keyInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                            } else {
+                                ime?.hideSoftInputFromWindow(keyInput?.windowToken, 0)
+                                keyInput?.clearFocus()
+                            }
+                        }
                     )
                     ToolBarButton(
                         icon = Icons.Filled.ScreenRotation,
@@ -241,6 +302,51 @@ fun RemoteSessionScreen(
                     errorMessage = errorMessage
                 )
             }
+
+            // 隐藏键盘输入框：捕获软键盘文本与物理键盘按键，映射为 VK 码发送
+            AndroidView(
+                modifier = Modifier.size(1.dp),
+                factory = { ctx ->
+                    android.widget.EditText(ctx).apply {
+                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        isCursorVisible = false
+                        isFocusableInTouchMode = true
+                        textSize = 1f
+                        // 物理键盘：直接转发按键事件
+                        setOnKeyListener { _, keyCode, event ->
+                            when (event.action) {
+                                android.view.KeyEvent.ACTION_DOWN ->
+                                    handleAndroidKeyDown(keyCode, event)
+                                android.view.KeyEvent.ACTION_UP ->
+                                    handleAndroidKeyUp(keyCode, event)
+                            }
+                            true
+                        }
+                        // 软键盘：文本变化 → 逐字符映射发送
+                        addTextChangedListener(object : android.text.TextWatcher {
+                            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                            override fun afterTextChanged(s: android.text.Editable?) {
+                                val newText = s?.toString().orEmpty()
+                                val old = lastKeyText
+                                if (newText.length > old.length) {
+                                    // 新增字符（可能一次提交多个，如中文输入法）
+                                    newText.substring(old.length).forEach { ch ->
+                                        KeyMapper.charToVk(ch)?.let { (vk, shift) ->
+                                            sendKeyPress(vk, shift)
+                                        }
+                                    }
+                                } else if (newText.length < old.length) {
+                                    // 删除 → 退格
+                                    repeat(old.length - newText.length) { sendKeyPress(0x08, false) }
+                                }
+                                lastKeyText = newText
+                            }
+                        })
+                        keyInput = this
+                    }
+                }
+            )
         }
     }
 }
