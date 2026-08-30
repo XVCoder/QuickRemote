@@ -10,26 +10,26 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.16",
-    "changelog": "彻底移除 RDP 实现（RdpConfigurator/LanDiscovery），不再动系统 RDP 配置——这是导致 PC 黑屏的根源；远程连接统一走截屏方案",
+    "latest_version": "1.1.17",
+    "changelog": "修复第二次连接即断开：帧队列在会话结束后被永久关闭，现改为每次会话启动时重建",
     "versions": {
+      "1.1.17": {
+        "zip": "https://qd.solutionx.top/d/p/1596acd1-ad57-4beb-84e8-2ac35bcf0ce1"
+      },
       "1.1.16": {
         "zip": "https://qd.solutionx.top/d/p/55341a30-942a-42d9-87a8-350210bcc88c"
-      },
-      "1.1.15": {
-        "zip": "https://qd.solutionx.top/d/p/fffc8edc-7e97-4ce5-a4c2-851deda6e43d"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.20",
-    "changelog": "彻底移除 RDP/FreeRDP 实现与 39MB native 库；设备列表不再显示内网直连分区，统一走截屏方案",
+    "latest_version": "1.0.21",
+    "changelog": "设置页新增「重置预共享密钥」与「清空日志」；预共享密钥支持掩码输入直接修改",
     "versions": {
+      "1.0.21": {
+        "apk": "https://qd.solutionx.top/d/p/6c663c36-0d8e-43d5-8311-30f1fa4fa8cf"
+      },
       "1.0.20": {
         "apk": "https://qd.solutionx.top/d/p/2104d930-bfa1-4330-a003-73730435085e"
-      },
-      "1.0.19": {
-        "apk": "https://qd.solutionx.top/d/p/c8fe10b1-d7de-4cdb-85b8-b91d10edffd7"
       }
     }
   }

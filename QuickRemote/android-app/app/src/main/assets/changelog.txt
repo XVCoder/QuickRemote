@@ -1,6 +1,11 @@
 QuickRemote Android 更新记录
 ================================
 
+v1.0.21
+- 设置页新增「重置预共享密钥」：清除已保存密钥与令牌，支持直接修改密钥后重新连接
+- 设置页新增「清空日志」：删除本地全部日志文件（带确认提示）
+- 预共享密钥输入框支持掩码显示与直接修改
+
 v1.0.20
 - 彻底移除 RDP/FreeRDP 实现：删除 FreeRdpClient、RdpSessionScreen、LanDiscovery 及凭据存储
 - 移除 39MB 的 FreeRDP native 库，APK 体积大幅缩小
