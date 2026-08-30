@@ -15,7 +15,10 @@ public sealed class RemoteSessionManager : IDisposable
     private readonly Logger _logger;
     private readonly int _fps;
     private readonly int _bitrateKbps;
-    private readonly BlockingCollection<CapturedFrame> _frameQueue = new(3);
+    // 注意：帧队列不能跨会话复用——Cleanup 会 CompleteAdding 永久关闭队列，
+    // 复用会导致下一次会话 TryAdd 立即抛 "marked as complete" 而秒断。
+    // 每次会话启动时在 StartAsync 中重建。
+    private BlockingCollection<CapturedFrame> _frameQueue = new(3);
 
     private IRemoteTransport? _transport;
     private ScreenCaptureService? _capture;
@@ -49,6 +52,10 @@ public sealed class RemoteSessionManager : IDisposable
 
         try
         {
+            // 0. 重建帧队列（上次会话 Cleanup 时已 CompleteAdding，必须新建才能复用）
+            try { _frameQueue.Dispose(); } catch { }
+            _frameQueue = new BlockingCollection<CapturedFrame>(3);
+
             // 1. 连接中继隧道（传输层抽象，未来可换 P2P）
             RelayRemoteTransport.LogError = msg => _logger.Warn(msg);
             _transport = await RelayRemoteTransport.ConnectAsync(serverHost, tunnelPort, sessionId);

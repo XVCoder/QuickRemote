@@ -1,5 +1,10 @@
 # QuickRemote 更新记录
 
+## v1.1.17
+
+- 修复第二次连接即断开：帧队列在会话结束后被永久关闭，下次会话复用时捕获线程立即崩溃（日志表现为 "The collection has been marked as complete"）；现改为每次会话启动时重建帧队列
+- 附带 Android v1.0.21：设置页新增「重置预共享密钥」与「清空日志」功能
+
 ## v1.1.16
 
 - 彻底移除 RDP 相关实现：删除 RdpConfigurator（注册表/防火墙/NLA 操作）、LanDiscoveryService（内网 UDP 广播），不再动系统 RDP 配置——这是导致 PC 黑屏的根源
