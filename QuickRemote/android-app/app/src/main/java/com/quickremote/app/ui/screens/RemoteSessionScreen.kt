@@ -273,7 +273,6 @@ fun RemoteSessionScreen(
                         onSurfaceChanged = { surface, _, _ ->
                             viewModel.setSurface(surface)
                         }
-                        onMouseMove = { x, y -> sendMouseAction(viewModel, 0, x, y) }
                         onLeftClick = { x, y ->
                             sendMouseAction(viewModel, 1, x, y)  // 左按下
                             sendMouseAction(viewModel, 2, x, y)  // 左释放
@@ -286,10 +285,9 @@ fun RemoteSessionScreen(
                     }
                 },
                 update = { view ->
-                    // 分辨率变化时更新坐标映射
+                    // 分辨率变化时按 cover 模式重布局（高度填满，超出裁掉）
                     if (videoWidth > 0 && videoHeight > 0) {
-                        view.remoteWidth = videoWidth
-                        view.remoteHeight = videoHeight
+                        view.setRemoteSize(videoWidth, videoHeight)
                     }
                 }
             )

@@ -2,11 +2,13 @@ package com.quickremote.app.services
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.view.Surface
 
 /**
  * JPEG 帧解码器（BitmapFactory）。
  * 系统无 H.264 解码能力或不适用时的回退方案，直接把 JPEG 位图画到 Surface。
+ * 绘制时拉伸铺满 Surface buffer（cover 布局下 buffer 比例=视频比例，无变形）。
  */
 class JpegDecoder(private val logger: Logger = Logger()) {
 
@@ -16,7 +18,8 @@ class JpegDecoder(private val logger: Logger = Logger()) {
         return try {
             val bmp = BitmapFactory.decodeByteArray(nalData, 0, nalData.size) ?: return false
             val canvas = surf.lockHardwareCanvas()
-            canvas.drawBitmap(bmp, 0f, 0f, null)
+            // 拉伸铺满 buffer（MediaCodec SCALE_TO_FIT 同款行为，比例匹配时无变形）
+            canvas.drawBitmap(bmp, null, Rect(0, 0, canvas.width, canvas.height), null)
             surf.unlockCanvasAndPost(canvas)
             bmp.recycle()
             true

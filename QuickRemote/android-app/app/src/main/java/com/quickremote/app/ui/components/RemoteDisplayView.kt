@@ -7,37 +7,41 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.ViewConfiguration
+import android.widget.FrameLayout
 import com.quickremote.app.services.Logger
 import kotlin.math.abs
-import kotlin.math.min
+import kotlin.math.max
 
 /**
  * 远程桌面渲染视图（截屏方案）。
  *
- * SurfaceView 管理 Surface 生命周期（MediaCodec 渲染目标），并处理触摸输入：
- * - 单指拖动 = 鼠标移动（流式处理，即时响应，不依赖手势判定阈值）
- * - 单指轻点 = 左键点击
+ * 布局为 cover 模式：画面按比例缩放到铺满屏幕（高度填满/宽度填满取大者），
+ * 超出屏幕的部分被裁掉，通过拖动查看。
+ *
+ * 手势：
+ * - 单指轻点（位移小于触摸阈值）= 左键点击
+ * - 单指拖动 = 平移画面（查看被裁掉的部分）
  * - 长按 = 右键
- * - 双指缩放 = 本地画面缩放（1x~5x，围绕屏幕中心）
- * - 双指拖动 = 平移缩放后的画面
+ * - 双指缩放 = 画面缩放（1x~5x，围绕捏合中心，带阻尼）
+ * - 双指拖动 = 平移画面
  * - 双指垂直滑动 = 滚轮
  *
- * 触摸坐标经 [mapToRemote] 映射为远程桌面坐标（含缩放/平移逆变换）。
+ * 触摸坐标（View 本地坐标，Android 自动做逆变换）按视频尺寸线性映射为远程坐标。
  */
 class RemoteDisplayView(
     context: Context,
     private val logger: Logger = Logger()
 ) : SurfaceView(context), SurfaceHolder.Callback {
 
-    /** 远程桌面分辨率（收到控制帧后由上层设置）。 */
+    /** 远程桌面分辨率（收到控制帧后由上层设置，触发 cover 重布局）。 */
     var remoteWidth: Int = 0
+        private set
     var remoteHeight: Int = 0
+        private set
 
     /** Surface 变化回调（surface 可能为 null 表示销毁）。 */
     var onSurfaceChanged: ((android.view.Surface?, Int, Int) -> Unit)? = null
-
-    /** 鼠标移动（远程坐标）。 */
-    var onMouseMove: ((Int, Int) -> Unit)? = null
 
     /** 左键点击（远程坐标，上层负责按下+释放）。 */
     var onLeftClick: ((Int, Int) -> Unit)? = null
@@ -48,22 +52,24 @@ class RemoteDisplayView(
     /** 滚轮（远程坐标 + 滚动量）。 */
     var onWheel: ((Int, Int, Int) -> Unit)? = null
 
-    private var viewWidth = 0
-    private var viewHeight = 0
+    // ============ 布局状态（cover） ============
+    private var parentW = 0
+    private var parentH = 0
 
-    // ============ 显示变换（双指缩放/平移） ============
+    // ============ 显示变换 ============
     private var displayScale = 1f
-    private var displayTransX = 0f
-    private var displayTransY = 0f
+    private var panX = 0f
+    private var panY = 0f
 
     // ============ 触摸状态 ============
     private val handler = Handler(Looper.getMainLooper())
-    private var downX = 0f
-    private var downY = 0f
-    private var downTime = 0L
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private var downRawX = 0f
+    private var downRawY = 0f
+    private var lastRawX = 0f
+    private var lastRawY = 0f
     private var moved = false
-    private var lastMouseX = Int.MIN_VALUE
-    private var lastMouseY = Int.MIN_VALUE
+    private var longPressFired = false
 
     // 双指捏合
     private var lastPinchCenterX = 0f
@@ -74,11 +80,12 @@ class RemoteDisplayView(
     private var wheelAccumY = 0f
 
     private val longPressRunnable = Runnable {
-        val (rx, ry) = mapToRemote(downX, downY)
+        longPressFired = true
+        val (rx, ry) = mapToRemote(downRawX, downRawY)
         onRightClick?.invoke(rx, ry)
     }
 
-    // ZoomLayout 风格：双指缩放围绕捏合中心（focusX/focusY），带阻尼平滑
+    // ZoomLayout 风格：双指缩放围绕捏合中心，带阻尼平滑
     private val scaleDetector = ScaleGestureDetector(
         context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -94,24 +101,54 @@ class RemoteDisplayView(
     init {
         holder.addCallback(this)
         holder.setFormat(android.graphics.PixelFormat.OPAQUE)
-        // 确保能收到触摸事件
         isClickable = true
         isFocusable = true
+    }
+
+    // ==================== 远程尺寸与 cover 布局 ====================
+
+    /** 设置远程分辨率并按 cover 模式重布局（高度/宽度填满，超出裁掉）。 */
+    fun setRemoteSize(w: Int, h: Int) {
+        if (w <= 0 || h <= 0 || (w == remoteWidth && h == remoteHeight)) return
+        remoteWidth = w
+        remoteHeight = h
+        logger.info("RemoteDisplayView: remote size $w x $h, relayout cover")
+        post { relayoutCover() }
+    }
+
+    /** 按 cover 模式重布局：max(高度比, 宽度比) 缩放，居中，超出部分裁掉。 */
+    private fun relayoutCover() {
+        val parent = parent as? android.view.ViewGroup ?: return
+        parentW = parent.width
+        parentH = parent.height
+        if (parentW <= 0 || parentH <= 0 || remoteWidth <= 0 || remoteHeight <= 0) return
+
+        // cover：取较大的缩放比，画面铺满屏幕
+        val scale = max(
+            parentH.toFloat() / remoteHeight,
+            parentW.toFloat() / remoteWidth
+        )
+        val coverW = (remoteWidth * scale).toInt().coerceAtLeast(1)
+        val coverH = (remoteHeight * scale).toInt().coerceAtLeast(1)
+
+        layoutParams = FrameLayout.LayoutParams(coverW, coverH, android.view.Gravity.CENTER)
+        // 重置变换：居中显示
+        displayScale = 1f
+        panX = 0f
+        panY = 0f
+        applyTransform()
+        logger.info("RemoteDisplayView: cover layout ${coverW}x${coverH} in ${parentW}x${parentH}")
     }
 
     // ==================== Surface 生命周期 ====================
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         logger.info("RemoteDisplayView: surface created")
-        viewWidth = holder.surfaceFrame.width()
-        viewHeight = holder.surfaceFrame.height()
-        onSurfaceChanged?.invoke(holder.surface, viewWidth, viewHeight)
+        onSurfaceChanged?.invoke(holder.surface, holder.surfaceFrame.width(), holder.surfaceFrame.height())
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         logger.info("RemoteDisplayView: surface changed ${width}x${height}")
-        viewWidth = width
-        viewHeight = height
         onSurfaceChanged?.invoke(holder.surface, width, height)
     }
 
@@ -125,10 +162,12 @@ class RemoteDisplayView(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                downX = event.x
-                downY = event.y
-                downTime = System.currentTimeMillis()
+                downRawX = event.rawX
+                downRawY = event.rawY
+                lastRawX = event.rawX
+                lastRawY = event.rawY
                 moved = false
+                longPressFired = false
                 pinchActive = false
                 wheelAccumY = 0f
                 handler.postDelayed(longPressRunnable, LONG_PRESS_MS)
@@ -147,42 +186,49 @@ class RemoteDisplayView(
 
             MotionEvent.ACTION_MOVE -> {
                 if (event.pointerCount == 1 && !pinchActive) {
-                    // 单指：鼠标移动（流式，立即响应）
-                    handler.removeCallbacks(longPressRunnable)
-                    moved = true
-                    val (rx, ry) = mapToRemote(event.x, event.y)
-                    if (rx != lastMouseX || ry != lastMouseY) {
-                        lastMouseX = rx
-                        lastMouseY = ry
-                        onMouseMove?.invoke(rx, ry)
+                    val dx = event.rawX - lastRawX
+                    val dy = event.rawY - lastRawY
+                    lastRawX = event.rawX
+                    lastRawY = event.rawY
+
+                    if (!moved && (abs(event.rawX - downRawX) > touchSlop || abs(event.rawY - downRawY) > touchSlop)) {
+                        // 超过触摸阈值：判定为拖动（平移画面），取消长按
+                        handler.removeCallbacks(longPressRunnable)
+                        moved = true
+                    }
+                    if (moved) {
+                        // 单指拖动 = 平移画面
+                        panX += dx
+                        panY += dy
+                        clampPan()
+                        applyTransform()
                     }
                 } else if (event.pointerCount >= 2) {
                     handler.removeCallbacks(longPressRunnable)
                     moved = true
                     scaleDetector.onTouchEvent(event)
 
-                    // 双指平移（clamp 到画面边界）
+                    // 双指平移
                     val cx = centerX(event)
                     val cy = centerY(event)
                     if (pinchActive) {
-                        displayTransX += cx - lastPinchCenterX
-                        displayTransY += cy - lastPinchCenterY
+                        // 双指中点位移（本地坐标差 ≈ 屏幕位移/scale，直接按屏幕位移驱动）
+                        panX += (cx - lastPinchCenterX) * displayScale
+                        panY += (cy - lastPinchCenterY) * displayScale
                         lastPinchCenterX = cx
                         lastPinchCenterY = cy
-                        clampTranslation()
+                        clampPan()
                         applyTransform()
                     }
 
-                    // 双指垂直滑动 = 滚轮（两指中点持续上/下移时触发）
+                    // 双指垂直滑动 = 滚轮
                     val dy = cy - lastPinchCenterY
-                    if (pinchActive) {
-                        wheelAccumY += dy
-                        if (abs(wheelAccumY) >= WHEEL_THRESHOLD) {
-                            val (rx, ry) = mapToRemote(cx, cy)
-                            val delta = (-wheelAccumY / WHEEL_THRESHOLD).toInt()
-                            onWheel?.invoke(rx, ry, delta)
-                            wheelAccumY = 0f
-                        }
+                    wheelAccumY += dy
+                    if (abs(wheelAccumY) >= WHEEL_THRESHOLD) {
+                        val (rx, ry) = mapToRemote(cx, cy)
+                        val delta = (-wheelAccumY / WHEEL_THRESHOLD).toInt()
+                        onWheel?.invoke(rx, ry, delta)
+                        wheelAccumY = 0f
                     }
                 }
             }
@@ -195,12 +241,10 @@ class RemoteDisplayView(
 
             MotionEvent.ACTION_UP -> {
                 handler.removeCallbacks(longPressRunnable)
-                if (event.pointerCount == 1) {
-                    if (!moved) {
-                        // 轻点 = 左键（按下+释放）
-                        val (rx, ry) = mapToRemote(event.x, event.y)
-                        onLeftClick?.invoke(rx, ry)
-                    }
+                if (event.pointerCount == 1 && !moved && !longPressFired) {
+                    // 轻点（位移小于阈值且未长按）= 左键点击
+                    val (rx, ry) = mapToRemote(event.x, event.y)
+                    onLeftClick?.invoke(rx, ry)
                 }
                 resetTouchState()
                 return true
@@ -216,36 +260,43 @@ class RemoteDisplayView(
 
     private fun resetTouchState() {
         moved = false
+        longPressFired = false
         pinchActive = false
         wheelAccumY = 0f
-        lastMouseX = Int.MIN_VALUE
-        lastMouseY = Int.MIN_VALUE
     }
 
-    // ============ 显示变换 ============
+    // ============ 显示变换（缩放/平移，pivot=0 模型） ============
 
     /**
-     * 围绕指定点缩放（ZoomLayout 风格）：pivot 为视图坐标下的缩放中心（两指中点）。
-     * 变换公式：trans' = (trans - pivot) * ratio + pivot，配合 pivotX/Y=0 的 View 变换。
+     * 围绕本地坐标点 (focusX, focusY) 缩放（ZoomLayout 风格）。
+     * 模型：显示位置 = layout位置 + pan + scale * 本地坐标。
+     * 围绕 F 缩放 r：pan' = pan + scale * F * (1 - r)。
      */
-    private fun applyScale(newScale: Float, pivotX: Float, pivotY: Float) {
+    private fun applyScale(newScale: Float, focusX: Float, focusY: Float) {
         val clamped = newScale.coerceIn(MIN_SCALE, MAX_SCALE)
         if (abs(clamped - displayScale) < 0.001f) return
-        val ratio = clamped / displayScale
-        displayTransX = (displayTransX - pivotX) * ratio + pivotX
-        displayTransY = (displayTransY - pivotY) * ratio + pivotY
+        val r = clamped / displayScale
+        panX += displayScale * focusX * (1 - r)
+        panY += displayScale * focusY * (1 - r)
         displayScale = clamped
-        clampTranslation()
+        clampPan()
         applyTransform()
     }
 
-    /** 平移 clamp：缩放后的画面边缘不越出视图范围。 */
-    private fun clampTranslation() {
-        if (viewWidth <= 0 || viewHeight <= 0) return
-        val maxX = maxOf(0f, (viewWidth * displayScale - viewWidth) / 2f)
-        val maxY = maxOf(0f, (viewHeight * displayScale - viewHeight) / 2f)
-        displayTransX = displayTransX.coerceIn(-maxX, maxX)
-        displayTransY = displayTransY.coerceIn(-maxY, maxY)
+    /** 平移 clamp：画面边缘不越入屏幕（cover 超出部分可拖入视野）。 */
+    private fun clampPan() {
+        if (parentW <= 0 || parentH <= 0) return
+        val coverW = layoutParams?.width?.toFloat() ?: return
+        val coverH = layoutParams?.height?.toFloat() ?: return
+        val layoutLeft = (parentW - coverW) / 2f
+        val layoutTop = (parentH - coverH) / 2f
+        // 内容显示区间需覆盖屏幕
+        val minPanX = parentW - layoutLeft - coverW * displayScale
+        val maxPanX = -layoutLeft
+        val minPanY = parentH - layoutTop - coverH * displayScale
+        val maxPanY = -layoutTop
+        panX = panX.coerceIn(minPanX, maxPanX)
+        panY = panY.coerceIn(minPanY, maxPanY)
     }
 
     private fun applyTransform() {
@@ -253,42 +304,23 @@ class RemoteDisplayView(
         scaleY = displayScale
         pivotX = 0f
         pivotY = 0f
-        translationX = displayTransX
-        translationY = displayTransY
-    }
-
-    /** 重置缩放/平移（会话重连或分辨率变化时）。 */
-    fun resetTransform() {
-        displayScale = 1f
-        displayTransX = 0f
-        displayTransY = 0f
-        scaleX = 1f
-        scaleY = 1f
-        translationX = 0f
-        translationY = 0f
+        translationX = panX
+        translationY = panY
     }
 
     // ============ 坐标映射 ============
 
-    /** 视图坐标 → 远程桌面坐标（先逆变换缩放/平移，再按宽高比居中映射）。 */
-    private fun mapToRemote(vx: Float, vy: Float): Pair<Int, Int> {
-        if (viewWidth <= 0 || viewHeight <= 0 || remoteWidth <= 0 || remoteHeight <= 0) {
+    /**
+     * View 本地坐标 → 远程桌面坐标。
+     * Android 触摸分发已做逆变换（event.x/y 为未缩放本地坐标），
+     * 本地尺寸比例 = 远程尺寸比例，直接线性映射。
+     */
+    private fun mapToRemote(localX: Float, localY: Float): Pair<Int, Int> {
+        if (remoteWidth <= 0 || remoteHeight <= 0 || width <= 0 || height <= 0) {
             return Pair(0, 0)
         }
-        // 逆变换：恢复未缩放/未平移的视图坐标
-        val cx = viewWidth / 2f
-        val cy = viewHeight / 2f
-        val nx = (vx - displayTransX - cx) / displayScale + cx
-        val ny = (vy - displayTransY - cy) / displayScale + cy
-
-        val scale = min(
-            viewWidth.toFloat() / remoteWidth,
-            viewHeight.toFloat() / remoteHeight
-        )
-        val offsetX = (viewWidth - remoteWidth * scale) / 2f
-        val offsetY = (viewHeight - remoteHeight * scale) / 2f
-        val rx = ((nx - offsetX) / scale).toInt().coerceIn(0, remoteWidth - 1)
-        val ry = ((ny - offsetY) / scale).toInt().coerceIn(0, remoteHeight - 1)
+        val rx = (localX / width * remoteWidth).toInt().coerceIn(0, remoteWidth - 1)
+        val ry = (localY / height * remoteHeight).toInt().coerceIn(0, remoteHeight - 1)
         return Pair(rx, ry)
     }
 
