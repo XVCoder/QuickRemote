@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -238,6 +239,35 @@ fun SettingsScreen(
                         onClick = { settings = settings.copy(colorDepth = 32) }
                     )
                 }
+
+                Divider()
+                Text("图像质量（压缩率）", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("更低带宽", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    Text(
+                        "${settings.qualityPercent}%",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text("更高画质", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                }
+                Slider(
+                    value = settings.qualityPercent.toFloat(),
+                    onValueChange = { settings = settings.copy(qualityPercent = it.toInt()) },
+                    valueRange = 20f..100f,
+                    steps = 15
+                )
+                Text(
+                    "公网连接建议降低（20-60%），局域网可保持 80-100%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

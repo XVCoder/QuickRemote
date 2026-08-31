@@ -87,7 +87,11 @@ class SessionViewModel(
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 val config = settingsStore.serverConfig.first()
-                sessionManager.start(device.device_id, device.hostname, config)
+                val appSettings = settingsStore.appSettings.first()
+                sessionManager.start(
+                    device.device_id, device.hostname, device.lan_ip,
+                    appSettings.qualityPercent, config
+                )
                 _state.value = sessionManager.state
                 _errorMessage.value = sessionManager.errorMessage
             }

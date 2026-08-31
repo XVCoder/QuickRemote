@@ -109,7 +109,9 @@ data class AppSettings(
     val customHeight: Int = 1080,
     val colorDepth: Int = 32,
     val audioRedirect: Boolean = false,
-    val autoUpdate: Boolean = true
+    val autoUpdate: Boolean = true,
+    /** 图像质量百分比（20-100），压缩率设置。 */
+    val qualityPercent: Int = 80
 )
 
 enum class ResolutionMode { AUTO, ORIGINAL, CUSTOM }

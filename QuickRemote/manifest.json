@@ -14,26 +14,26 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.19",
-    "changelog": "修复托盘退出后进程仍存活；注册上报本机局域网 IP，支持区分局域网/公网设备",
+    "latest_version": "1.1.20",
+    "changelog": "局域网直连（监听8447，同网段Android直连，低延迟）；支持图像质量/压缩率动态调整",
     "versions": {
+      "1.1.20": {
+        "zip": "https://qd.solutionx.top/d/p/5123baf5-fb4f-49b0-98fd-0a3795bb8a09"
+      },
       "1.1.19": {
         "zip": "https://qd.solutionx.top/d/p/1fcb6432-1ca7-4c09-926c-2b2699a2ee7d"
-      },
-      "1.1.18": {
-        "zip": "https://qd.solutionx.top/d/p/62eae682-bf98-4a76-ac1d-af16f0f3896a"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.24",
-    "changelog": "修复连接后秒断：方向切换不再重建页面（configChanges），会话保持不断；会话启动幂等保护",
+    "latest_version": "1.0.25",
+    "changelog": "局域网直连优先（同网段自动直连，失败回退中继）；双指缩放重构更丝滑；设置页新增图像质量滑块",
     "versions": {
+      "1.0.25": {
+        "apk": "https://qd.solutionx.top/d/p/96a7c135-8cd8-4ab2-b24a-0e80880c1735"
+      },
       "1.0.24": {
         "apk": "https://qd.solutionx.top/d/p/1f648e84-bbe0-4b41-8e86-4bef30c4c9d5"
-      },
-      "1.0.23": {
-        "apk": "https://qd.solutionx.top/d/p/f34c91fe-6fe0-4f7b-880d-26cbeca1917f"
       }
     }
   }

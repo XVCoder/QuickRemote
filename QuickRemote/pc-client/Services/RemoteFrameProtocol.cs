@@ -26,6 +26,9 @@ public static class RemoteFrameProtocol
     /// <summary>心跳，双向。</summary>
     public const byte TYPE_HEARTBEAT = 0x06;
 
+    /// <summary>局域网直连认证，Android→PC：[auth_key 64B hex ASCII]。</summary>
+    public const byte TYPE_AUTH = 0x07;
+
     /// <summary>帧头长度：1 类型 + 4 长度。</summary>
     public const int HEADER_SIZE = 5;
 

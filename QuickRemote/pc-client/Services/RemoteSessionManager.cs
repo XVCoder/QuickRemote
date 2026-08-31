@@ -29,6 +29,12 @@ public sealed class RemoteSessionManager : IDisposable
     private volatile bool _running;
     private bool _disposed;
 
+    /// <summary>编码器重建与编码的互斥锁（压缩率调整时避免竞态）。</summary>
+    private readonly object _encoderLock = new();
+
+    /// <summary>初始码率（kbps），压缩率调整时按比例缩放。</summary>
+    private readonly int _baseBitrateKbps;
+
     /// <summary>会话 ID。</summary>
     public string SessionId { get; private set; } = "";
 
@@ -40,9 +46,10 @@ public sealed class RemoteSessionManager : IDisposable
         _logger = logger;
         _fps = fps;
         _bitrateKbps = bitrateKbps;
+        _baseBitrateKbps = bitrateKbps;
     }
 
-    /// <summary>启动远程会话。</summary>
+    /// <summary>启动远程会话（中继隧道模式）。</summary>
     public async Task<bool> StartAsync(string sessionId, string serverHost, int tunnelPort)
     {
         if (_running) return false;
@@ -56,9 +63,52 @@ public sealed class RemoteSessionManager : IDisposable
             try { _frameQueue.Dispose(); } catch { }
             _frameQueue = new BlockingCollection<CapturedFrame>(3);
 
-            // 1. 连接中继隧道（传输层抽象，未来可换 P2P）
+            // 1. 连接中继隧道（传输层抽象）
             RelayRemoteTransport.LogError = msg => _logger.Warn(msg);
             _transport = await RelayRemoteTransport.ConnectAsync(serverHost, tunnelPort, sessionId);
+            return await StartWithTransportAsync(sessionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Remote session start failed: {ex.Message}", ex);
+            Cleanup();
+            return false;
+        }
+    }
+
+    /// <summary>启动远程会话（局域网直连模式，连接已由 LanListener 认证建立）。</summary>
+    public async Task<bool> StartLocalAsync(string sessionId, System.Net.Sockets.TcpClient client)
+    {
+        if (_running) return false;
+
+        SessionId = sessionId;
+        _logger.Info($"Remote session starting (LAN direct): session={sessionId}, peer={client.Client.RemoteEndPoint}");
+
+        try
+        {
+            // 0. 重建帧队列
+            try { _frameQueue.Dispose(); } catch { }
+            _frameQueue = new BlockingCollection<CapturedFrame>(3);
+
+            // 1. 包装已接受（已认证）的连接
+            LocalRemoteTransport.LogError = msg => _logger.Warn(msg);
+            _transport = LocalRemoteTransport.FromClient(client);
+            return await StartWithTransportAsync(sessionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Remote session (LAN) start failed: {ex.Message}", ex);
+            Cleanup();
+            try { client.Dispose(); } catch { }
+            return false;
+        }
+    }
+
+    /// <summary>共享启动逻辑：初始化捕获/编码器、发控制帧、启动捕获与编码线程。</summary>
+    private async Task<bool> StartWithTransportAsync(string sessionId)
+    {
+        try
+        {
             _transport.FrameReceived += OnFrameReceived;
             _transport.Disconnected += OnTransportDisconnected;
             _logger.Info("Remote transport connected");
@@ -168,7 +218,11 @@ public sealed class RemoteSessionManager : IDisposable
             while (_running)
             {
                 var frame = _frameQueue.Take(); // 阻塞等待
-                var encoded = _encoder?.EncodeFrame(frame.Data);
+                byte[]? encoded = null;
+                lock (_encoderLock)
+                {
+                    encoded = _encoder?.EncodeFrame(frame.Data);
+                }
                 if (encoded != null && encoded.Length > 0)
                     _transport?.Send(RemoteFrameProtocol.TYPE_VIDEO_FRAME, encoded);
             }
@@ -195,13 +249,74 @@ public sealed class RemoteSessionManager : IDisposable
                 _inputHandler.HandleFrame(type, data);
                 break;
             case RemoteFrameProtocol.TYPE_CONTROL:
-                _logger.Info($"Control frame received: {Encoding.UTF8.GetString(data)}");
+                HandleControlFrame(data);
                 break;
             case RemoteFrameProtocol.TYPE_HEARTBEAT:
                 break; // 心跳，无需处理
             default:
                 _logger.Warn($"Unknown frame type: 0x{type:X2}");
                 break;
+        }
+    }
+
+    /// <summary>处理 Android 端控制帧（目前支持压缩率调整）。</summary>
+    private void HandleControlFrame(byte[] data)
+    {
+        try
+        {
+            var json = System.Text.Json.JsonDocument.Parse(Encoding.UTF8.GetString(data));
+            if (json.RootElement.TryGetProperty("action", out var action) &&
+                action.GetString() == "quality" &&
+                json.RootElement.TryGetProperty("percent", out var percentProp))
+            {
+                var percent = percentProp.GetInt32();
+                _logger.Info($"Quality adjust request: {percent}%");
+                ReconfigureEncoder(percent);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Control frame parse failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 按压缩百分比重建编码器（20-100%）：
+    /// H.264 → 码率按比例缩放；JPEG → 质量按比例映射。保持当前 codec 类型。
+    /// </summary>
+    private void ReconfigureEncoder(int percent)
+    {
+        percent = Math.Clamp(percent, 20, 100);
+        var width = _capture?.Width ?? 1920;
+        var height = _capture?.Height ?? 1080;
+        var newBitrate = Math.Max(200, _baseBitrateKbps * percent / 100);
+
+        lock (_encoderLock)
+        {
+            try
+            {
+                var isH264 = _encoder?.CodecName == "h264";
+                try { _encoder?.Dispose(); } catch { }
+                _encoder = null;
+
+                if (isH264)
+                {
+                    var h264 = new H264Encoder();
+                    h264.Initialize(width, height, _fps, newBitrate);
+                    _encoder = h264;
+                }
+                else
+                {
+                    var jpeg = new JpegFrameEncoder();
+                    jpeg.Initialize(width, height, _fps, newBitrate);
+                    _encoder = jpeg;
+                }
+                _logger.Info($"Encoder reconfigured: {(_encoder?.CodecName)} at {newBitrate}kbps ({percent}%)");
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Encoder reconfigure failed: {ex.Message}");
+            }
         }
     }
 

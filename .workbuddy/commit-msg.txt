@@ -1,6 +1,15 @@
-release: 发布 PC v1.1.19 + Android v1.0.22 + relay 1.0.5
+release: 局域网直连 + 缩放重构 + 压缩设置 (PC v1.1.20 / Android v1.0.25)
 
-- PC v1.1.19: 托盘退出兜底强杀进程; SystemInfo.GetLanIp 上报局域网 IP
-- Android v1.0.22: 横屏沉浸全屏 + 双指缩放/平移 + 流式触摸操作 + 设备标注局域网/公网
-- relay 1.0.5: lan_ip 字段(注册/存储/返回/旧库迁移), manifest 已发布(arm64 待补编译)
-- about v1.0.25 部署, manifest/CHANGELOG 更新
+PC v1.1.20:
+- LanListener 监听 8447: 局域网直连认证(TYPE_AUTH+SHA256 psk), 与中继会话互斥
+- MainViewModel 启动 LanListener + netsh 防火墙入站规则(仅专用网络)
+- RemoteSessionManager 重构 StartAsync->StartWithTransportAsync + StartLocalAsync(LocalRemoteTransport)
+- 压缩率控制: TYPE_CONTROL {action:quality} -> ReconfigureEncoder 按比例重建编码器(锁保护)
+
+Android v1.0.25:
+- 局域网直连优先: LanUtils.isSameSubnet 判断同网段 -> 直连 lan_ip:8447 (TYPE_AUTH), 失败回退中继
+- 双指缩放重构(ZoomLayout 风格): 围绕捏合中心(focusX/Y)缩放 + 阻尼0.7 + 平移clamp
+- 设置页图像质量滑块(20-100%), 连接后发压缩控制帧(直连+隧道两种模式)
+- DeviceCard/连接逻辑统一走 LanUtils
+
+- manifest/CHANGELOG/about v1.0.28 已同步

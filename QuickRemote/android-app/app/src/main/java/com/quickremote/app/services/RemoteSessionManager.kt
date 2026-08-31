@@ -58,6 +58,11 @@ class RemoteSessionManager(
     var surface: Surface? = null
         private set
 
+    /** 图像质量百分比（20-100），连接后通知 PC 调整压缩率。 */
+    @Volatile
+    var qualityPercent: Int = 80
+        private set
+
     /** 已建立的隧道 Socket。 */
     private var tunnelSocket: Socket? = null
     private var input: DataInputStream? = null
@@ -76,23 +81,42 @@ class RemoteSessionManager(
     var listener: Listener? = null
 
     /**
-     * 开始一个截屏远程会话（Surface 通过 [setSurface] 提前设置）。
-     * 截屏方案不需要 Windows 凭据（不需要 NLA 认证）。
+     * 启动远程会话。连接策略：
+     * 1. 优先局域网直连：设备 lan_ip 与本机同网段时，直连 PC 的 LAN_PORT（低延迟）
+     * 2. 直连失败/不同网段：回退中继隧道（公网）
+     *
+     * @param qualityPercent 图像质量百分比（20-100），连接后通过控制帧通知 PC 调整压缩率
      */
     fun start(
         deviceId: String,
         hostname: String,
+        lanIp: String,
+        qualityPercent: Int,
         config: ServerConfig
     ) {
         this.deviceId = deviceId
         this.errorMessage = ""
         this.state = SessionState.CONNECTING
-        logger.info("Remote session starting: device=$deviceId host=$hostname")
+        this.qualityPercent = qualityPercent.coerceIn(20, 100)
+        logger.info("Remote session starting: device=$deviceId host=$hostname lan=$lanIp quality=$qualityPercent%")
         listener?.onStateChanged(state)
 
         Thread {
             try {
-                // 0. 认证
+                // 0. 局域网直连优先（同网段）
+                if (lanIp.isNotBlank() && LanUtils.isSameSubnet(lanIp)) {
+                    logger.info("Device in same subnet, trying LAN direct: $lanIp:${LanUtils.LAN_PORT}")
+                    if (tryLanDirect(lanIp, config)) return@Thread
+                    logger.warn("LAN direct failed (${errorMessage}), fallback to relay")
+                    closeSocket()
+                    errorMessage = ""
+                    state = SessionState.CONNECTING
+                    listener?.onStateChanged(state)
+                } else {
+                    logger.info("Device not in same subnet (lan=$lanIp), use relay")
+                }
+
+                // 1. 认证（中继）
                 if (relay.token.isEmpty()) {
                     if (!relay.authenticate(config)) {
                         fail("认证失败：${relay.lastError}")
@@ -100,12 +124,12 @@ class RemoteSessionManager(
                     }
                 }
 
-                // 1. 请求隧道
+                // 2. 请求隧道
                 val t = relay.requestTunnel(deviceId)
                 this.tunnel = t
                 logger.info("Tunnel established: session=${t.session_id} host=${t.tunnel_host} port=${t.tunnel_port}")
 
-                // 2. 连接隧道服务器 + 握手 [0x02] + session_id
+                // 3. 连接隧道服务器 + 握手 [0x02] + session_id
                 val host = t.tunnel_host.ifBlank { config.address.substringBefore(':') }
                 val port = if (t.tunnel_port > 0) t.tunnel_port else 8445
                 val sock = Socket(host, port)
@@ -124,16 +148,79 @@ class RemoteSessionManager(
                 out.flush()
                 logger.info("Tunnel handshake sent, proxy connected")
 
-                // 3. 启动接收线程
+                // 4. 发送压缩率控制帧（让 PC 端按设置调整编码质量）
+                sendQualityControl()
+
+                // 5. 启动接收线程
                 running = true
                 state = SessionState.CONNECTED
-                logger.info("Remote session connected")
+                logger.info("Remote session connected (relay)")
                 listener?.onStateChanged(state)
                 receiveLoop()
             } catch (e: Exception) {
                 fail("连接失败：${e.message}")
             }
         }.apply { isDaemon = true }.start()
+    }
+
+    /** 发送压缩率控制帧：{action:"quality", percent:N}。 */
+    private fun sendQualityControl() {
+        try {
+            val out = output ?: return
+            val json = "{\"action\":\"quality\",\"percent\":$qualityPercent}"
+            val data = json.toByteArray(Charsets.UTF_8)
+            synchronized(out) {
+                out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_CONTROL, data.size))
+                out.write(data)
+                out.flush()
+            }
+            logger.info("Quality control sent: $qualityPercent%")
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * 局域网直连：直连 PC 的 LAN_PORT，发送 TYPE_AUTH 认证帧。
+     * 成功进入 receiveLoop 并返回 true；失败清理并返回 false（由上层回退中继）。
+     */
+    private fun tryLanDirect(lanIp: String, config: ServerConfig): Boolean {
+        return try {
+            val sock = Socket(lanIp, LanUtils.LAN_PORT)
+            sock.tcpNoDelay = true
+            this.tunnelSocket = sock
+            input = DataInputStream(sock.getInputStream())
+            val out = DataOutputStream(sock.getOutputStream())
+            output = out
+
+            // 认证帧：TYPE_AUTH + auth_key(SHA-256 hex 小写)
+            val authKey = sha256Hex(config.preSharedKey)
+            val keyBytes = authKey.toByteArray(Charsets.UTF_8)
+            out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_AUTH, keyBytes.size))
+            out.write(keyBytes)
+            out.flush()
+            logger.info("LAN auth sent, waiting for video stream")
+
+            // 压缩率控制帧（认证后即告知 PC 编码质量）
+            sendQualityControl()
+
+            running = true
+            state = SessionState.CONNECTED
+            logger.info("Remote session connected (LAN direct)")
+            listener?.onStateChanged(state)
+            receiveLoop()
+            true
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "LAN direct failed"
+            logger.warn("LAN direct exception: ${e.message}")
+            closeSocket()
+            false
+        }
+    }
+
+    /** SHA-256 hex 小写（与 relay/PC 端 auth_key 算法一致）。 */
+    private fun sha256Hex(input: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        return md.digest(input.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 
     /** 接收线程：解析帧协议，分发视频帧/控制帧。 */

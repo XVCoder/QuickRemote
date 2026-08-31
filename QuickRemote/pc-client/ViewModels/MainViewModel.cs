@@ -21,6 +21,7 @@ public sealed class MainViewModel : BaseViewModel
     private readonly RelayConnection _relay;
     private readonly UpdateChecker _updateChecker;
     private readonly DispatcherTimer _refreshTimer;
+    private LanListener? _lanListener;
 
     // 状态卡片
     private ConnectionStatus _status = ConnectionStatus.Disconnected;
@@ -74,7 +75,57 @@ public sealed class MainViewModel : BaseViewModel
         };
         _refreshTimer.Start();
 
+        // 局域网直连监听（同网段 Android 优先直连，低延迟）
+        StartLanListener();
+
         LoadFromConfig();
+    }
+
+    /// <summary>启动局域网直连监听（8447），并尝试添加防火墙入站规则（失败仅记录）。</summary>
+    private void StartLanListener()
+    {
+        try
+        {
+            _lanListener = new LanListener(_logger, _remoteSessionManager,
+                () => ComputeAuthKey(_configService.Config.Server.PreSharedKey));
+            _lanListener.Start(LanListener.DefaultPort);
+            TryAddFirewallRule(LanListener.DefaultPort);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"LAN listener init failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>auth_key = SHA256(psk) hex 小写（与 Android/relay 一致）。</summary>
+    private static string ComputeAuthKey(string preSharedKey)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(preSharedKey));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>添加防火墙入站规则（仅专用网络，8447 端口）。失败仅警告，不影响功能。</summary>
+    private static void TryAddFirewallRule(int port)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "netsh",
+                Arguments = $"advfirewall firewall add rule name=\"QuickRemote LAN\" dir=in action=allow protocol=TCP localport={port} profile=private",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            proc?.WaitForExit(5000);
+        }
+        catch (Exception ex)
+        {
+            App.Logger?.Warn($"Add firewall rule failed: {ex.Message}");
+        }
     }
 
     // ========== 状态卡片属性 ==========
@@ -515,6 +566,7 @@ public sealed class MainViewModel : BaseViewModel
         _refreshTimer.Stop();
         _relay.Stop();
         _tunnelManager.Dispose();
+        try { _lanListener?.Dispose(); } catch { }
         Tray?.Dispose();
     }
 }

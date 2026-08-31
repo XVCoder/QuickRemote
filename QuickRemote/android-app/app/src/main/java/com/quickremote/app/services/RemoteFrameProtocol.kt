@@ -25,6 +25,9 @@ object RemoteFrameProtocol {
     /** 心跳，双向。 */
     const val TYPE_HEARTBEAT: Byte = 0x06
 
+    /** 局域网直连认证，Android→PC：[auth_key 64B hex ASCII]。 */
+    const val TYPE_AUTH: Byte = 0x07
+
     /** 帧头长度：1 类型 + 4 长度。 */
     const val HEADER_SIZE = 5
 

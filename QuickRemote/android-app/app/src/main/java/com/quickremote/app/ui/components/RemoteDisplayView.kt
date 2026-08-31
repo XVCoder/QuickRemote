@@ -66,8 +66,6 @@ class RemoteDisplayView(
     private var lastMouseY = Int.MIN_VALUE
 
     // 双指捏合
-    private var pinchStartDistance = 0f
-    private var pinchStartScale = 1f
     private var lastPinchCenterX = 0f
     private var lastPinchCenterY = 0f
     private var pinchActive = false
@@ -80,12 +78,14 @@ class RemoteDisplayView(
         onRightClick?.invoke(rx, ry)
     }
 
+    // ZoomLayout 风格：双指缩放围绕捏合中心（focusX/focusY），带阻尼平滑
     private val scaleDetector = ScaleGestureDetector(
         context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                // 以屏幕中心为基准缩放
-                applyScale(displayScale * detector.scaleFactor)
+                // 阻尼系数 0.7：缩放更平滑，避免手指微小移动引起画面抖动
+                val factor = 1f + (detector.scaleFactor - 1f) * SCALE_DAMPING
+                applyScale(displayScale * factor, detector.focusX, detector.focusY)
                 return true
             }
         }
@@ -139,8 +139,6 @@ class RemoteDisplayView(
                 if (event.pointerCount == 2) {
                     handler.removeCallbacks(longPressRunnable)
                     pinchActive = true
-                    pinchStartDistance = distance(event)
-                    pinchStartScale = displayScale
                     lastPinchCenterX = centerX(event)
                     lastPinchCenterY = centerY(event)
                     wheelAccumY = 0f
@@ -163,7 +161,7 @@ class RemoteDisplayView(
                     moved = true
                     scaleDetector.onTouchEvent(event)
 
-                    // 双指平移
+                    // 双指平移（clamp 到画面边界）
                     val cx = centerX(event)
                     val cy = centerY(event)
                     if (pinchActive) {
@@ -171,13 +169,13 @@ class RemoteDisplayView(
                         displayTransY += cy - lastPinchCenterY
                         lastPinchCenterX = cx
                         lastPinchCenterY = cy
+                        clampTranslation()
                         applyTransform()
                     }
 
-                    // 双指垂直滑动 = 滚轮（间距变化小、整体位移大时触发）
-                    val dist = distance(event)
+                    // 双指垂直滑动 = 滚轮（两指中点持续上/下移时触发）
                     val dy = cy - lastPinchCenterY
-                    if (pinchActive && dist > 0 && abs(dist - pinchStartDistance) < pinchStartDistance * 0.15f) {
+                    if (pinchActive) {
                         wheelAccumY += dy
                         if (abs(wheelAccumY) >= WHEEL_THRESHOLD) {
                             val (rx, ry) = mapToRemote(cx, cy)
@@ -226,17 +224,28 @@ class RemoteDisplayView(
 
     // ============ 显示变换 ============
 
-    private fun applyScale(newScale: Float) {
-        val clamped = newScale.coerceIn(1f, 5f)
+    /**
+     * 围绕指定点缩放（ZoomLayout 风格）：pivot 为视图坐标下的缩放中心（两指中点）。
+     * 变换公式：trans' = (trans - pivot) * ratio + pivot，配合 pivotX/Y=0 的 View 变换。
+     */
+    private fun applyScale(newScale: Float, pivotX: Float, pivotY: Float) {
+        val clamped = newScale.coerceIn(MIN_SCALE, MAX_SCALE)
         if (abs(clamped - displayScale) < 0.001f) return
-        // 围绕屏幕中心缩放
-        val cx = viewWidth / 2f
-        val cy = viewHeight / 2f
         val ratio = clamped / displayScale
-        displayTransX = (displayTransX - cx) * ratio + cx
-        displayTransY = (displayTransY - cy) * ratio + cy
+        displayTransX = (displayTransX - pivotX) * ratio + pivotX
+        displayTransY = (displayTransY - pivotY) * ratio + pivotY
         displayScale = clamped
+        clampTranslation()
         applyTransform()
+    }
+
+    /** 平移 clamp：缩放后的画面边缘不越出视图范围。 */
+    private fun clampTranslation() {
+        if (viewWidth <= 0 || viewHeight <= 0) return
+        val maxX = maxOf(0f, (viewWidth * displayScale - viewWidth) / 2f)
+        val maxY = maxOf(0f, (viewHeight * displayScale - viewHeight) / 2f)
+        displayTransX = displayTransX.coerceIn(-maxX, maxX)
+        displayTransY = displayTransY.coerceIn(-maxY, maxY)
     }
 
     private fun applyTransform() {
@@ -285,12 +294,6 @@ class RemoteDisplayView(
 
     // ============ 双指几何 ============
 
-    private fun distance(event: MotionEvent): Float {
-        val dx = event.getX(0) - event.getX(1)
-        val dy = event.getY(0) - event.getY(1)
-        return kotlin.math.sqrt(dx * dx + dy * dy)
-    }
-
     private fun centerX(event: MotionEvent): Float = (event.getX(0) + event.getX(1)) / 2f
 
     private fun centerY(event: MotionEvent): Float = (event.getY(0) + event.getY(1)) / 2f
@@ -298,5 +301,12 @@ class RemoteDisplayView(
     companion object {
         private const val LONG_PRESS_MS = 550L
         private const val WHEEL_THRESHOLD = 40f
+
+        /** 缩放范围与阻尼系数。 */
+        private const val MIN_SCALE = 1f
+        private const val MAX_SCALE = 5f
+
+        /** 缩放阻尼：手指移动 1 单位，画面只变 0.7，更平滑不易抖动。 */
+        private const val SCALE_DAMPING = 0.7f
     }
 }

@@ -45,7 +45,7 @@ fun DeviceCard(
 ) {
     val isOnline = device.status == "online"
     val statusColor = if (isOnline) StatusColor.GREEN else StatusColor.YELLOW
-    val isLan = isOnline && isSameSubnet(device.lan_ip)
+    val isLan = isOnline && com.quickremote.app.services.LanUtils.isSameSubnet(device.lan_ip)
 
     Row(
         modifier = modifier
@@ -131,44 +131,6 @@ fun DeviceCard(
             )
         }
     }
-}
-
-/** 判断远程 IP 是否与当前设备处于同一局域网（IPv4 前 3 段相同，按 /24 网段）。 */
-private fun isSameSubnet(remoteIp: String): Boolean {
-    if (remoteIp.isBlank()) return false
-    val localIp = currentLocalIp() ?: return false
-    return sameIpv4Prefix(localIp, remoteIp)
-}
-
-/** 获取本机当前 IPv4 地址（优先 Wi-Fi/移动网络接口）。 */
-private fun currentLocalIp(): String? {
-    return try {
-        val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-        for (ni in interfaces) {
-            if (!ni.isUp || ni.isLoopback) continue
-            val name = ni.name.lowercase()
-            if (name.contains("wlan") || name.contains("eth") || name.contains("rmnet") ||
-                name.contains("wifi") || name.contains("usb")) {
-                for (addr in ni.inetAddresses) {
-                    val ip = addr.hostAddress ?: continue
-                    if (ip.contains('.') && !ip.startsWith("127.")) {
-                        return ip
-                    }
-                }
-            }
-        }
-        null
-    } catch (_: Exception) {
-        null
-    }
-}
-
-/** 比较两个 IPv4 地址是否同一 /24 网段（前三段相同）。 */
-private fun sameIpv4Prefix(a: String, b: String): Boolean {
-    val pa = a.split('.')
-    val pb = b.split('.')
-    if (pa.size < 3 || pb.size < 3) return false
-    return pa[0] == pb[0] && pa[1] == pb[1] && pa[2] == pb[2]
 }
 
 /** 格式化最后心跳时间为简短显示。 */

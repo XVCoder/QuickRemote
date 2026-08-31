@@ -37,6 +37,7 @@ class SettingsStore(private val context: Context) {
         val AUDIO_REDIRECT = booleanPreferencesKey("audio_redirect")
         val AUTO_UPDATE = booleanPreferencesKey("auto_update")
         val MANIFEST_URL = stringPreferencesKey("manifest_url")
+        val QUALITY_PERCENT = intPreferencesKey("quality_percent")
     }
 
     val serverConfig: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
@@ -59,7 +60,8 @@ class SettingsStore(private val context: Context) {
             customHeight = prefs[SettingsKeys.CUSTOM_HEIGHT] ?: 1080,
             colorDepth = prefs[SettingsKeys.COLOR_DEPTH] ?: 32,
             audioRedirect = prefs[SettingsKeys.AUDIO_REDIRECT] ?: false,
-            autoUpdate = prefs[SettingsKeys.AUTO_UPDATE] ?: true
+            autoUpdate = prefs[SettingsKeys.AUTO_UPDATE] ?: true,
+            qualityPercent = prefs[SettingsKeys.QUALITY_PERCENT] ?: 80
         )
     }
 
@@ -102,6 +104,7 @@ class SettingsStore(private val context: Context) {
             prefs[SettingsKeys.COLOR_DEPTH] = settings.colorDepth
             prefs[SettingsKeys.AUDIO_REDIRECT] = settings.audioRedirect
             prefs[SettingsKeys.AUTO_UPDATE] = settings.autoUpdate
+            prefs[SettingsKeys.QUALITY_PERCENT] = settings.qualityPercent
         }
     }
 
