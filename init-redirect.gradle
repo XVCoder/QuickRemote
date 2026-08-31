@@ -1,4 +1,0 @@
-// 将 build 输出重定向到项目外新目录，绕开被锁定的 app/build
-allprojects {
-    buildDir = new File(rootDir, "../../.build-out/" + project.name)
-}
