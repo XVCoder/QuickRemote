@@ -239,9 +239,9 @@ class RemoteSessionManager(
 
                 when (type) {
                     RemoteFrameProtocol.TYPE_VIDEO_FRAME -> {
-                        // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory
+                        // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory 等比例绘制
                         if (codec == "jpeg") {
-                            jpegDecoder.decodeToSurface(data, surface)
+                            jpegDecoder.decodeToSurface(data, surface, videoWidth, videoHeight)
                         } else {
                             decoder.decode(data)
                         }

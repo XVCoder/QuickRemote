@@ -1,5 +1,10 @@
 # QuickRemote 更新记录
 
+## v1.0.29 (Android App)
+
+- 修复 JPEG 编码模式画面拉伸变形：改为等比例 height-fit 绘制（高度铺满屏幕、宽度按视频比例居中），不再依赖 View 布局尺寸
+- 修复点击坐标错位：触摸坐标改用 height-fit 逆映射，不依赖 SurfaceView 的 layout 尺寸（在 Compose AndroidView 中 layoutParams 可能不生效）
+
 ## v1.0.28 (Android App)
 
 - 修复 JPEG 编码模式连接闪退：H.264 解码器被误启动占用 Surface，与 JPEG 画布渲染冲突导致崩溃；现按编码格式正确启动/停止解码器

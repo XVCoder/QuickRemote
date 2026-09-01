@@ -143,6 +143,10 @@ class RemoteDisplayView(
         panY = 0f
         applyTransform()
         logger.info("RemoteDisplayView: height-fit layout ${coverW}x${coverH} in ${parentW}x${parentH}, baseScale=$baseScale, displayScale=$displayScale")
+        // 延迟打印 layout 后实际尺寸，确认 layoutParams 在 Compose AndroidView 中是否生效
+        post {
+            logger.info("RemoteDisplayView: after layout view=${width}x${height} lp=${layoutParams?.width}x${layoutParams?.height}")
+        }
     }
 
     // ==================== Surface 生命周期 ====================
@@ -180,6 +184,7 @@ class RemoteDisplayView(
                 pinchActive = false
                 wheelAccumY = 0f
                 handler.postDelayed(longPressRunnable, LONG_PRESS_MS)
+                logger.info("Touch DOWN: local=(${event.x},${event.y}) view=${width}x${height} lp=${layoutParams?.width}x${layoutParams?.height}")
                 return true
             }
 
@@ -324,12 +329,22 @@ class RemoteDisplayView(
      * Android 触摸分发已做逆变换（event.x/y 为未缩放本地坐标），
      * 本地尺寸比例 = 远程尺寸比例，直接线性映射。
      */
+    /**
+     * 屏幕/View 坐标 → 远程桌面坐标（height-fit 逆映射）。
+     * jpeg 等比例 height-fit 绘制：高度=屏幕高，宽度=videoW*baseScale，居中偏移 cx。
+     * 逆映射：rx=(localX-cx)/baseScale, ry=localY/baseScale。
+     * 不依赖 View 的 layout 尺寸（Compose AndroidView 中 layoutParams 可能不生效）。
+     */
     private fun mapToRemote(localX: Float, localY: Float): Pair<Int, Int> {
-        if (remoteWidth <= 0 || remoteHeight <= 0 || width <= 0 || height <= 0) {
+        if (remoteWidth <= 0 || remoteHeight <= 0 || parentW <= 0 || parentH <= 0 || baseScale <= 0f) {
+            logger.info("mapToRemote: invalid remote=${remoteWidth}x${remoteHeight} parent=${parentW}x${parentH} base=$baseScale view=${width}x${height}")
             return Pair(0, 0)
         }
-        val rx = (localX / width * remoteWidth).toInt().coerceIn(0, remoteWidth - 1)
-        val ry = (localY / height * remoteHeight).toInt().coerceIn(0, remoteHeight - 1)
+        val dispW = remoteWidth * baseScale
+        val cx = (parentW - dispW) / 2f
+        val rx = ((localX - cx) / baseScale).toInt().coerceIn(0, remoteWidth - 1)
+        val ry = (localY / baseScale).toInt().coerceIn(0, remoteHeight - 1)
+        logger.info("mapToRemote: local=($localX,$localY) parent=${parentW}x${parentH} base=$baseScale cx=$cx → remote=($rx,$ry)")
         return Pair(rx, ry)
     }
 
