@@ -176,7 +176,6 @@ class RemoteDisplayView(
                 pinchActive = false
                 wheelAccumY = 0f
                 handler.postDelayed(longPressRunnable, LONG_PRESS_MS)
-                logger.info("Touch DOWN: raw=(${event.rawX},${event.rawY}) local=(${event.x},${event.y}) view=${width}x${height}")
                 return true
             }
 
@@ -250,10 +249,7 @@ class RemoteDisplayView(
                 if (event.pointerCount == 1 && !moved && !longPressFired) {
                     // 轻点（位移小于阈值且未长按）= 左键点击
                     val (rx, ry) = mapToRemote(event.x, event.y)
-                    logger.info("Touch UP → left click: local=(${event.x},${event.y}) remote=($rx,$ry) view=${width}x${height}")
                     onLeftClick?.invoke(rx, ry)
-                } else {
-                    logger.info("Touch UP: no click (moved=$moved longPress=$longPressFired ptrs=${event.pointerCount})")
                 }
                 resetTouchState()
                 return true
