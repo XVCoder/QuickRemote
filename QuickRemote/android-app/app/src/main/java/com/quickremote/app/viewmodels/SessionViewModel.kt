@@ -103,6 +103,11 @@ class SessionViewModel(
         sessionManager.setSurface(surface)
     }
 
+    /** 更新显示变换（由 RemoteDisplayView 在 pan/scale 时回调）。 */
+    fun setTransform(panX: Float, panY: Float, scale: Float) {
+        sessionManager.setTransform(panX, panY, scale)
+    }
+
     /** 发送输入事件（阶段 5 接入触摸捕获后调用）。 */
     fun sendInput(type: Byte, data: ByteArray) {
         sessionManager.sendInput(type, data)

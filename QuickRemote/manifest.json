@@ -26,17 +26,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.29",
-    "changelog": "修复 JPEG 模式画面拉伸变形（等比例高度拉满绘制）；修复点击坐标错位（height-fit 逆映射，不依赖 View 布局尺寸）",
+    "latest_version": "1.0.30",
+    "changelog": "完善 pan/scale：jpeg 渲染传入平移与缩放，单指拖动可平移画面查看被裁切部分；点击映射改用 height-fit + pan + scale 完整逆映射",
     "versions": {
+      "1.0.30": {
+        "apk": "https://qd.solutionx.top/d/p/f056354b-4fe7-40c8-90d9-ca42ca0e9ae8"
+      },
       "1.0.29": {
         "apk": "https://qd.solutionx.top/d/p/a0114603-6823-4b5a-a05a-fdf0848fcd4e"
       },
       "1.0.28": {
         "apk": "https://qd.solutionx.top/d/p/dd1b79a0-bf27-4525-be15-384df3b2d50e"
-      },
-      "1.0.27": {
-        "apk": "https://qd.solutionx.top/d/p/c85f9a3d-a424-41c8-b026-6c453cda4fa1"
       }
     }
   }

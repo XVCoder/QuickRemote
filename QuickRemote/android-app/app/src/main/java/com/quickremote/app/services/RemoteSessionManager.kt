@@ -63,6 +63,11 @@ class RemoteSessionManager(
     var qualityPercent: Int = 80
         private set
 
+    /** 显示变换状态（由 RemoteDisplayView 回调更新，用于 jpeg 渲染与点击逆映射）。 */
+    @Volatile var panX: Float = 0f
+    @Volatile var panY: Float = 0f
+    @Volatile var displayScale: Float = 1f
+
     /** 已建立的隧道 Socket。 */
     private var tunnelSocket: Socket? = null
     private var input: DataInputStream? = null
@@ -239,9 +244,9 @@ class RemoteSessionManager(
 
                 when (type) {
                     RemoteFrameProtocol.TYPE_VIDEO_FRAME -> {
-                        // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory 等比例绘制
+                        // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory 等比例绘制（含 pan/scale）
                         if (codec == "jpeg") {
-                            jpegDecoder.decodeToSurface(data, surface, videoWidth, videoHeight)
+                            jpegDecoder.decodeToSurface(data, surface, videoWidth, videoHeight, panX, panY, displayScale)
                         } else {
                             decoder.decode(data)
                         }
@@ -305,6 +310,13 @@ class RemoteSessionManager(
                 logger.info("Surface ready but no resolution yet (waiting CONTROL frame)")
             }
         }
+    }
+
+    /** 更新显示变换（由 RemoteDisplayView 在平移/缩放时调用，jpeg 渲染使用）。 */
+    fun setTransform(panX: Float, panY: Float, scale: Float) {
+        this.panX = panX
+        this.panY = panY
+        this.displayScale = scale
     }
 
     /** 发送输入事件（阶段 5 使用）。 */

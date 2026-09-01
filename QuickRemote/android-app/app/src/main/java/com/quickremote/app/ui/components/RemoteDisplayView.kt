@@ -53,6 +53,9 @@ class RemoteDisplayView(
     /** 滚轮（远程坐标 + 滚动量）。 */
     var onWheel: ((Int, Int, Int) -> Unit)? = null
 
+    /** 显示变换变更回调（panX, panY, displayScale），用于 jpeg 渲染与点击坐标逆映射。 */
+    var onTransformChanged: ((Float, Float, Float) -> Unit)? = null
+
     // ============ 布局状态（高度拉满） ============
     private var parentW = 0
     private var parentH = 0
@@ -320,6 +323,8 @@ class RemoteDisplayView(
         pivotY = 0f
         translationX = panX
         translationY = panY
+        // 通知 sessionManager 更新 jpeg 渲染的 pan/scale
+        onTransformChanged?.invoke(panX, panY, displayScale)
     }
 
     // ============ 坐标映射 ============
@@ -330,21 +335,22 @@ class RemoteDisplayView(
      * 本地尺寸比例 = 远程尺寸比例，直接线性映射。
      */
     /**
-     * 屏幕/View 坐标 → 远程桌面坐标（height-fit 逆映射）。
-     * jpeg 等比例 height-fit 绘制：高度=屏幕高，宽度=videoW*baseScale，居中偏移 cx。
-     * 逆映射：rx=(localX-cx)/baseScale, ry=localY/baseScale。
+     * 屏幕/View 坐标 → 远程桌面坐标（height-fit + pan + scale 完整逆映射）。
+     * jpeg 等比例绘制：centerX = (canvasW - videoW*baseScale)/2 + panX，s = baseScale*scale。
+     * 逆映射：rx = (localX - centerX) / s。
      * 不依赖 View 的 layout 尺寸（Compose AndroidView 中 layoutParams 可能不生效）。
      */
     private fun mapToRemote(localX: Float, localY: Float): Pair<Int, Int> {
         if (remoteWidth <= 0 || remoteHeight <= 0 || parentW <= 0 || parentH <= 0 || baseScale <= 0f) {
-            logger.info("mapToRemote: invalid remote=${remoteWidth}x${remoteHeight} parent=${parentW}x${parentH} base=$baseScale view=${width}x${height}")
+            logger.info("mapToRemote: invalid remote=${remoteWidth}x${remoteHeight} parent=${parentW}x${parentH} base=$baseScale")
             return Pair(0, 0)
         }
-        val dispW = remoteWidth * baseScale
-        val cx = (parentW - dispW) / 2f
-        val rx = ((localX - cx) / baseScale).toInt().coerceIn(0, remoteWidth - 1)
-        val ry = (localY / baseScale).toInt().coerceIn(0, remoteHeight - 1)
-        logger.info("mapToRemote: local=($localX,$localY) parent=${parentW}x${parentH} base=$baseScale cx=$cx → remote=($rx,$ry)")
+        val s = baseScale * displayScale
+        val centerX = (parentW - remoteWidth * baseScale) / 2f + panX
+        val centerY = (parentH - parentH.toFloat() * displayScale) / 2f + panY
+        val rx = ((localX - centerX) / s).toInt().coerceIn(0, remoteWidth - 1)
+        val ry = ((localY - centerY) / s).toInt().coerceIn(0, remoteHeight - 1)
+        logger.info("mapToRemote: local=($localX,$localY) parent=${parentW}x${parentH} base=$baseScale scale=$displayScale pan=($panX,$panY) → remote=($rx,$ry)")
         return Pair(rx, ry)
     }
 

@@ -14,19 +14,28 @@ import android.view.Surface
  */
 class JpegDecoder(private val logger: Logger = Logger()) {
 
-    /** 解码 JPEG 并等比例 height-fit 渲染到 Surface。返回是否成功。 */
-    fun decodeToSurface(data: ByteArray, surface: Surface?, videoW: Int, videoH: Int): Boolean {
+    /**
+     * 解码 JPEG 并等比例 height-fit 渲染到 Surface，支持 pan/scale。
+     * - 等比例 height-fit：基础缩放 baseScale = canvas.height / videoH
+     * - 用户缩放 s = baseScale * scale（scale 由双指缩放控制）
+     * - 平移 panX/panY 为屏幕像素偏移（用户单指拖动 dx 累加）
+     * - 居中 + pan 后画 Rect，dst 超出 canvas 区域自动裁切
+     */
+    fun decodeToSurface(data: ByteArray, surface: Surface?, videoW: Int, videoH: Int, panX: Float = 0f, panY: Float = 0f, scale: Float = 1f): Boolean {
         val surf = surface ?: return false
         if (videoW <= 0 || videoH <= 0) return false
         return try {
             val bmp = BitmapFactory.decodeByteArray(data, 0, data.size) ?: return false
             val canvas = surf.lockHardwareCanvas()
-            // 等比例 height-fit：高度=buffer 高，宽度=videoW*(buffer高/videoH)，居中
             val baseScale = canvas.height.toFloat() / videoH
-            val dispW = videoW * baseScale
-            val cx = (canvas.width - dispW) / 2f
+            val s = baseScale * scale
+            val dispW = videoW * s
+            val dispH = canvas.height.toFloat() * scale
+            // 居中位置 + pan 偏移（baseScale 空间居中，即未缩放时的中心）
+            val centerX = (canvas.width - videoW * baseScale) / 2f + panX
+            val centerY = (canvas.height - canvas.height.toFloat() * scale) / 2f + panY
             canvas.drawColor(android.graphics.Color.BLACK)
-            canvas.drawBitmap(bmp, null, Rect(cx.toInt(), 0, (cx + dispW).toInt(), canvas.height), null)
+            canvas.drawBitmap(bmp, null, Rect(centerX.toInt(), centerY.toInt(), (centerX + dispW).toInt(), (centerY + dispH).toInt()), null)
             surf.unlockCanvasAndPost(canvas)
             bmp.recycle()
             true

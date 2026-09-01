@@ -273,6 +273,10 @@ fun RemoteSessionScreen(
                         onSurfaceChanged = { surface, _, _ ->
                             viewModel.setSurface(surface)
                         }
+                        // 将 pan/scale 实时同步给 sessionManager，jpeg 渲染与点击映射都依赖它
+                        onTransformChanged = { px, py, s ->
+                            viewModel.setTransform(px, py, s)
+                        }
                         onLeftClick = { x, y ->
                             sendMouseAction(viewModel, 1, x, y)  // 左按下
                             sendMouseAction(viewModel, 2, x, y)  // 左释放

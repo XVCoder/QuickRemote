@@ -1,5 +1,11 @@
 # QuickRemote 更新记录
 
+## v1.0.30 (Android App)
+
+- 完善 pan/scale：jpeg 渲染传入平移与缩放，单指拖动真正可平移画面查看被裁切部分，双指缩放同步
+- 点击坐标映射改用完整 height-fit + pan + scale 逆映射，拖动/缩放后点击位置依然精准
+- 显示变换通过回调从 RemoteDisplayView 同步到 RemoteSessionManager 的 jpeg 渲染
+
 ## v1.0.29 (Android App)
 
 - 修复 JPEG 编码模式画面拉伸变形：改为等比例 height-fit 绘制（高度铺满屏幕、宽度按视频比例居中），不再依赖 View 布局尺寸
