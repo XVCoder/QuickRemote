@@ -19,6 +19,13 @@ agent_created: true
 - **PC**：`dotnet publish pc-client/QuickRemote.PCClient.csproj -c Release -r win-x64 --self-contained false -o publish`，然后用 python zipfile 打**扁平 ZIP**（排除 .pdb）到 `QuickRemote/QuickRemote-PCClient-v{ver}.zip`。
   - ⚠️ 沙箱 safe-delete 钩子会拦截 build-pcclient.ps1 内的 `Remove-Item`（目标不存在时抛 SAFE_DELETE_FAIL_CLOSED 中断脚本）。**绕过方式：先用 bash `rm -rf` 清理 publish/publish-staging，再分步执行 publish + python 打包**，不跑 ps1 脚本。
 - **Android**：`./gradlew.bat :app:assembleRelease`，产物 `app/build/outputs/apk/release/app-release.apk`（已签名）。aapt 验证 `versionCode/versionName` + apksigner 验证签名后重命名。
+  - ⚠️ **环境坑（2026-08-31 实测）**：wrapper lck 被系统锁死 + native dll 加载失败 + build-cache-1 写入拒绝访问 → 用**直接 gradle.bat + 独立 GRADLE_USER_HOME + `--no-build-cache`** 可稳定编译：
+    ```bash
+    GRADLE_USER_HOME=C:/Users/xiong/.gradle-home2 \
+    /c/Users/xiong/.gradle/wrapper/dists/gradle-8.9-bin/78qddjpeqn5v6yec3xb8kv9ca/gradle-8.9/bin/gradle.bat \
+    --project-cache-dir C:/Users/xiong/.gradle-proj-cache2 --no-build-cache :app:assembleRelease
+    ```
+    约 7-8 分钟。若首次全量建议先 `--rerun-tasks`（Kotlin 增量缓存损坏会导致 Unresolved theme 符号），热缓存后再 `--no-build-cache` 增量。
 - **relay**：Go 交叉编译 amd64/arm64（见下文步骤 2.1）。
 
 ### 1.1 updater（update.exe，PC 自动更新依赖）
