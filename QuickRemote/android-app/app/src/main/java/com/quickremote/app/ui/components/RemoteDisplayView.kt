@@ -16,8 +16,9 @@ import kotlin.math.max
 /**
  * 远程桌面渲染视图（截屏方案）。
  *
- * 布局为 cover 模式：画面按比例缩放到铺满屏幕（高度填满/宽度填满取大者），
- * 超出屏幕的部分被裁掉，通过拖动查看。
+ * 布局为「高度拉满」模式（类似相册里缩放打开的照片）：
+ * 画面按「父高 / 远程高」缩放，高度铺满屏幕，宽度按同比例（横屏视频宽度超出屏幕，
+ * 可左右拖动查看未显示部分；宽度不足时左右留白居中）。用户双指缩放倍数在布局后保持。
  *
  * 手势：
  * - 单指轻点（位移小于触摸阈值）= 左键点击
@@ -52,9 +53,12 @@ class RemoteDisplayView(
     /** 滚轮（远程坐标 + 滚动量）。 */
     var onWheel: ((Int, Int, Int) -> Unit)? = null
 
-    // ============ 布局状态（cover） ============
+    // ============ 布局状态（高度拉满） ============
     private var parentW = 0
     private var parentH = 0
+
+    // 基础缩放比（父高 / 远程高），布局时计算；displayScale 叠加在它之上用于用户双指缩放
+    private var baseScale = 1f
 
     // ============ 显示变换 ============
     private var displayScale = 1f
@@ -105,39 +109,40 @@ class RemoteDisplayView(
         isFocusable = true
     }
 
-    // ==================== 远程尺寸与 cover 布局 ====================
+    // ==================== 远程尺寸与高度拉满布局 ====================
 
-    /** 设置远程分辨率并按 cover 模式重布局（高度/宽度填满，超出裁掉）。 */
+    /** 设置远程分辨率并按「高度拉满」模式重布局。 */
     fun setRemoteSize(w: Int, h: Int) {
         if (w <= 0 || h <= 0 || (w == remoteWidth && h == remoteHeight)) return
         remoteWidth = w
         remoteHeight = h
-        logger.info("RemoteDisplayView: remote size $w x $h, relayout cover")
-        post { relayoutCover() }
+        logger.info("RemoteDisplayView: remote size $w x $h, relayout height-fit")
+        post { relayoutHeightFit() }
     }
 
-    /** 按 cover 模式重布局：max(高度比, 宽度比) 缩放，居中，超出部分裁掉。 */
-    private fun relayoutCover() {
+    /**
+     * 按「高度拉满」重布局（类似相册里缩放打开的照片）：
+     * baseScale = 父高 / 远程高，画面高度铺满屏幕，宽度按同比例
+     * （横屏视频宽度超出屏幕，可左右拖动查看未显示部分；宽度不足时左右留白居中）。
+     * 居中显示；保留用户已设定的双指缩放倍数 [displayScale]，仅重置平移。
+     */
+    private fun relayoutHeightFit() {
         val parent = parent as? android.view.ViewGroup ?: return
         parentW = parent.width
         parentH = parent.height
         if (parentW <= 0 || parentH <= 0 || remoteWidth <= 0 || remoteHeight <= 0) return
 
-        // cover：取较大的缩放比，画面铺满屏幕
-        val scale = max(
-            parentH.toFloat() / remoteHeight,
-            parentW.toFloat() / remoteWidth
-        )
-        val coverW = (remoteWidth * scale).toInt().coerceAtLeast(1)
-        val coverH = (remoteHeight * scale).toInt().coerceAtLeast(1)
+        // 高度拉满：缩放比 = 父高 / 远程高
+        baseScale = parentH.toFloat() / remoteHeight
+        val coverW = (remoteWidth * baseScale).toInt().coerceAtLeast(1)
+        val coverH = (remoteHeight * baseScale).toInt().coerceAtLeast(1)
 
         layoutParams = FrameLayout.LayoutParams(coverW, coverH, android.view.Gravity.CENTER)
-        // 重置变换：居中显示
-        displayScale = 1f
+        // 重置平移（居中）；保留用户缩放倍数 displayScale
         panX = 0f
         panY = 0f
         applyTransform()
-        logger.info("RemoteDisplayView: cover layout ${coverW}x${coverH} in ${parentW}x${parentH}")
+        logger.info("RemoteDisplayView: height-fit layout ${coverW}x${coverH} in ${parentW}x${parentH}, baseScale=$baseScale, displayScale=$displayScale")
     }
 
     // ==================== Surface 生命周期 ====================
@@ -171,6 +176,7 @@ class RemoteDisplayView(
                 pinchActive = false
                 wheelAccumY = 0f
                 handler.postDelayed(longPressRunnable, LONG_PRESS_MS)
+                logger.info("Touch DOWN: raw=(${event.rawX},${event.rawY}) local=(${event.x},${event.y}) view=${width}x${height}")
                 return true
             }
 
@@ -244,7 +250,10 @@ class RemoteDisplayView(
                 if (event.pointerCount == 1 && !moved && !longPressFired) {
                     // 轻点（位移小于阈值且未长按）= 左键点击
                     val (rx, ry) = mapToRemote(event.x, event.y)
+                    logger.info("Touch UP → left click: local=(${event.x},${event.y}) remote=($rx,$ry) view=${width}x${height}")
                     onLeftClick?.invoke(rx, ry)
+                } else {
+                    logger.info("Touch UP: no click (moved=$moved longPress=$longPressFired ptrs=${event.pointerCount})")
                 }
                 resetTouchState()
                 return true
