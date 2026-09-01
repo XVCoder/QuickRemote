@@ -155,6 +155,10 @@ class RemoteDisplayView(
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         logger.info("RemoteDisplayView: surface changed ${width}x${height}")
         onSurfaceChanged?.invoke(holder.surface, width, height)
+        // surface 尺寸变化（如沉浸全屏后内容区增高）后重新按高度拉满布局，避免画面下方留空
+        if (remoteWidth > 0 && remoteHeight > 0) {
+            post { relayoutHeightFit() }
+        }
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {

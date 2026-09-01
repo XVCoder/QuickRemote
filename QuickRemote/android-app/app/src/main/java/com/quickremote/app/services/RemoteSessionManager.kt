@@ -265,11 +265,18 @@ class RemoteSessionManager(
             val w = json.optInt("width", 1280)
             val h = json.optInt("height", 720)
             val c = json.optString("codec", "h264")
+            val prevCodec = codec
             // 先保存分辨率（即使 surface 未就绪也不丢失），setSurface 时用最新值
             videoWidth = w
             videoHeight = h
             codec = c
             val surf = surface
+            // 切到 jpeg：必须停止 H.264 解码器，否则 MediaCodec 占用 surface，
+            // jpeg 的 lockHardwareCanvas 与之冲突会导致 native 崩溃（无 Java 异常）
+            if (prevCodec != "jpeg" && c == "jpeg") {
+                decoder.stop()
+                logger.info("Control: codec switched to jpeg, H264 decoder stopped to free surface")
+            }
             if (surf != null && c != "jpeg") {
                 // JPEG 不需要预启动解码器（BitmapFactory 直接画）；H.264 需要 MediaCodec
                 decoder.start(surf, w, h)
@@ -287,10 +294,13 @@ class RemoteSessionManager(
     fun setSurface(surface: Surface?) {
         this.surface = surface
         if (surface != null && state == SessionState.CONNECTED) {
-            // 会话已连接时，surface 就绪即用已保存的分辨率启动解码器
-            if (videoWidth > 0 && videoHeight > 0) {
+            // surface 就绪：H.264 模式才启动 MediaCodec；jpeg 模式用 lockHardwareCanvas 直绘，
+            // 误启动 H264 会占用 surface 导致 jpeg 渲染崩溃
+            if (videoWidth > 0 && videoHeight > 0 && codec != "jpeg") {
                 decoder.start(surface, videoWidth, videoHeight)
-                logger.info("Surface ready, decoder started: ${videoWidth}x${videoHeight}")
+                logger.info("Surface ready, H264 decoder started: ${videoWidth}x${videoHeight}")
+            } else if (codec == "jpeg") {
+                logger.info("Surface ready, jpeg mode (no H264 decoder): ${videoWidth}x${videoHeight}")
             } else {
                 logger.info("Surface ready but no resolution yet (waiting CONTROL frame)")
             }

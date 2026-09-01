@@ -26,17 +26,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.27",
-    "changelog": "竖屏画面布局优化：高度拉满屏幕，宽度按同比例缩放（类似相册中缩放打开的照片），左右拖动查看未显示部分",
+    "latest_version": "1.0.28",
+    "changelog": "修复 JPEG 编码模式连接闪退（H.264 解码器误占用 Surface 与 JPEG 画布冲突）；修复沉浸全屏后画面下方留空",
     "versions": {
+      "1.0.28": {
+        "apk": "https://qd.solutionx.top/d/p/dd1b79a0-bf27-4525-be15-384df3b2d50e"
+      },
       "1.0.27": {
         "apk": "https://qd.solutionx.top/d/p/c85f9a3d-a424-41c8-b026-6c453cda4fa1"
       },
       "1.0.26": {
         "apk": "https://qd.solutionx.top/d/p/a33311ae-48ee-4ab9-b58f-f38b817e596a"
-      },
-      "1.0.25": {
-        "apk": "https://qd.solutionx.top/d/p/96a7c135-8cd8-4ab2-b24a-0e80880c1735"
       }
     }
   }
