@@ -51,11 +51,16 @@ class SessionViewModel(
     private val _videoHeight = MutableStateFlow(0)
     val videoHeight: StateFlow<Int> = _videoHeight.asStateFlow()
 
+    /** 连接模式：局域网直连 / 公网中继。 */
+    private val _connectionMode = MutableStateFlow(RemoteSessionManager.ConnectionMode.RELAY)
+    val connectionMode: StateFlow<RemoteSessionManager.ConnectionMode> = _connectionMode.asStateFlow()
+
     /** 会话状态变更监听器。 */
     private val stateListener = object : RemoteSessionManager.Listener {
         override fun onStateChanged(state: RemoteSessionManager.SessionState) {
             _state.value = state
             _errorMessage.value = sessionManager.errorMessage
+            _connectionMode.value = sessionManager.connectionMode
             if (state == RemoteSessionManager.SessionState.DISCONNECTED ||
                 state == RemoteSessionManager.SessionState.IDLE) {
                 _tunnel.value = null
@@ -101,11 +106,6 @@ class SessionViewModel(
     /** 设置渲染 Surface（由 UI 层在 SurfaceView 创建时调用）。 */
     fun setSurface(surface: Surface?) {
         sessionManager.setSurface(surface)
-    }
-
-    /** 更新显示变换（由 RemoteDisplayView 在 pan/scale 时回调）。 */
-    fun setTransform(panX: Float, panY: Float, scale: Float) {
-        sessionManager.setTransform(panX, panY, scale)
     }
 
     /** 发送输入事件（阶段 5 接入触摸捕获后调用）。 */

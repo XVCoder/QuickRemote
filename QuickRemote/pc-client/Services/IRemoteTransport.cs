@@ -18,4 +18,10 @@ public interface IRemoteTransport : IDisposable
 
     /// <summary>是否已连接。</summary>
     bool IsConnected { get; }
+
+    /// <summary>已发送字节总数（含帧头，UI 流量统计）。</summary>
+    long BytesSent { get; }
+
+    /// <summary>已接收字节总数（含帧头，UI 流量统计）。</summary>
+    long BytesReceived { get; }
 }

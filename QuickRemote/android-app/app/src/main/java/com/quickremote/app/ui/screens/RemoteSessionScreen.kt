@@ -3,6 +3,7 @@ package com.quickremote.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -42,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -86,6 +89,7 @@ fun RemoteSessionScreen(
     val isKeyboardVisible by viewModel.isKeyboardVisible.collectAsState()
     val videoWidth by viewModel.videoWidth.collectAsState()
     val videoHeight by viewModel.videoHeight.collectAsState()
+    val connectionMode by viewModel.connectionMode.collectAsState()
 
     // 进入页面自动开始截屏远程会话（无需凭据）
     LaunchedEffect(device.device_id) {
@@ -202,9 +206,12 @@ fun RemoteSessionScreen(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            if (videoWidth > 0) "$videoWidth x $videoHeight" else "远程桌面",
+                            if (videoWidth > 0) {
+                                "$videoWidth x $videoHeight · " +
+                                    if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) "局域网直连" else "公网中继"
+                            } else "远程桌面",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
+                            color = if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) Success else TextMuted
                         )
                     }
                     IconButton(onClick = { viewModel.disconnect(); onBack() }) {
@@ -259,23 +266,39 @@ fun RemoteSessionScreen(
             }
         }
     ) { padding ->
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
                 .padding(padding)
         ) {
+            val density = LocalDensity.current
+            val parentWpx = constraints.maxWidth
+            val parentHpx = constraints.maxHeight
+
+            // 高度拉满模式（类似相册缩放打开的照片）：缩放比 = 父高/远程高，
+            // 画面高度铺满、宽度同比例（横屏远程宽度超出屏幕，View 超出父边界可左右拖动）。
+            // 用 requiredSize 强制子项尺寸（Compose 会忽略子 View 内部设置的 layoutParams）。
+            val (coverWdp, coverHdp) = remember(videoWidth, videoHeight, parentWpx, parentHpx, density) {
+                if (videoWidth > 0 && videoHeight > 0 && parentWpx > 0 && parentHpx > 0) {
+                    val baseScale = parentHpx.toFloat() / videoHeight
+                    val coverW = (videoWidth * baseScale).toInt().coerceAtLeast(1)
+                    val coverH = (videoHeight * baseScale).toInt().coerceAtLeast(1)
+                    with(density) { coverW.toDp() to coverH.toDp() }
+                } else {
+                    with(density) { parentWpx.toDp() to parentHpx.toDp() }
+                }
+            }
+
             // 渲染视图（MediaCodec 解码渲染目标）
             AndroidView(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .requiredSize(coverWdp, coverHdp),
                 factory = { ctx ->
                     RemoteDisplayView(context = ctx).apply {
                         onSurfaceChanged = { surface, _, _ ->
                             viewModel.setSurface(surface)
-                        }
-                        // 将 pan/scale 实时同步给 sessionManager，jpeg 渲染与点击映射都依赖它
-                        onTransformChanged = { px, py, s ->
-                            viewModel.setTransform(px, py, s)
                         }
                         onLeftClick = { x, y ->
                             sendMouseAction(viewModel, 1, x, y)  // 左按下
@@ -289,7 +312,8 @@ fun RemoteSessionScreen(
                     }
                 },
                 update = { view ->
-                    // 分辨率变化时按 cover 模式重布局（高度填满，超出裁掉）
+                    // 可视区域（clamp 依赖）与远程分辨率变化时同步
+                    view.setViewport(parentWpx, parentHpx)
                     if (videoWidth > 0 && videoHeight > 0) {
                         view.setRemoteSize(videoWidth, videoHeight)
                     }

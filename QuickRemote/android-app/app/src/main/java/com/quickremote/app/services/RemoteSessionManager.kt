@@ -63,10 +63,12 @@ class RemoteSessionManager(
     var qualityPercent: Int = 80
         private set
 
-    /** 显示变换状态（由 RemoteDisplayView 回调更新，用于 jpeg 渲染与点击逆映射）。 */
-    @Volatile var panX: Float = 0f
-    @Volatile var panY: Float = 0f
-    @Volatile var displayScale: Float = 1f
+    /** 连接模式：lan=局域网直连，relay=公网中继。 */
+    enum class ConnectionMode { LAN, RELAY }
+
+    @Volatile
+    var connectionMode: ConnectionMode = ConnectionMode.RELAY
+        private set
 
     /** 已建立的隧道 Socket。 */
     private var tunnelSocket: Socket? = null
@@ -158,6 +160,7 @@ class RemoteSessionManager(
 
                 // 5. 启动接收线程
                 running = true
+                connectionMode = ConnectionMode.RELAY
                 state = SessionState.CONNECTED
                 logger.info("Remote session connected (relay)")
                 listener?.onStateChanged(state)
@@ -209,6 +212,7 @@ class RemoteSessionManager(
             sendQualityControl()
 
             running = true
+            connectionMode = ConnectionMode.LAN
             state = SessionState.CONNECTED
             logger.info("Remote session connected (LAN direct)")
             listener?.onStateChanged(state)
@@ -244,9 +248,10 @@ class RemoteSessionManager(
 
                 when (type) {
                     RemoteFrameProtocol.TYPE_VIDEO_FRAME -> {
-                        // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory 等比例绘制（含 pan/scale）
+                        // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory 铺满画布
+                        // （pan/scale 由 View 变换实现，画布内不叠加）
                         if (codec == "jpeg") {
-                            jpegDecoder.decodeToSurface(data, surface, videoWidth, videoHeight, panX, panY, displayScale)
+                            jpegDecoder.decodeToSurface(data, surface)
                         } else {
                             decoder.decode(data)
                         }
@@ -310,13 +315,6 @@ class RemoteSessionManager(
                 logger.info("Surface ready but no resolution yet (waiting CONTROL frame)")
             }
         }
-    }
-
-    /** 更新显示变换（由 RemoteDisplayView 在平移/缩放时调用，jpeg 渲染使用）。 */
-    fun setTransform(panX: Float, panY: Float, scale: Float) {
-        this.panX = panX
-        this.panY = panY
-        this.displayScale = scale
     }
 
     /** 发送输入事件（阶段 5 使用）。 */

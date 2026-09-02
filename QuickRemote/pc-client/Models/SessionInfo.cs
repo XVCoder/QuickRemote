@@ -22,6 +22,9 @@ public class SessionInfo : INotifyPropertyChanged
     /// <summary>客户端 IP（隧道对端地址，可为空）</summary>
     public string ClientIp { get; set; } = string.Empty;
 
+    /// <summary>连接模式描述（局域网直连 / 公网中继 / RDP 隧道）</summary>
+    public string ModeText { get; set; } = "RDP Active";
+
     public DateTime StartTime
     {
         get => _startTime;

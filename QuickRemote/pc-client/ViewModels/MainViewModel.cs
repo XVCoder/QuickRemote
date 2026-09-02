@@ -64,6 +64,8 @@ public sealed class MainViewModel : BaseViewModel
         _relay.PropertyChanged += OnRelayPropertyChanged;
         _tunnelManager.SessionStarted += OnSessionStarted;
         _tunnelManager.SessionEnded += OnSessionEnded;
+        _remoteSessionManager.SessionStarted += OnSessionStarted;
+        _remoteSessionManager.SessionEnded += OnSessionEnded;
         _updateChecker.PropertyChanged += OnUpdateCheckerPropertyChanged;
 
         // 刷新定时器：更新心跳/时长文本
@@ -105,7 +107,8 @@ public sealed class MainViewModel : BaseViewModel
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    /// <summary>添加防火墙入站规则（仅专用网络，8447 端口）。失败仅警告，不影响功能。</summary>
+    /// <summary>添加防火墙入站规则（8447 端口，所有网络配置文件）。失败仅警告，不影响功能。
+    /// 不限定 profile：网络被识别为"公用"时 private 规则不生效，会导致局域网直连失败回退中继。</summary>
     private static void TryAddFirewallRule(int port)
     {
         try
@@ -113,7 +116,7 @@ public sealed class MainViewModel : BaseViewModel
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "netsh",
-                Arguments = $"advfirewall firewall add rule name=\"QuickRemote LAN\" dir=in action=allow protocol=TCP localport={port} profile=private",
+                Arguments = $"advfirewall firewall add rule name=\"QuickRemote LAN\" dir=in action=allow protocol=TCP localport={port}",
                 CreateNoWindow = true,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,

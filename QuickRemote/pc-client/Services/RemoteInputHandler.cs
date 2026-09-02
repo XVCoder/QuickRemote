@@ -131,7 +131,8 @@ public sealed class RemoteInputHandler
                 {
                     dx = dx,
                     dy = dy,
-                    dwFlags = flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                    // 必须带 MOVE：不带时 SendInput 忽略 dx/dy，点击会落在旧光标位置
+                    dwFlags = flags | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     dwExtraInfo = IntPtr.Zero
                 }
             }
@@ -181,7 +182,8 @@ public sealed class RemoteInputHandler
                     dx = dx,
                     dy = dy,
                     mouseData = unchecked((uint)delta),
-                    dwFlags = MOUSEEVENTF_WHEEL | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                    // 带 MOVE 保证滚轮事件同时把光标定位到指定坐标
+                    dwFlags = MOUSEEVENTF_WHEEL | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     dwExtraInfo = IntPtr.Zero
                 }
             }

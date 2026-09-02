@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
 using System.Text;
+using QuickRemote.PCClient.Models;
 
 namespace QuickRemote.PCClient.Services;
 
@@ -29,6 +31,9 @@ public sealed class RemoteSessionManager : IDisposable
     private volatile bool _running;
     private bool _disposed;
 
+    /** 当前会话信息（启动成功后创建，UI 会话列表展示用）。 */
+    private SessionInfo? _sessionInfo;
+
     /// <summary>编码器重建与编码的互斥锁（压缩率调整时避免竞态）。</summary>
     private readonly object _encoderLock = new();
 
@@ -38,8 +43,11 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>会话 ID。</summary>
     public string SessionId { get; private set; } = "";
 
-    /// <summary>会话结束时触发。</summary>
-    public event Action? SessionEnded;
+    /// <summary>会话建立时触发（UI 会话列表新增）。</summary>
+    public event Action<SessionInfo>? SessionStarted;
+
+    /// <summary>会话结束时触发（UI 会话列表移除）。</summary>
+    public event Action<string>? SessionEnded;
 
     public RemoteSessionManager(Logger logger, int fps = 15, int bitrateKbps = 4000)
     {
@@ -66,7 +74,7 @@ public sealed class RemoteSessionManager : IDisposable
             // 1. 连接中继隧道（传输层抽象）
             RelayRemoteTransport.LogError = msg => _logger.Warn(msg);
             _transport = await RelayRemoteTransport.ConnectAsync(serverHost, tunnelPort, sessionId);
-            return await StartWithTransportAsync(sessionId);
+            return await StartWithTransportAsync(sessionId, "公网中继", "");
         }
         catch (Exception ex)
         {
@@ -93,7 +101,8 @@ public sealed class RemoteSessionManager : IDisposable
             // 1. 包装已接受（已认证）的连接
             LocalRemoteTransport.LogError = msg => _logger.Warn(msg);
             _transport = LocalRemoteTransport.FromClient(client);
-            return await StartWithTransportAsync(sessionId);
+            var peerIp = (client.Client.RemoteEndPoint as IPEndPoint)?.Address.ToString() ?? "";
+            return await StartWithTransportAsync(sessionId, "局域网直连", peerIp);
         }
         catch (Exception ex)
         {
@@ -105,11 +114,14 @@ public sealed class RemoteSessionManager : IDisposable
     }
 
     /// <summary>共享启动逻辑：初始化捕获/编码器、发控制帧、启动捕获与编码线程。</summary>
-    private async Task<bool> StartWithTransportAsync(string sessionId)
+    /// <param name="sessionId">会话 ID</param>
+    /// <param name="modeText">连接模式描述（局域网直连 / 公网中继）</param>
+    /// <param name="clientIp">客户端 IP（局域网直连时有值）</param>
+    private async Task<bool> StartWithTransportAsync(string sessionId, string modeText, string clientIp)
     {
         try
         {
-            _transport.FrameReceived += OnFrameReceived;
+            _transport!.FrameReceived += OnFrameReceived;
             _transport.Disconnected += OnTransportDisconnected;
             _logger.Info("Remote transport connected");
 
@@ -153,6 +165,18 @@ public sealed class RemoteSessionManager : IDisposable
             _encodeThread = new Thread(EncodeLoop) { IsBackground = true };
             _encodeThread.Start();
 
+            // 6. 会话建立：通知 UI（会话列表展示）
+            _sessionInfo = new SessionInfo
+            {
+                SessionId = sessionId,
+                DeviceName = "Android 客户端",
+                ClientIp = clientIp,
+                ModeText = modeText,
+                StartTime = DateTime.Now,
+                IsActive = true
+            };
+            SessionStarted?.Invoke(_sessionInfo);
+
             _logger.Info("Remote session started");
             return true;
         }
@@ -186,10 +210,11 @@ public sealed class RemoteSessionManager : IDisposable
                     }
                 }
 
-                // 周期性心跳（5 秒），保持连接活性
+                // 周期性心跳（5 秒），保持连接活性；同时刷新流量统计
                 if ((DateTime.UtcNow - lastControlSent).TotalSeconds >= 5)
                 {
                     _transport?.Send(RemoteFrameProtocol.TYPE_HEARTBEAT, Array.Empty<byte>());
+                    UpdateTrafficStats();
                     lastControlSent = DateTime.UtcNow;
                 }
             }
@@ -207,7 +232,16 @@ public sealed class RemoteSessionManager : IDisposable
 
         _logger.Info("Capture loop ended");
         Cleanup();
-        SessionEnded?.Invoke();
+    }
+
+    /// <summary>把传输层字节计数同步到会话信息（UI 流量展示）。</summary>
+    private void UpdateTrafficStats()
+    {
+        var info = _sessionInfo;
+        var transport = _transport;
+        if (info == null || transport == null) return;
+        info.BytesSent = transport.BytesSent;
+        info.BytesReceived = transport.BytesReceived;
     }
 
     /// <summary>编码线程：消费帧队列 → 编码 → 发送。</summary>
@@ -345,6 +379,14 @@ public sealed class RemoteSessionManager : IDisposable
             _transport.Disconnected -= OnTransportDisconnected;
             try { _transport.Dispose(); } catch { }
             _transport = null;
+        }
+        // 会话已对外发布（SessionStarted）时，通知 UI 移除（所有结束路径都经过 Cleanup）
+        var info = _sessionInfo;
+        _sessionInfo = null;
+        if (info != null)
+        {
+            info.IsActive = false;
+            SessionEnded?.Invoke(info.SessionId);
         }
     }
 

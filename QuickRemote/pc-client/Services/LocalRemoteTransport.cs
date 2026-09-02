@@ -26,6 +26,15 @@ public sealed class LocalRemoteTransport : IRemoteTransport
     /// <inheritdoc/>
     public bool IsConnected => _running && _client.Connected;
 
+    /// <inheritdoc/>
+    public long BytesSent => _bytesSent;
+
+    /// <inheritdoc/>
+    public long BytesReceived => _bytesReceived;
+
+    private long _bytesSent;
+    private long _bytesReceived;
+
     private LocalRemoteTransport(TcpClient client, NetworkStream stream)
     {
         _client = client;
@@ -51,6 +60,7 @@ public sealed class LocalRemoteTransport : IRemoteTransport
             _stream.Write(header, 0, header.Length);
             if (data.Length > 0) _stream.Write(data, 0, data.Length);
             _stream.Flush();
+            _bytesSent += header.Length + data.Length;
         }
     }
 
@@ -70,6 +80,7 @@ public sealed class LocalRemoteTransport : IRemoteTransport
                 var data = new byte[len];
                 if (len > 0 && !ReadExactly(data, len)) break;
 
+                _bytesReceived += header.Length + len;
                 FrameReceived?.Invoke(type, data);
             }
         }

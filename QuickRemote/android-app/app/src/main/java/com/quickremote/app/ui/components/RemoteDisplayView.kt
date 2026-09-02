@@ -8,17 +8,18 @@ import android.view.ScaleGestureDetector
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.ViewConfiguration
-import android.widget.FrameLayout
 import com.quickremote.app.services.Logger
 import kotlin.math.abs
-import kotlin.math.max
 
 /**
  * 远程桌面渲染视图（截屏方案）。
  *
- * 布局为「高度拉满」模式（类似相册里缩放打开的照片）：
- * 画面按「父高 / 远程高」缩放，高度铺满屏幕，宽度按同比例（横屏视频宽度超出屏幕，
- * 可左右拖动查看未显示部分；宽度不足时左右留白居中）。用户双指缩放倍数在布局后保持。
+ * 尺寸由 Compose 层控制（RemoteSessionScreen 用 requiredSize 按「高度拉满」模式
+ * 计算等比 cover 尺寸），本 View 实际布局尺寸与远程画面同宽高比，
+ * 视频（H.264/JPEG）直接铺满 Surface 即无变形。
+ *
+ * pan/scale 只通过 View 变换（translation/scale，pivot=0）实现，不与画布绘制叠加，
+ * 避免双重变换导致拖动 2 倍速、边缘拖出黑边、点击坐标错位。
  *
  * 手势：
  * - 单指轻点（位移小于触摸阈值）= 左键点击
@@ -28,14 +29,14 @@ import kotlin.math.max
  * - 双指拖动 = 平移画面
  * - 双指垂直滑动 = 滚轮
  *
- * 触摸坐标（View 本地坐标，Android 自动做逆变换）按视频尺寸线性映射为远程坐标。
+ * 触摸坐标（View 本地坐标，Android 分发时自动做逆变换）按 View 尺寸线性映射为远程坐标。
  */
 class RemoteDisplayView(
     context: Context,
     private val logger: Logger = Logger()
 ) : SurfaceView(context), SurfaceHolder.Callback {
 
-    /** 远程桌面分辨率（收到控制帧后由上层设置，触发 cover 重布局）。 */
+    /** 远程桌面分辨率（收到控制帧后由上层设置）。 */
     var remoteWidth: Int = 0
         private set
     var remoteHeight: Int = 0
@@ -53,15 +54,10 @@ class RemoteDisplayView(
     /** 滚轮（远程坐标 + 滚动量）。 */
     var onWheel: ((Int, Int, Int) -> Unit)? = null
 
-    /** 显示变换变更回调（panX, panY, displayScale），用于 jpeg 渲染与点击坐标逆映射。 */
-    var onTransformChanged: ((Float, Float, Float) -> Unit)? = null
-
-    // ============ 布局状态（高度拉满） ============
+    // ============ 视口状态 ============
+    /** 可视区域（父容器）尺寸，由 Compose 层在布局变化时传入，用于平移 clamp。 */
     private var parentW = 0
     private var parentH = 0
-
-    // 基础缩放比（父高 / 远程高），布局时计算；displayScale 叠加在它之上用于用户双指缩放
-    private var baseScale = 1f
 
     // ============ 显示变换 ============
     private var displayScale = 1f
@@ -73,6 +69,8 @@ class RemoteDisplayView(
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var downRawX = 0f
     private var downRawY = 0f
+    private var downLocalX = 0f
+    private var downLocalY = 0f
     private var lastRawX = 0f
     private var lastRawY = 0f
     private var moved = false
@@ -88,7 +86,7 @@ class RemoteDisplayView(
 
     private val longPressRunnable = Runnable {
         longPressFired = true
-        val (rx, ry) = mapToRemote(downRawX, downRawY)
+        val (rx, ry) = mapToRemote(downLocalX, downLocalY)
         onRightClick?.invoke(rx, ry)
     }
 
@@ -112,43 +110,31 @@ class RemoteDisplayView(
         isFocusable = true
     }
 
-    // ==================== 远程尺寸与高度拉满布局 ====================
+    // ==================== 远程尺寸与视口 ====================
 
-    /** 设置远程分辨率并按「高度拉满」模式重布局。 */
+    /** 设置远程分辨率（View 已由 Compose 按等比尺寸布局，仅需重置平移）。 */
     fun setRemoteSize(w: Int, h: Int) {
         if (w <= 0 || h <= 0 || (w == remoteWidth && h == remoteHeight)) return
         remoteWidth = w
         remoteHeight = h
-        logger.info("RemoteDisplayView: remote size $w x $h, relayout height-fit")
-        post { relayoutHeightFit() }
+        logger.info("RemoteDisplayView: remote size $w x $h")
+        post {
+            // 分辨率变化：重置平移（居中），保留用户缩放倍数
+            panX = 0f
+            panY = 0f
+            applyTransform()
+        }
     }
 
-    /**
-     * 按「高度拉满」重布局（类似相册里缩放打开的照片）：
-     * baseScale = 父高 / 远程高，画面高度铺满屏幕，宽度按同比例
-     * （横屏视频宽度超出屏幕，可左右拖动查看未显示部分；宽度不足时左右留白居中）。
-     * 居中显示；保留用户已设定的双指缩放倍数 [displayScale]，仅重置平移。
-     */
-    private fun relayoutHeightFit() {
-        val parent = parent as? android.view.ViewGroup ?: return
-        parentW = parent.width
-        parentH = parent.height
-        if (parentW <= 0 || parentH <= 0 || remoteWidth <= 0 || remoteHeight <= 0) return
-
-        // 高度拉满：缩放比 = 父高 / 远程高
-        baseScale = parentH.toFloat() / remoteHeight
-        val coverW = (remoteWidth * baseScale).toInt().coerceAtLeast(1)
-        val coverH = (remoteHeight * baseScale).toInt().coerceAtLeast(1)
-
-        layoutParams = FrameLayout.LayoutParams(coverW, coverH, android.view.Gravity.CENTER)
-        // 重置平移（居中）；保留用户缩放倍数 displayScale
-        panX = 0f
-        panY = 0f
-        applyTransform()
-        logger.info("RemoteDisplayView: height-fit layout ${coverW}x${coverH} in ${parentW}x${parentH}, baseScale=$baseScale, displayScale=$displayScale")
-        // 延迟打印 layout 后实际尺寸，确认 layoutParams 在 Compose AndroidView 中是否生效
+    /** 设置可视区域（父容器）尺寸，平移 clamp 依赖它。 */
+    fun setViewport(w: Int, h: Int) {
+        if (w <= 0 || h <= 0 || (w == parentW && h == parentH)) return
+        parentW = w
+        parentH = h
+        logger.info("RemoteDisplayView: viewport ${w}x${h}")
         post {
-            logger.info("RemoteDisplayView: after layout view=${width}x${height} lp=${layoutParams?.width}x${layoutParams?.height}")
+            clampPan()
+            applyTransform()
         }
     }
 
@@ -162,10 +148,6 @@ class RemoteDisplayView(
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         logger.info("RemoteDisplayView: surface changed ${width}x${height}")
         onSurfaceChanged?.invoke(holder.surface, width, height)
-        // surface 尺寸变化（如沉浸全屏后内容区增高）后重新按高度拉满布局，避免画面下方留空
-        if (remoteWidth > 0 && remoteHeight > 0) {
-            post { relayoutHeightFit() }
-        }
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -180,6 +162,8 @@ class RemoteDisplayView(
             MotionEvent.ACTION_DOWN -> {
                 downRawX = event.rawX
                 downRawY = event.rawY
+                downLocalX = event.x
+                downLocalY = event.y
                 lastRawX = event.rawX
                 lastRawY = event.rawY
                 moved = false
@@ -187,7 +171,6 @@ class RemoteDisplayView(
                 pinchActive = false
                 wheelAccumY = 0f
                 handler.postDelayed(longPressRunnable, LONG_PRESS_MS)
-                logger.info("Touch DOWN: local=(${event.x},${event.y}) view=${width}x${height} lp=${layoutParams?.width}x${layoutParams?.height}")
                 return true
             }
 
@@ -214,7 +197,7 @@ class RemoteDisplayView(
                         moved = true
                     }
                     if (moved) {
-                        // 单指拖动 = 平移画面
+                        // 单指拖动 = 平移画面（屏幕像素 1:1）
                         panX += dx
                         panY += dy
                         clampPan()
@@ -225,13 +208,12 @@ class RemoteDisplayView(
                     moved = true
                     scaleDetector.onTouchEvent(event)
 
-                    // 双指平移
+                    // 双指平移（屏幕像素 1:1，与单指一致）
                     val cx = centerX(event)
                     val cy = centerY(event)
                     if (pinchActive) {
-                        // 双指中点位移（本地坐标差 ≈ 屏幕位移/scale，直接按屏幕位移驱动）
-                        panX += (cx - lastPinchCenterX) * displayScale
-                        panY += (cy - lastPinchCenterY) * displayScale
+                        panX += cx - lastPinchCenterX
+                        panY += cy - lastPinchCenterY
                         lastPinchCenterX = cx
                         lastPinchCenterY = cy
                         clampPan()
@@ -300,20 +282,22 @@ class RemoteDisplayView(
         applyTransform()
     }
 
-    /** 平移 clamp：画面边缘不越入屏幕（cover 超出部分可拖入视野）。 */
+    /**
+     * 平移 clamp：画面边缘不越入屏幕（cover 超出部分可拖入视野）。
+     * View 由 Compose 居中布局：layoutLeft = (parentW - width) / 2。
+     * 内容缩小后不足以覆盖屏幕时（宽度方向留白），平移归零居中。
+     */
     private fun clampPan() {
-        if (parentW <= 0 || parentH <= 0) return
-        val coverW = layoutParams?.width?.toFloat() ?: return
-        val coverH = layoutParams?.height?.toFloat() ?: return
-        val layoutLeft = (parentW - coverW) / 2f
-        val layoutTop = (parentH - coverH) / 2f
+        if (parentW <= 0 || parentH <= 0 || width <= 0 || height <= 0) return
+        val layoutLeft = (parentW - width) / 2f
+        val layoutTop = (parentH - height) / 2f
         // 内容显示区间需覆盖屏幕
-        val minPanX = parentW - layoutLeft - coverW * displayScale
+        val minPanX = parentW - layoutLeft - width * displayScale
         val maxPanX = -layoutLeft
-        val minPanY = parentH - layoutTop - coverH * displayScale
+        val minPanY = parentH - layoutTop - height * displayScale
         val maxPanY = -layoutTop
-        panX = panX.coerceIn(minPanX, maxPanX)
-        panY = panY.coerceIn(minPanY, maxPanY)
+        panX = if (minPanX > maxPanX) 0f else panX.coerceIn(minPanX, maxPanX)
+        panY = if (minPanY > maxPanY) 0f else panY.coerceIn(minPanY, maxPanY)
     }
 
     private fun applyTransform() {
@@ -323,8 +307,6 @@ class RemoteDisplayView(
         pivotY = 0f
         translationX = panX
         translationY = panY
-        // 通知 sessionManager 更新 jpeg 渲染的 pan/scale
-        onTransformChanged?.invoke(panX, panY, displayScale)
     }
 
     // ============ 坐标映射 ============
@@ -332,25 +314,15 @@ class RemoteDisplayView(
     /**
      * View 本地坐标 → 远程桌面坐标。
      * Android 触摸分发已做逆变换（event.x/y 为未缩放本地坐标），
-     * 本地尺寸比例 = 远程尺寸比例，直接线性映射。
-     */
-    /**
-     * 屏幕/View 坐标 → 远程桌面坐标（height-fit + pan + scale 完整逆映射）。
-     * jpeg 等比例绘制：centerX = (canvasW - videoW*baseScale)/2 + panX，s = baseScale*scale。
-     * 逆映射：rx = (localX - centerX) / s。
-     * 不依赖 View 的 layout 尺寸（Compose AndroidView 中 layoutParams 可能不生效）。
+     * View 实际尺寸与远程画面同宽高比（Compose 等比布局），直接线性映射。
      */
     private fun mapToRemote(localX: Float, localY: Float): Pair<Int, Int> {
-        if (remoteWidth <= 0 || remoteHeight <= 0 || parentW <= 0 || parentH <= 0 || baseScale <= 0f) {
-            logger.info("mapToRemote: invalid remote=${remoteWidth}x${remoteHeight} parent=${parentW}x${parentH} base=$baseScale")
+        if (remoteWidth <= 0 || remoteHeight <= 0 || width <= 0 || height <= 0) {
+            logger.info("mapToRemote: invalid remote=${remoteWidth}x${remoteHeight} view=${width}x${height}")
             return Pair(0, 0)
         }
-        val s = baseScale * displayScale
-        val centerX = (parentW - remoteWidth * baseScale) / 2f + panX
-        val centerY = (parentH - parentH.toFloat() * displayScale) / 2f + panY
-        val rx = ((localX - centerX) / s).toInt().coerceIn(0, remoteWidth - 1)
-        val ry = ((localY - centerY) / s).toInt().coerceIn(0, remoteHeight - 1)
-        logger.info("mapToRemote: local=($localX,$localY) parent=${parentW}x${parentH} base=$baseScale scale=$displayScale pan=($panX,$panY) → remote=($rx,$ry)")
+        val rx = (localX * remoteWidth / width).toInt().coerceIn(0, remoteWidth - 1)
+        val ry = (localY * remoteHeight / height).toInt().coerceIn(0, remoteHeight - 1)
         return Pair(rx, ry)
     }
 

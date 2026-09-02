@@ -358,7 +358,8 @@
                                                        FontFamily="{StaticResource MonoFont}"
                                                        Foreground="{StaticResource TextMutedBrush}">
                                                 <Run Text="{Binding ClientIp}"/>
-                                                <Run Text=" · RDP Active"/>
+                                                <Run Text=" · "/>
+                                                <Run Text="{Binding ModeText}"/>
                                             </TextBlock>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
