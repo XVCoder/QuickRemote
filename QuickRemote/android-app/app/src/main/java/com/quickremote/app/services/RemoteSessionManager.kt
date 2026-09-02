@@ -261,9 +261,11 @@ class RemoteSessionManager(
                     else -> logger.warn("Unknown frame type: 0x${type.toString(16)}")
                 }
             }
-        } catch (_: Exception) {
-            // 连接断开
+        } catch (e: Exception) {
+            // 读线程退出=连接断开，记录原因（EOF=对端正常关闭，Reset=对端异常关闭）
+            logger.warn("Receive loop exited: ${e.javaClass.name}: ${e.message}")
         } finally {
+            logger.warn("Receive loop ended, disconnecting (state was $state)")
             disconnect()
         }
     }
@@ -331,7 +333,8 @@ class RemoteSessionManager(
             }
             logger.info("Input sent: type=0x${type.toString(16)} len=${data.size}")
         } catch (e: Exception) {
-            logger.warn("sendInput failed: ${e.message}")
+            // 注意：SocketException 等异常 message 可能为 null，必须带类名定位
+            logger.warn("sendInput failed: ${e.javaClass.name}: ${e.message}")
         }
     }
 

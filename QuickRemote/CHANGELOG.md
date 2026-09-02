@@ -1,5 +1,9 @@
 # QuickRemote 更新记录
 
+## v1.0.33 (Android App)
+
+- 诊断日志强化：sendInput 失败时记录异常完整类名（SocketException 等 message 可能为 null，仅记 message 无法定位）；接收线程退出时记录异常原因与当时状态（原先空 catch 完全吞掉读异常，导致连接断开原因不可见）
+
 ## v1.1.22 (PC 客户端)
 
 - 修复局域网直连后触控完全无反应：LanListener 认证阶段的 5 秒读超时（ReadTimeout=5000）泄漏到 LocalRemoteTransport 长连接读循环，Android 端 5 秒内无上行数据即被 PC 端静默断连，此后所有点击发往已死连接；现在认证通过后恢复无限读超时

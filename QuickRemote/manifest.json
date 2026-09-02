@@ -29,17 +29,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.32",
-    "changelog": "增加输入事件发送诊断日志（发送内容/发送失败原因），配合 PC 端排查触控问题",
+    "latest_version": "1.0.33",
+    "changelog": "诊断日志强化：输入发送失败记录异常类名（SocketException 等message可能为null）；接收线程退出记录原因（EOF/Reset），定位触控链路断点",
     "versions": {
+      "1.0.33": {
+        "apk": "https://qd.solutionx.top/d/p/9a7b38b9-8cb4-48d2-8d11-ae38f98c03f1"
+      },
       "1.0.32": {
         "apk": "https://qd.solutionx.top/d/p/78219e9d-c704-41fc-97f7-143329688c45"
       },
       "1.0.31": {
         "apk": "https://qd.solutionx.top/d/p/d0ce2e96-396b-4c0f-bbdb-3547f1a52f29"
-      },
-      "1.0.30": {
-        "apk": "https://qd.solutionx.top/d/p/f056354b-4fe7-40c8-90d9-ca42ca0e9ae8"
       }
     }
   }
