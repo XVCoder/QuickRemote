@@ -133,6 +133,7 @@ public sealed class RemoteSessionManager : IDisposable
             // 2.1 输入处理器需要画面尺寸做坐标归一化
             _inputHandler.VideoWidth = _capture.Width;
             _inputHandler.VideoHeight = _capture.Height;
+            RemoteInputHandler.LogError = msg => _logger.Warn(msg);
 
             // 3. 初始化编码器：优先 H.264（系统支持时），失败回退 JPEG
             var encoderName = "h264";
@@ -280,6 +281,7 @@ public sealed class RemoteSessionManager : IDisposable
             case RemoteFrameProtocol.TYPE_INPUT_MOUSE:
             case RemoteFrameProtocol.TYPE_INPUT_KEY:
             case RemoteFrameProtocol.TYPE_INPUT_WHEEL:
+                _logger.Info($"Input frame received: type=0x{type:X2} len={data.Length} data=[{string.Join(",", data.Take(8))}]");
                 _inputHandler.HandleFrame(type, data);
                 break;
             case RemoteFrameProtocol.TYPE_CONTROL:

@@ -110,6 +110,10 @@ public sealed class LanListener : IDisposable
 
             // 2. 认证通过：启动本地会话（与中继会话互斥，StartLocalAsync 内部判断）
             _logger.Info($"LAN client authenticated: {client.Client.RemoteEndPoint}");
+            // 关键：恢复无限读超时。认证用的 5 秒超时若泄漏到 LocalRemoteTransport 的
+            // 长连接读循环，Android 端 5 秒无上行数据（无点击/心跳）就会读超时断连，
+            // 表现为"连接上了但点击没反应"（点击发往已死连接）。
+            stream.ReadTimeout = Timeout.Infinite;
             var sessionId = Guid.NewGuid().ToString("N");
             _ = _sessionManager.StartLocalAsync(sessionId, client);
         }

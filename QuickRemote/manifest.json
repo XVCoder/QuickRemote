@@ -14,32 +14,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.21",
-    "changelog": "修复局域网直连：GetLanIp 排除虚拟网卡、防火墙规则不限 profile；SendInput 补 MOUSEEVENTF_MOVE 修复远程点击无效；会话列表实时展示连接模式/客户端IP/流量统计",
+    "latest_version": "1.1.22",
+    "changelog": "修复局域网直连 5 秒后静默断连（认证读超时泄漏到会话读循环）导致的触控完全无反应；增加输入帧接收与 SendInput 失败诊断日志",
     "versions": {
+      "1.1.22": {
+        "zip": "https://qd.solutionx.top/d/p/969792cb-1751-4d75-9e35-02b577e1258f"
+      },
       "1.1.21": {
         "zip": "https://qd.solutionx.top/d/p/4c2354ee-2a2f-451f-8b9e-65263f5c0a09"
       },
       "1.1.20": {
         "zip": "https://qd.solutionx.top/d/p/5123baf5-fb4f-49b0-98fd-0a3795bb8a09"
-      },
-      "1.1.19": {
-        "zip": "https://qd.solutionx.top/d/p/1fcb6432-1ca7-4c09-926c-2b2699a2ee7d"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.31",
-    "changelog": "修复竖屏画面左右两侧被裁切（单一 View 变换 + Compose 等比布局）；修复局域网设备误判为公网（多网卡子网匹配）；远程会话展示连接模式；修复长按右键坐标",
+    "latest_version": "1.0.32",
+    "changelog": "增加输入事件发送诊断日志（发送内容/发送失败原因），配合 PC 端排查触控问题",
     "versions": {
+      "1.0.32": {
+        "apk": "https://qd.solutionx.top/d/p/78219e9d-c704-41fc-97f7-143329688c45"
+      },
       "1.0.31": {
         "apk": "https://qd.solutionx.top/d/p/d0ce2e96-396b-4c0f-bbdb-3547f1a52f29"
       },
       "1.0.30": {
         "apk": "https://qd.solutionx.top/d/p/f056354b-4fe7-40c8-90d9-ca42ca0e9ae8"
-      },
-      "1.0.29": {
-        "apk": "https://qd.solutionx.top/d/p/a0114603-6823-4b5a-a05a-fdf0848fcd4e"
       }
     }
   }

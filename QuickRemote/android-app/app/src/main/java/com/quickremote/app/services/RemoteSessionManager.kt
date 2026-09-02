@@ -319,14 +319,19 @@ class RemoteSessionManager(
 
     /** 发送输入事件（阶段 5 使用）。 */
     fun sendInput(type: Byte, data: ByteArray) {
-        val out = output ?: return
+        val out = output ?: run {
+            logger.warn("sendInput: no output stream (not connected?)")
+            return
+        }
         try {
             synchronized(out) {
                 out.write(RemoteFrameProtocol.makeHeader(type, data.size))
                 out.write(data)
                 out.flush()
             }
-        } catch (_: Exception) {
+            logger.info("Input sent: type=0x${type.toString(16)} len=${data.size}")
+        } catch (e: Exception) {
+            logger.warn("sendInput failed: ${e.message}")
         }
     }
 

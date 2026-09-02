@@ -24,6 +24,9 @@ public sealed class RemoteInputHandler
 
     private readonly object _lock = new();
 
+    /// <summary>日志回调（由上层注入，SendInput 失败时记录）。</summary>
+    public static Action<string>? LogError;
+
     /// <summary>远程画面宽度（像素），用于坐标归一化。</summary>
     public int VideoWidth { get; set; } = 1920;
 
@@ -195,7 +198,12 @@ public sealed class RemoteInputHandler
     {
         lock (_lock)
         {
-            SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
+            var ok = SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
+            if (ok != 1)
+            {
+                // 返回 0 = 注入被拦截（UIPI/权限/会话问题），远程点击将完全无反应
+                LogError?.Invoke($"SendInput failed: returned {ok}, lastError={Marshal.GetLastWin32Error()}");
+            }
         }
     }
 
