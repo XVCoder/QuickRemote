@@ -31,6 +31,8 @@ public sealed class ScreenCaptureService : IDisposable
     /// 判断异常是否为锁屏/安全桌面导致的 DXGI 访问问题（可等待解锁后恢复）。
     /// - 0x887A0026 DXGI_ERROR_ACCESS_LOST：锁屏/UAC 切换桌面导致复制失效
     /// - 0x80070005 E_ACCESSDENIED：锁屏期间重建 Output Duplication 被拒
+    /// - 0x887A0001 DXGI_ERROR_INVALID_CALL：锁屏瞬间 AcquireNextFrame/DuplicateOutput
+    ///   状态失效（实测锁屏时部分驱动报此码而非 ACCESS_LOST）
     /// </summary>
     public static bool IsAccessDeniedOrLost(Exception ex)
     {
@@ -40,6 +42,7 @@ public sealed class ScreenCaptureService : IDisposable
             {
                 int code = sge.ResultCode.Code;
                 if (code == unchecked((int)0x887A0026) ||
+                    code == unchecked((int)0x887A0001) ||
                     code == unchecked((int)0x80070005))
                     return true;
             }

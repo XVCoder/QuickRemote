@@ -143,7 +143,14 @@ public sealed class RemoteSessionManager : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    if (!ScreenCaptureService.IsAccessDeniedOrLost(ex) || _transport?.IsConnected != true)
+                    // 等待解锁期间客户端断开：客户端会自行重连，属正常流程，安静退出
+                    if (_transport?.IsConnected != true)
+                    {
+                        _logger.Info("Client disconnected while waiting for unlock, abort session start");
+                        Cleanup();
+                        return false;
+                    }
+                    if (!ScreenCaptureService.IsAccessDeniedOrLost(ex))
                         throw;
                     if (!wasLocked)
                     {

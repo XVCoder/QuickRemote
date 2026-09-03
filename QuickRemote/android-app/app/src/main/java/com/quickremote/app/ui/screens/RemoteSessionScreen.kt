@@ -2,6 +2,7 @@ package com.quickremote.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -342,9 +343,22 @@ fun RemoteSessionScreen(
                 )
             }
 
-            // PC 锁屏提示条（连接保持；点击可输入 Windows 密码远程解锁）
+            // PC 锁屏处理：点击画面任意位置或顶部提示条都弹出解锁对话框。
+            // 锁屏桌面（Winlogon）会丢弃普通进程注入的输入（SendInput lastError=5），
+            // 直接点画面无意义，改为引导用户走密码解锁。
             if (pcLocked && state == RemoteSessionManager.SessionState.CONNECTED) {
                 var showUnlockDialog by remember { mutableStateOf(false) }
+
+                // 全屏透明拦截层：锁屏时吞掉所有触摸，点击即弹解锁框
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { showUnlockDialog = true }
+                )
+
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
