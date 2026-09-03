@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using QuickRemote.PCClient.Models;
 
@@ -43,6 +44,22 @@ public sealed class RemoteSessionManager : IDisposable
 
     /// <summary>当前压缩率百分比（Android 端调整后更新，锁屏恢复重建编码器时保持）。</summary>
     private int _qualityPercent = 100;
+
+    // ============ 锁屏输入代理（向日葵式：锁屏时把输入注入 Winlogon 安全桌面） ============
+
+    /// <summary>PC 当前是否处于锁屏/UAC 安全桌面（Winlogon 输入桌面激活）。</summary>
+    private volatile bool _pcLocked;
+
+    /// <summary>锁屏输入代理连接（null = 代理未运行）。锁屏期间输入帧转发给它注入。</summary>
+    private System.Net.Sockets.TcpClient? _agentClient;
+    private System.Net.Sockets.NetworkStream? _agentStream;
+    private readonly object _agentWriteLock = new();
+    private string _agentTaskName = "";
+    private DateTime _lastLockCheck = DateTime.MinValue;
+
+    // 代理专用帧类型（与 QuickRemote.Agent 端约定）
+    private const byte TYPE_AGENT_SETUP = 0x10; // [宽 2B][高 2B]
+    private const byte TYPE_AGENT_TOKEN = 0x11; // [token 文本] 连接身份校验
 
     /// <summary>会话 ID。</summary>
     public string SessionId { get; private set; } = "";
@@ -152,6 +169,8 @@ public sealed class RemoteSessionManager : IDisposable
                     }
                     if (!ScreenCaptureService.IsAccessDeniedOrLost(ex))
                         throw;
+                    // 连接时已锁屏：此阶段 CaptureLoop 尚未启动，在此驱动输入代理
+                    UpdateLockState(true);
                     if (!wasLocked)
                     {
                         wasLocked = true;
@@ -236,6 +255,11 @@ public sealed class RemoteSessionManager : IDisposable
         while (_running)
         {
             var sw = Stopwatch.StartNew();
+
+            // 锁屏/UAC 安全桌面检测（内部节流 1 秒）：驱动输入代理启停。
+            // 覆盖 DXGI 正常但实际已锁屏的场景（此时本地 SendInput 被 lastError=5 拒绝）。
+            UpdateLockState();
+
             try
             {
                 if (_capture == null)
@@ -336,18 +360,18 @@ public sealed class RemoteSessionManager : IDisposable
 
     /// <summary>
     /// 远程解锁：锁屏输入框位于 Winlogon 安全桌面，需要 SYSTEM 权限注入按键。
-    /// 通过计划任务（/RU SYSTEM /IT，交互会话）启动 QuickRemote.Unlocker.exe 完成：
-    /// 密码经临时文件传递（不落命令行/任务历史），由解锁器读取后立即删除。
+    /// 通过计划任务（/RU SYSTEM /IT，交互会话）启动 QuickRemote.Agent.exe unlock 完成：
+    /// 密码经临时文件传递（不落命令行/任务历史），由代理读取后立即删除。
     /// 创建 SYSTEM 任务需要当前进程已提升（管理员）。
     /// </summary>
     private void RequestUnlockScreen(string password)
     {
         try
         {
-            var unlockerExe = Path.Combine(AppContext.BaseDirectory, "QuickRemote.Unlocker.exe");
-            if (!File.Exists(unlockerExe))
+            var agentExe = Path.Combine(AppContext.BaseDirectory, "QuickRemote.Agent.exe");
+            if (!File.Exists(agentExe))
             {
-                _logger.Warn($"Unlocker not found: {unlockerExe}");
+                _logger.Warn($"Agent not found: {agentExe}");
                 SendStatusControl("unlock_failed");
                 return;
             }
@@ -357,7 +381,7 @@ public sealed class RemoteSessionManager : IDisposable
 
             var taskName = $"QuickRemoteUnlock_{Guid.NewGuid():N}";
             var createExit = RunSchtasks("/Create", "/TN", taskName,
-                "/TR", $"\"{unlockerExe}\" \"{pwFile}\"",
+                "/TR", $"\"{agentExe}\" unlock \"{pwFile}\"",
                 "/SC", "ONCE", "/ST", "23:59", "/RU", "SYSTEM", "/IT", "/F");
             if (createExit != 0)
             {
@@ -410,6 +434,200 @@ public sealed class RemoteSessionManager : IDisposable
         }
     }
 
+    // ============ 锁屏输入代理 ============
+
+    /// <summary>
+    /// 检测当前输入桌面是否为安全桌面（锁屏/UAC 激活时为 Winlogon），
+    /// 状态变化时同步启动/停止 SYSTEM 输入代理并通知 Android 端。
+    /// 供 CaptureLoop 周期调用（内部节流 1 秒）。
+    /// </summary>
+    private void UpdateLockState(bool forceCheck = false)
+    {
+        if (!forceCheck && (DateTime.UtcNow - _lastLockCheck).TotalMilliseconds < 1000) return;
+        _lastLockCheck = DateTime.UtcNow;
+
+        var locked = IsSecureDesktopActive();
+        if (locked == _pcLocked) return;
+        _pcLocked = locked;
+        if (locked)
+        {
+            _logger.Warn("Secure desktop active (locked/UAC), starting locked-screen input agent");
+            SendStatusControl("locked");
+            // 启动要等端口文件（秒级），放后台避免阻塞捕获循环
+            Task.Run(StartInputAgent);
+        }
+        else
+        {
+            _logger.Info("Secure desktop inactive, stopping input agent");
+            SendStatusControl("unlocked");
+            StopInputAgent();
+        }
+    }
+
+    /// <summary>锁屏期间把输入帧转发给 SYSTEM 代理（注入 Winlogon 桌面）。</summary>
+    private bool TryForwardToAgent(byte type, byte[] data)
+    {
+        var stream = _agentStream;
+        if (stream == null) return false;
+        try
+        {
+            var frame = new byte[4 + data.Length];
+            frame[0] = type;
+            frame[1] = (byte)(data.Length & 0xFF);
+            frame[2] = (byte)(data.Length >> 8 & 0xFF);
+            frame[3] = (byte)(data.Length >> 16 & 0xFF);
+            data.CopyTo(frame, 4);
+            lock (_agentWriteLock)
+            {
+                stream.Write(frame, 0, frame.Length);
+                stream.Flush();
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Agent forward failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 启动锁屏输入代理：计划任务（SYSTEM/IT）运行 QuickRemote.Agent.exe agent，
+    /// 代理监听 127.0.0.1 随机端口并把端口+token 写入临时文件；本方法轮询读取
+    /// 后连接，先发 token 校验帧，再发 setup 帧（当前分辨率）。
+    /// </summary>
+    private void StartInputAgent()
+    {
+        if (!_pcLocked) return; // 调用前已解锁（竞态），不启动
+        try
+        {
+            var agentExe = Path.Combine(AppContext.BaseDirectory, "QuickRemote.Agent.exe");
+            if (!File.Exists(agentExe))
+            {
+                _logger.Warn($"Agent not found: {agentExe}");
+                return;
+            }
+
+            var portFile = Path.Combine(Path.GetTempPath(), $"qr-agent-{Guid.NewGuid():N}.tmp");
+            _agentTaskName = $"QuickRemoteAgent_{Guid.NewGuid():N}";
+            var createExit = RunSchtasks("/Create", "/TN", _agentTaskName,
+                "/TR", $"\"{agentExe}\" agent \"{portFile}\"",
+                "/SC", "ONCE", "/ST", "23:59", "/RU", "SYSTEM", "/IT", "/F");
+            if (createExit != 0)
+            {
+                _logger.Warn($"Agent task create failed (exit={createExit}); PC client must run as Administrator");
+                _agentTaskName = "";
+                return;
+            }
+            RunSchtasks("/Run", "/TN", _agentTaskName);
+
+            // 等代理写端口文件（最多 6 秒）
+            string? endpoint = null;
+            for (var i = 0; i < 120; i++)
+            {
+                if (File.Exists(portFile))
+                {
+                    endpoint = File.ReadAllText(portFile).Trim();
+                    try { File.Delete(portFile); } catch { }
+                    break;
+                }
+                Thread.Sleep(50);
+            }
+            if (!_pcLocked) { StopInputAgent(); return; } // 等待期间已解锁，立即回收
+            if (endpoint == null)
+            {
+                _logger.Warn("Agent port file timeout (6s)");
+                StopInputAgent();
+                return;
+            }
+
+            var lines = endpoint.Split('\n');
+            var port = int.Parse(lines[0].Trim());
+            var token = lines.Length > 1 ? lines[1].Trim() : "";
+
+            var client = new System.Net.Sockets.TcpClient();
+            client.Connect(IPAddress.Loopback, port);
+            var stream = client.GetStream();
+            // token 校验帧
+            stream.Write(MakeAgentFrame(TYPE_AGENT_TOKEN, Encoding.UTF8.GetBytes(token)));
+            // setup 帧：锁屏画面分辨率（捕获分辨率），代理用于坐标归一化
+            var setup = new byte[4];
+            setup[0] = (byte)(_inputHandler.VideoWidth & 0xFF);
+            setup[1] = (byte)(_inputHandler.VideoWidth >> 8 & 0xFF);
+            setup[2] = (byte)(_inputHandler.VideoHeight & 0xFF);
+            setup[3] = (byte)(_inputHandler.VideoHeight >> 8 & 0xFF);
+            stream.Write(MakeAgentFrame(TYPE_AGENT_SETUP, setup));
+            stream.Flush();
+
+            _agentClient = client;
+            _agentStream = stream;
+            _logger.Info($"Locked-screen input agent connected (port {port})");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Input agent start failed: {ex.Message}");
+            StopInputAgent();
+        }
+    }
+
+    /// <summary>停止输入代理：断开连接（代理进程自行退出），终止并删除计划任务。</summary>
+    private void StopInputAgent()
+    {
+        try { _agentStream?.Close(); } catch { }
+        try { _agentClient?.Close(); } catch { }
+        _agentStream = null;
+        _agentClient = null;
+        var task = _agentTaskName;
+        _agentTaskName = "";
+        if (!string.IsNullOrEmpty(task))
+        {
+            RunSchtasks("/End", "/TN", task);
+            RunSchtasks("/Delete", "/TN", task, "/F");
+        }
+    }
+
+    private static byte[] MakeAgentFrame(byte type, byte[] payload)
+    {
+        var frame = new byte[4 + payload.Length];
+        frame[0] = type;
+        frame[1] = (byte)(payload.Length & 0xFF);
+        frame[2] = (byte)(payload.Length >> 8 & 0xFF);
+        frame[3] = (byte)(payload.Length >> 16 & 0xFF);
+        payload.CopyTo(frame, 4);
+        return frame;
+    }
+
+    /// <summary>
+    /// 当前输入桌面是否为安全桌面：锁屏/UAC 激活时输入桌面切换为 Winlogon，
+    /// 普通权限进程 OpenInputDesktop 失败或桌面名非 Default。
+    /// </summary>
+    private static bool IsSecureDesktopActive()
+    {
+        var hDesktop = OpenInputDesktop(0, false, DESKTOP_READOBJECTS);
+        if (hDesktop == IntPtr.Zero) return true;
+        try
+        {
+            var sb = new StringBuilder(256);
+            if (GetUserObjectInformationW(hDesktop, UOI_NAME, sb, 256, out _))
+                return sb.ToString() != "Default";
+            return false;
+        }
+        finally { CloseDesktop(hDesktop); }
+    }
+
+    private const uint DESKTOP_READOBJECTS = 0x0001;
+    private const int UOI_NAME = 2;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetUserObjectInformationW(IntPtr hObj, int nIndex,
+        [Out] System.Text.StringBuilder pvInfo, uint cchInfo, out uint pcchInfo);
+
+    [DllImport("user32.dll")]
+    private static extern bool CloseDesktop(IntPtr hDesktop);
+
     /// <summary>把传输层字节计数同步到会话信息（UI 流量展示）。</summary>
     private void UpdateTrafficStats()
     {
@@ -457,6 +675,9 @@ public sealed class RemoteSessionManager : IDisposable
             case RemoteFrameProtocol.TYPE_INPUT_KEY:
             case RemoteFrameProtocol.TYPE_INPUT_WHEEL:
                 _logger.Info($"Input frame received: type=0x{type:X2} len={data.Length} data=[{string.Join(",", data.Take(8))}]");
+                // 锁屏时本地 SendInput 被 Winlogon 安全桌面拒绝（lastError=5），
+                // 转发给 SYSTEM 输入代理注入锁屏桌面；转发失败/未锁屏走本地注入
+                if (_pcLocked && TryForwardToAgent(type, data)) break;
                 _inputHandler.HandleFrame(type, data);
                 break;
             case RemoteFrameProtocol.TYPE_CONTROL:
@@ -555,6 +776,7 @@ public sealed class RemoteSessionManager : IDisposable
     private void Cleanup()
     {
         _running = false;
+        StopInputAgent();
         try { _frameQueue.CompleteAdding(); } catch { }
         _captureThread = null;
         _encodeThread = null;

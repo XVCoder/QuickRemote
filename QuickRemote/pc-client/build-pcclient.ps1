@@ -56,20 +56,20 @@ if (Test-Path $UpdaterExe) {
     Write-Host "         The release package will NOT support automatic update!" -ForegroundColor Red
 }
 
-# 3.2 纳入远程解锁辅助程序 QuickRemote.Unlocker.exe（锁屏状态注入密码，需随包分发）
-$UnlockerProject = Join-Path (Split-Path -Parent $ScriptDir) "pc-unlocker"
-Write-Host "  Building pc-unlocker..." -ForegroundColor DarkGray
-dotnet build $UnlockerProject -c Release --nologo -v q
+# 3.2 纳入 SYSTEM 辅助程序 QuickRemote.Agent.exe（锁屏密码解锁 + 锁屏输入代理，需随包分发）
+$AgentProject = Join-Path (Split-Path -Parent $ScriptDir) "pc-unlocker"
+Write-Host "  Building pc-agent..." -ForegroundColor DarkGray
+dotnet build $AgentProject -c Release --nologo -v q
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: pc-unlocker build failed" -ForegroundColor Red
+    Write-Host "ERROR: pc-agent build failed" -ForegroundColor Red
     exit 1
 }
-$UnlockerExe = Join-Path $UnlockerProject "bin\Release\net8.0-windows\QuickRemote.Unlocker.exe"
-if (Test-Path $UnlockerExe) {
-    Copy-Item $UnlockerExe -Destination (Join-Path $StagingDir "QuickRemote.Unlocker.exe") -Force
-    Write-Host "  + QuickRemote.Unlocker.exe (unlock helper)" -ForegroundColor DarkGray
+$AgentExe = Join-Path $AgentProject "bin\Release\net8.0-windows\QuickRemote.Agent.exe"
+if (Test-Path $AgentExe) {
+    Copy-Item $AgentExe -Destination (Join-Path $StagingDir "QuickRemote.Agent.exe") -Force
+    Write-Host "  + QuickRemote.Agent.exe (unlock + locked-screen input agent)" -ForegroundColor DarkGray
 } else {
-    Write-Host "  [WARN] QuickRemote.Unlocker.exe not found at $UnlockerExe" -ForegroundColor Red
+    Write-Host "  [WARN] QuickRemote.Agent.exe not found at $AgentExe" -ForegroundColor Red
     Write-Host "         The release package will NOT support remote unlock!" -ForegroundColor Red
 }
 

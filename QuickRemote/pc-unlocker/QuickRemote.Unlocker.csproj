@@ -3,8 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <AssemblyName>QuickRemote.Unlocker</AssemblyName>
-    <RootNamespace>QuickRemote.Unlocker</RootNamespace>
+    <AssemblyName>QuickRemote.Agent</AssemblyName>
+    <RootNamespace>QuickRemote.Agent</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Version>1.0.0</Version>
