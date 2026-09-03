@@ -1,5 +1,10 @@
 # QuickRemote 更新记录
 
+## v1.0.37 (Android App)
+
+- **修复双指缩放落指瞬间画面跳变**：ScaleGestureDetector 此前只接收双指 MOVE 事件、未接收 ACTION_POINTER_DOWN，导致上次手势结束时的两指间距（span）基准残留；再次双指落指时手指张开，第一次 onScale 即算出巨大 scaleFactor 造成画面突然放大。现所有触摸事件均喂给 detector，每次新手势正确重置基准
+- **恢复双指滑动滚轮**：修复上一版引入的增量计算顺序 bug（在更新中心点之后计算增量导致恒为 0），双指垂直滑动重新可用于 PC 端滚轮
+
 ## v1.1.24 (PC 客户端)
 
 - **远程解锁（向日葵式）**：锁屏状态下支持 Android 端远程输入 Windows 登录密码解锁。新增 SYSTEM 权限辅助程序 QuickRemote.Unlocker.exe（随包分发），通过计划任务（/RU SYSTEM /IT）在 Winlogon 安全桌面注入按键序列（回车→密码→回车）；密码经临时文件传递，由解锁器读取后立即删除

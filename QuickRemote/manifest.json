@@ -29,17 +29,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.36",
-    "changelog": "远程解锁：PC 锁屏时点击提示条输入 Windows 密码即可远程解锁；修复双指缩放闪动乱跳（缩放补偿公式漏项+平移坐标反馈抖动）；会话页保留顶部状态栏（仅隐藏底部导航栏）",
+    "latest_version": "1.0.37",
+    "changelog": "修复双指缩放落指瞬间画面跳变（ScaleGestureDetector 未收到 POINTER_DOWN 导致 span 基准残留）；恢复双指滑动滚轮功能",
     "versions": {
+      "1.0.37": {
+        "apk": "https://qd.solutionx.top/d/p/409a9494-965b-4e54-9a3c-1add5b63e688"
+      },
       "1.0.36": {
         "apk": "https://qd.solutionx.top/d/p/814af064-339d-4f85-be18-9480cccc10b2"
       },
       "1.0.35": {
         "apk": "https://qd.solutionx.top/d/p/092725c3-8677-4e32-bb74-3b7cbb4cb7ef"
-      },
-      "1.0.34": {
-        "apk": "https://qd.solutionx.top/d/p/27fa70b5-081d-4a7f-9ef7-02d04840b25a"
       }
     }
   }
