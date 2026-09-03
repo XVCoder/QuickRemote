@@ -1,5 +1,17 @@
 # QuickRemote 更新记录
 
+## v1.1.25 (PC 客户端)
+
+- **锁屏输入代理（向日葵式体验）**：PC 锁屏时 Android 端可直接点击画面操作锁屏页——点击唤出密码框、点输入框、输入 Windows 密码、回车解锁，完整还原本人在 PC 前的操作。辅助程序升级为 QuickRemote.Agent.exe 双模式（unlock 一键密码解锁 / agent 锁屏输入代理）
+- **自动锁屏检测**：每秒检测 Winlogon 安全桌面激活（OpenInputDesktop），覆盖"DXGI 画面正常但实际已锁屏"场景（此时本地 SendInput 被系统拒绝 lastError=5）；检测到锁屏自动启动 SYSTEM 代理并把输入帧转发注入锁屏桌面，解锁后自动回收代理进程与计划任务
+- **会话中锁屏不再断连**：DXGI_ERROR_INVALID_CALL（部分显卡驱动锁屏时的表现）纳入锁屏容忍列表，按等待解锁处理而非致命错误
+- 一键密码解锁入口保留；代理监听 127.0.0.1 随机端口 + token 鉴权，仅回环可访问
+
+## v1.0.38 (Android App)
+
+- **锁屏操作体验升级**：PC 锁屏时画面可直接点击操作锁屏页（配合 PC 端 v1.1.25 SYSTEM 输入代理，体验如向日葵），顶部提示条保留一键输密码解锁快捷入口
+- 配套要求：锁屏直接操作需 PC 客户端 ≥ v1.1.25 且以管理员运行
+
 ## v1.0.37 (Android App)
 
 - **修复双指缩放落指瞬间画面跳变**：ScaleGestureDetector 此前只接收双指 MOVE 事件、未接收 ACTION_POINTER_DOWN，导致上次手势结束时的两指间距（span）基准残留；再次双指落指时手指张开，第一次 onScale 即算出巨大 scaleFactor 造成画面突然放大。现所有触摸事件均喂给 detector，每次新手势正确重置基准
