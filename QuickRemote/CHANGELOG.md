@@ -1,5 +1,9 @@
 # QuickRemote 更新记录
 
+## v1.0.34 (Android App)
+
+- **修复触控完全无反应的根因**：触摸事件回调在主线程触发，sendInput 直接在主线程写 socket，被 Android 拦截抛 NetworkOnMainThreadException（主线程禁止网络 I/O），输入帧从未真正发送出去——PC 端收不到任何点击。现在所有输入写入转发到专用后台发送线程（qr-input-sender），触摸/键盘/滚轮事件可正常到达 PC
+
 ## v1.0.33 (Android App)
 
 - 诊断日志强化：sendInput 失败时记录异常完整类名（SocketException 等 message 可能为 null，仅记 message 无法定位）；接收线程退出时记录异常原因与当时状态（原先空 catch 完全吞掉读异常，导致连接断开原因不可见）

@@ -29,17 +29,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.33",
-    "changelog": "诊断日志强化：输入发送失败记录异常类名（SocketException 等message可能为null）；接收线程退出记录原因（EOF/Reset），定位触控链路断点",
+    "latest_version": "1.0.34",
+    "changelog": "修复触控完全无反应的根因：触摸回调在主线程直接写 socket 抛 NetworkOnMainThreadException（Android 禁止主线程网络 I/O），输入帧从未离开手机；现所有输入写入转发到专用后台线程",
     "versions": {
+      "1.0.34": {
+        "apk": "https://qd.solutionx.top/d/p/27fa70b5-081d-4a7f-9ef7-02d04840b25a"
+      },
       "1.0.33": {
         "apk": "https://qd.solutionx.top/d/p/9a7b38b9-8cb4-48d2-8d11-ae38f98c03f1"
       },
       "1.0.32": {
         "apk": "https://qd.solutionx.top/d/p/78219e9d-c704-41fc-97f7-143329688c45"
-      },
-      "1.0.31": {
-        "apk": "https://qd.solutionx.top/d/p/d0ce2e96-396b-4c0f-bbdb-3547f1a52f29"
       }
     }
   }

@@ -76,6 +76,15 @@ class RemoteSessionManager(
     private var output: DataOutputStream? = null
     private var receiveThread: Thread? = null
 
+    /**
+     * 输入事件发送线程。触摸回调在主线程触发，直接写 socket 会抛
+     * NetworkOnMainThreadException（Android 禁止主线程网络 I/O），
+     * 输入帧从未离开手机——表现为"点了没反应"。所有输入写入必须经此线程。
+     */
+    private val inputExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "qr-input-sender").apply { isDaemon = true }
+    }
+
     @Volatile
     private var running = false
 
@@ -319,22 +328,24 @@ class RemoteSessionManager(
         }
     }
 
-    /** 发送输入事件（阶段 5 使用）。 */
+    /** 发送输入事件（触摸/键盘回调在主线程调用，写入转发到后台线程执行）。 */
     fun sendInput(type: Byte, data: ByteArray) {
         val out = output ?: run {
             logger.warn("sendInput: no output stream (not connected?)")
             return
         }
-        try {
-            synchronized(out) {
-                out.write(RemoteFrameProtocol.makeHeader(type, data.size))
-                out.write(data)
-                out.flush()
+        inputExecutor.execute {
+            try {
+                synchronized(out) {
+                    out.write(RemoteFrameProtocol.makeHeader(type, data.size))
+                    out.write(data)
+                    out.flush()
+                }
+                logger.info("Input sent: type=0x${type.toString(16)} len=${data.size}")
+            } catch (e: Exception) {
+                // 注意：SocketException 等异常 message 可能为 null，必须带类名定位
+                logger.warn("sendInput failed: ${e.javaClass.name}: ${e.message}")
             }
-            logger.info("Input sent: type=0x${type.toString(16)} len=${data.size}")
-        } catch (e: Exception) {
-            // 注意：SocketException 等异常 message 可能为 null，必须带类名定位
-            logger.warn("sendInput failed: ${e.javaClass.name}: ${e.message}")
         }
     }
 
