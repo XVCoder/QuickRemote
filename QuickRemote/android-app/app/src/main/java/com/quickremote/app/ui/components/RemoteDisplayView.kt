@@ -162,6 +162,11 @@ class RemoteDisplayView(
     // ==================== 触摸事件 ====================
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // 所有事件都喂给 ScaleGestureDetector：它依赖 ACTION_POINTER_DOWN 重置 span 基准。
+        // 若只在双指 MOVE 时喂，上一次手势结束时的 span 会残留，再次捏合的第一次
+        // onScale 会用 陈旧span 计算出巨大的 scaleFactor，导致画面瞬间跳变。
+        scaleDetector.onTouchEvent(event)
+
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downRawX = event.rawX
@@ -210,11 +215,12 @@ class RemoteDisplayView(
                 } else if (event.pointerCount >= 2) {
                     handler.removeCallbacks(longPressRunnable)
                     moved = true
-                    scaleDetector.onTouchEvent(event)
 
                     // 双指平移（屏幕绝对坐标增量，屏幕像素 1:1，与单指一致）
                     val cx = centerRawX(event)
                     val cy = centerRawY(event)
+                    // 滚轮增量必须在更新 last 之前计算（否则恒为 0）
+                    val wheelDy = cy - lastPinchCenterRawY
                     if (pinchActive) {
                         panX += cx - lastPinchCenterRawX
                         panY += cy - lastPinchCenterRawY
@@ -225,8 +231,7 @@ class RemoteDisplayView(
                     }
 
                     // 双指垂直滑动 = 滚轮
-                    val dy = cy - lastPinchCenterRawY
-                    wheelAccumY += dy
+                    wheelAccumY += wheelDy
                     if (abs(wheelAccumY) >= WHEEL_THRESHOLD) {
                         val (rx, ry) = mapToRemote(centerLocalX(event), centerLocalY(event))
                         val delta = (-wheelAccumY / WHEEL_THRESHOLD).toInt()
