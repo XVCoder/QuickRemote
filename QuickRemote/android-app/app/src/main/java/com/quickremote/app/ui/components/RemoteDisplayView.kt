@@ -77,9 +77,10 @@ class RemoteDisplayView(
     private var moved = false
     private var longPressFired = false
 
-    // 双指捏合
-    private var lastPinchCenterX = 0f
-    private var lastPinchCenterY = 0f
+    // 双指捏合（中心点用屏幕绝对坐标：View 本身随 pan 移动，
+    // 若用本地坐标计算增量会与 View 位移叠加形成反馈抖动）
+    private var lastPinchCenterRawX = 0f
+    private var lastPinchCenterRawY = 0f
     private var pinchActive = false
 
     // 双指滚轮累计
@@ -181,8 +182,8 @@ class RemoteDisplayView(
                 if (event.pointerCount == 2) {
                     handler.removeCallbacks(longPressRunnable)
                     pinchActive = true
-                    lastPinchCenterX = centerX(event)
-                    lastPinchCenterY = centerY(event)
+                    lastPinchCenterRawX = centerRawX(event)
+                    lastPinchCenterRawY = centerRawY(event)
                     wheelAccumY = 0f
                 }
             }
@@ -211,23 +212,23 @@ class RemoteDisplayView(
                     moved = true
                     scaleDetector.onTouchEvent(event)
 
-                    // 双指平移（屏幕像素 1:1，与单指一致）
-                    val cx = centerX(event)
-                    val cy = centerY(event)
+                    // 双指平移（屏幕绝对坐标增量，屏幕像素 1:1，与单指一致）
+                    val cx = centerRawX(event)
+                    val cy = centerRawY(event)
                     if (pinchActive) {
-                        panX += cx - lastPinchCenterX
-                        panY += cy - lastPinchCenterY
-                        lastPinchCenterX = cx
-                        lastPinchCenterY = cy
+                        panX += cx - lastPinchCenterRawX
+                        panY += cy - lastPinchCenterRawY
+                        lastPinchCenterRawX = cx
+                        lastPinchCenterRawY = cy
                         clampPan()
                         applyTransform()
                     }
 
                     // 双指垂直滑动 = 滚轮
-                    val dy = cy - lastPinchCenterY
+                    val dy = cy - lastPinchCenterRawY
                     wheelAccumY += dy
                     if (abs(wheelAccumY) >= WHEEL_THRESHOLD) {
-                        val (rx, ry) = mapToRemote(cx, cy)
+                        val (rx, ry) = mapToRemote(centerLocalX(event), centerLocalY(event))
                         val delta = (-wheelAccumY / WHEEL_THRESHOLD).toInt()
                         onWheel?.invoke(rx, ry, delta)
                         wheelAccumY = 0f
@@ -282,15 +283,18 @@ class RemoteDisplayView(
 
     /**
      * 围绕本地坐标点 (focusX, focusY) 缩放（ZoomLayout 风格）。
-     * 模型：显示位置 = layout位置 + pan + scale * 本地坐标。
-     * 围绕 F 缩放 r：pan' = pan + scale * F * (1 - r)。
+     * 模型：View 变换链为 translation(pan) + scale(pivot=0)，
+     * 本地点 F 的屏幕位置 = layout位置 + pan + scale * F。
+     * 绕 F 缩放 r 倍需保持该屏幕点不动：
+     *   pan' + r*scale*F = pan + scale*F  →  pan' = pan + (1-r)*(pan + scale*F)
+     * （pan 在 scale 变换的父级，自身也被缩放影响，补偿必须含 pan 项）
      */
     private fun applyScale(newScale: Float, focusX: Float, focusY: Float) {
         val clamped = newScale.coerceIn(minScale(), MAX_SCALE)
         if (abs(clamped - displayScale) < 0.001f) return
         val r = clamped / displayScale
-        panX += displayScale * focusX * (1 - r)
-        panY += displayScale * focusY * (1 - r)
+        panX += (1 - r) * (panX + displayScale * focusX)
+        panY += (1 - r) * (panY + displayScale * focusY)
         displayScale = clamped
         clampPan()
         applyTransform()
@@ -348,9 +352,15 @@ class RemoteDisplayView(
 
     // ============ 双指几何 ============
 
-    private fun centerX(event: MotionEvent): Float = (event.getX(0) + event.getX(1)) / 2f
+    /** 双指中心（屏幕绝对坐标，不随 View 移动）。 */
+    private fun centerRawX(event: MotionEvent): Float = (event.getRawX(0) + event.getRawX(1)) / 2f
 
-    private fun centerY(event: MotionEvent): Float = (event.getY(0) + event.getY(1)) / 2f
+    private fun centerRawY(event: MotionEvent): Float = (event.getRawY(0) + event.getRawY(1)) / 2f
+
+    /** 双指中心（View 本地坐标，用于滚轮坐标映射）。 */
+    private fun centerLocalX(event: MotionEvent): Float = (event.getX(0) + event.getX(1)) / 2f
+
+    private fun centerLocalY(event: MotionEvent): Float = (event.getY(0) + event.getY(1)) / 2f
 
     companion object {
         private const val LONG_PRESS_MS = 550L

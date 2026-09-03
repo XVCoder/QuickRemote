@@ -14,32 +14,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.23",
-    "changelog": "PC 锁屏不再断开会话：锁屏期间保持连接与心跳，每秒尝试恢复屏幕捕获，解锁后自动恢复推流（分辨率变化时自动重建编码器）；连接时 PC 已锁屏同样等待解锁",
+    "latest_version": "1.1.24",
+    "changelog": "远程解锁（向日葵式）：锁屏状态下 Android 端可输入 Windows 登录密码远程解锁；SYSTEM 辅助程序在锁屏安全桌面注入按键；注意 PC 客户端现需以管理员身份运行（启动时会有 UAC 提示）",
     "versions": {
+      "1.1.24": {
+        "zip": "https://qd.solutionx.top/d/p/b3f9b51c-824e-45f3-bc30-26c9a335d215"
+      },
       "1.1.23": {
         "zip": "https://qd.solutionx.top/d/p/3a6b106a-829f-46ae-8f5b-d3fe0c03ca3f"
       },
       "1.1.22": {
         "zip": "https://qd.solutionx.top/d/p/969792cb-1751-4d75-9e35-02b577e1258f"
-      },
-      "1.1.21": {
-        "zip": "https://qd.solutionx.top/d/p/4c2354ee-2a2f-451f-8b9e-65263f5c0a09"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.35",
-    "changelog": "双指缩放最小值改为整幅画面可见（竖屏宽度撑满、上下留空可拖动摆放）；断连/失败时展示重连按钮；PC 锁屏时顶部提示等待解锁",
+    "latest_version": "1.0.36",
+    "changelog": "远程解锁：PC 锁屏时点击提示条输入 Windows 密码即可远程解锁；修复双指缩放闪动乱跳（缩放补偿公式漏项+平移坐标反馈抖动）；会话页保留顶部状态栏（仅隐藏底部导航栏）",
     "versions": {
+      "1.0.36": {
+        "apk": "https://qd.solutionx.top/d/p/814af064-339d-4f85-be18-9480cccc10b2"
+      },
       "1.0.35": {
         "apk": "https://qd.solutionx.top/d/p/092725c3-8677-4e32-bb74-3b7cbb4cb7ef"
       },
       "1.0.34": {
         "apk": "https://qd.solutionx.top/d/p/27fa70b5-081d-4a7f-9ef7-02d04840b25a"
-      },
-      "1.0.33": {
-        "apk": "https://qd.solutionx.top/d/p/9a7b38b9-8cb4-48d2-8d11-ae38f98c03f1"
       }
     }
   }

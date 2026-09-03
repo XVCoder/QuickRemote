@@ -108,8 +108,8 @@ fun RemoteSessionScreen(
         viewModel.startSession(device)
     }
 
-    // 会话页沉浸全屏（隐藏系统栏），退出时恢复。
-    // 屏幕方向不自动横屏：由工具栏「旋转」按钮手动切换横竖屏。
+    // 会话页沉浸模式：仅隐藏底部导航栏（保留顶部状态栏：时间/电量/网络可见），
+    // 退出时恢复。屏幕方向不自动横屏：由工具栏「旋转」按钮手动切换横竖屏。
     val activity = LocalContext.current.findActivity()
     var isLandscape by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -117,7 +117,7 @@ fun RemoteSessionScreen(
             androidx.core.view.WindowInsetsControllerCompat(
                 win, win.decorView
             ).apply {
-                hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                hide(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
                 systemBarsBehavior =
                     androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
@@ -129,7 +129,7 @@ fun RemoteSessionScreen(
             activity?.window?.let { win ->
                 androidx.core.view.WindowInsetsControllerCompat(
                     win, win.decorView
-                ).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                ).show(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
             }
         }
     }
