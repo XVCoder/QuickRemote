@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Text;
 using QuickRemote.PCClient.Models;
@@ -326,6 +327,82 @@ public sealed class RemoteSessionManager : IDisposable
         catch { }
     }
 
+    /// <summary>
+    /// 远程解锁：锁屏输入框位于 Winlogon 安全桌面，需要 SYSTEM 权限注入按键。
+    /// 通过计划任务（/RU SYSTEM /IT，交互会话）启动 QuickRemote.Unlocker.exe 完成：
+    /// 密码经临时文件传递（不落命令行/任务历史），由解锁器读取后立即删除。
+    /// 创建 SYSTEM 任务需要当前进程已提升（管理员）。
+    /// </summary>
+    private void RequestUnlockScreen(string password)
+    {
+        try
+        {
+            var unlockerExe = Path.Combine(AppContext.BaseDirectory, "QuickRemote.Unlocker.exe");
+            if (!File.Exists(unlockerExe))
+            {
+                _logger.Warn($"Unlocker not found: {unlockerExe}");
+                SendStatusControl("unlock_failed");
+                return;
+            }
+
+            var pwFile = Path.Combine(Path.GetTempPath(), $"qr-pw-{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(pwFile, password);
+
+            var taskName = $"QuickRemoteUnlock_{Guid.NewGuid():N}";
+            var createExit = RunSchtasks("/Create", "/TN", taskName,
+                "/TR", $"\"{unlockerExe}\" \"{pwFile}\"",
+                "/SC", "ONCE", "/ST", "23:59", "/RU", "SYSTEM", "/IT", "/F");
+            if (createExit != 0)
+            {
+                _logger.Warn($"Unlock task create failed (exit={createExit}); PC client must run as Administrator");
+                try { File.Delete(pwFile); } catch { }
+                SendStatusControl("unlock_failed");
+                return;
+            }
+
+            RunSchtasks("/Run", "/TN", taskName);
+            _logger.Info("Unlock task started");
+
+            // 任务执行完毕后清理（解锁器约 2 秒结束；删除失败重试，避免残留任务）
+            _ = Task.Run(async () =>
+            {
+                for (var i = 0; i < 10; i++)
+                {
+                    await Task.Delay(1000);
+                    if (RunSchtasks("/Delete", "/TN", taskName, "/F") == 0) return;
+                }
+                _logger.Warn($"Unlock task cleanup failed: {taskName}");
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Unlock failed: {ex.Message}");
+            SendStatusControl("unlock_failed");
+        }
+    }
+
+    /// <summary>执行 schtasks 并返回退出码。</summary>
+    private static int RunSchtasks(params string[] args)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("schtasks")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return -1;
+            p.WaitForExit(15000);
+            return p.ExitCode;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     /// <summary>把传输层字节计数同步到会话信息（UI 流量展示）。</summary>
     private void UpdateTrafficStats()
     {
@@ -400,6 +477,17 @@ public sealed class RemoteSessionManager : IDisposable
                 _logger.Info($"Quality adjust request: {percent}%");
                 _qualityPercent = percent;
                 ReconfigureEncoder(percent);
+            }
+            else if (action.GetString() == "unlock" &&
+                     json.RootElement.TryGetProperty("password", out var pwProp))
+            {
+                // 远程解锁：Android 端提交 Windows 登录密码，由 SYSTEM 辅助程序在锁屏桌面注入
+                var password = pwProp.GetString() ?? "";
+                if (password.Length > 0)
+                {
+                    _logger.Info("Unlock request received");
+                    Task.Run(() => RequestUnlockScreen(password));
+                }
             }
         }
         catch (Exception ex)

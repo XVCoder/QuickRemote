@@ -1,6 +1,7 @@
 package com.quickremote.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,13 +28,16 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.app.Activity
@@ -61,10 +66,12 @@ import com.quickremote.app.services.RemoteSessionManager
 import com.quickremote.app.ui.components.RemoteDisplayView
 import com.quickremote.app.ui.components.StatusColor
 import com.quickremote.app.ui.components.StatusIndicator
+import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
+import com.quickremote.app.ui.theme.TextSecondary
 import com.quickremote.app.ui.theme.Warning
 import com.quickremote.app.viewmodels.SessionViewModel
 import java.nio.ByteBuffer
@@ -94,6 +101,7 @@ fun RemoteSessionScreen(
     val videoHeight by viewModel.videoHeight.collectAsState()
     val connectionMode by viewModel.connectionMode.collectAsState()
     val pcLocked by viewModel.pcLocked.collectAsState()
+    val pcUnlockError by viewModel.pcUnlockError.collectAsState()
 
     // 进入页面自动开始截屏远程会话（无需凭据）
     LaunchedEffect(device.device_id) {
@@ -334,23 +342,44 @@ fun RemoteSessionScreen(
                 )
             }
 
-            // PC 锁屏提示条（连接保持，等待 PC 解锁后自动恢复画面）
+            // PC 锁屏提示条（连接保持；点击可输入 Windows 密码远程解锁）
             if (pcLocked && state == RemoteSessionManager.SessionState.CONNECTED) {
-                Row(
+                var showUnlockDialog by remember { mutableStateOf(false) }
+                Column(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 24.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .background(BgCard)
+                        .clickable { showUnlockDialog = true }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    StatusIndicator(color = StatusColor.YELLOW, size = 8.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "PC 处于锁屏状态，等待解锁…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextPrimary
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusIndicator(color = StatusColor.YELLOW, size = 8.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "PC 已锁屏，点击输入密码解锁",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary
+                        )
+                    }
+                    pcUnlockError?.let { err ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            err,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Warning
+                        )
+                    }
+                }
+                if (showUnlockDialog) {
+                    UnlockDialog(
+                        onConfirm = { password ->
+                            showUnlockDialog = false
+                            viewModel.sendUnlock(password)
+                        },
+                        onDismiss = { showUnlockDialog = false }
                     )
                 }
             }
@@ -462,6 +491,53 @@ private fun ToolBarButton(
         }
         Text(label, style = MaterialTheme.typography.labelSmall, color = if (active) Success else TextMuted)
     }
+}
+
+/** 远程解锁对话框：输入 Windows 登录密码，发送到 PC 端锁屏桌面注入解锁。 */
+@Composable
+private fun UnlockDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("远程解锁", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        },
+        text = {
+            Column {
+                Text(
+                    "输入 PC 端的 Windows 登录密码，将在锁屏界面自动输入并解锁。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    placeholder = { Text("Windows 登录密码", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (password.isNotEmpty()) onConfirm(password) },
+                enabled = password.isNotEmpty()
+            ) {
+                Text("解锁", color = if (password.isNotEmpty()) Accent else TextSecondary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = TextSecondary)
+            }
+        },
+        containerColor = BgCard
+    )
 }
 
 @Composable

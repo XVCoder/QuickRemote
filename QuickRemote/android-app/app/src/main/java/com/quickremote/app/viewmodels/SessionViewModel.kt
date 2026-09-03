@@ -59,6 +59,10 @@ class SessionViewModel(
     private val _pcLocked = MutableStateFlow(false)
     val pcLocked: StateFlow<Boolean> = _pcLocked.asStateFlow()
 
+    /** 远程解锁失败原因（null 表示无错误）。 */
+    private val _pcUnlockError = MutableStateFlow<String?>(null)
+    val pcUnlockError: StateFlow<String?> = _pcUnlockError.asStateFlow()
+
     /** 会话状态变更监听器。 */
     private val stateListener = object : RemoteSessionManager.Listener {
         override fun onStateChanged(state: RemoteSessionManager.SessionState) {
@@ -80,11 +84,21 @@ class SessionViewModel(
 
         override fun onPcLockStatus(locked: Boolean) {
             _pcLocked.value = locked
+            if (locked) _pcUnlockError.value = null
+        }
+
+        override fun onPcUnlockFailed() {
+            _pcUnlockError.value = "解锁失败：PC 端需要以管理员身份运行"
         }
     }
 
     init {
         sessionManager.listener = stateListener
+    }
+
+    /** 发送远程解锁请求（PC 锁屏时输入 Windows 登录密码解锁）。 */
+    fun sendUnlock(password: String) {
+        sessionManager.sendUnlockRequest(password)
     }
 
     /** 开始一个截屏远程会话（不需要凭据）。幂等：已在连接中/已连接时直接返回，避免重复建连。 */

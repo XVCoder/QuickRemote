@@ -56,6 +56,23 @@ if (Test-Path $UpdaterExe) {
     Write-Host "         The release package will NOT support automatic update!" -ForegroundColor Red
 }
 
+# 3.2 纳入远程解锁辅助程序 QuickRemote.Unlocker.exe（锁屏状态注入密码，需随包分发）
+$UnlockerProject = Join-Path (Split-Path -Parent $ScriptDir) "pc-unlocker"
+Write-Host "  Building pc-unlocker..." -ForegroundColor DarkGray
+dotnet build $UnlockerProject -c Release --nologo -v q
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: pc-unlocker build failed" -ForegroundColor Red
+    exit 1
+}
+$UnlockerExe = Join-Path $UnlockerProject "bin\Release\net8.0-windows\QuickRemote.Unlocker.exe"
+if (Test-Path $UnlockerExe) {
+    Copy-Item $UnlockerExe -Destination (Join-Path $StagingDir "QuickRemote.Unlocker.exe") -Force
+    Write-Host "  + QuickRemote.Unlocker.exe (unlock helper)" -ForegroundColor DarkGray
+} else {
+    Write-Host "  [WARN] QuickRemote.Unlocker.exe not found at $UnlockerExe" -ForegroundColor Red
+    Write-Host "         The release package will NOT support remote unlock!" -ForegroundColor Red
+}
+
 # 列出暂存目录内容
 Write-Host "  Staging contents:" -ForegroundColor DarkGray
 Get-ChildItem $StagingDir | ForEach-Object { Write-Host "    $($_.Name)" -ForegroundColor DarkGray }

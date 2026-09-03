@@ -95,6 +95,9 @@ class RemoteSessionManager(
 
         /** PC 端锁屏状态通知（锁屏时连接保持、画面暂停）。 */
         fun onPcLockStatus(locked: Boolean) {}
+
+        /** 远程解锁失败通知（如 PC 端未以管理员身份运行）。 */
+        fun onPcUnlockFailed() {}
     }
 
     var listener: Listener? = null
@@ -200,6 +203,32 @@ class RemoteSessionManager(
     }
 
     /**
+     * 发送远程解锁控制帧：{action:"unlock", password:"..."}。
+     * 密码由 PC 端 SYSTEM 辅助程序在锁屏安全桌面注入，实现向日葵式的远程解锁。
+     */
+    fun sendUnlockRequest(password: String) {
+        if (password.isEmpty()) return
+        val out = output ?: run {
+            logger.warn("sendUnlockRequest: no output stream (not connected?)")
+            return
+        }
+        val json = JSONObject().put("action", "unlock").put("password", password).toString()
+        val data = json.toByteArray(Charsets.UTF_8)
+        inputExecutor.execute {
+            try {
+                synchronized(out) {
+                    out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_CONTROL, data.size))
+                    out.write(data)
+                    out.flush()
+                }
+                logger.info("Unlock request sent")
+            } catch (e: Exception) {
+                logger.warn("Unlock request failed: ${e.javaClass.name}: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * 局域网直连：直连 PC 的 LAN_PORT，发送 TYPE_AUTH 认证帧。
      * 成功进入 receiveLoop 并返回 true；失败清理并返回 false（由上层回退中继）。
      */
@@ -287,11 +316,14 @@ class RemoteSessionManager(
         try {
             val json = JSONObject(String(data, Charsets.UTF_8))
 
-            // 状态通知（PC 锁屏/解锁）：不携带分辨率，仅更新提示状态
+            // 状态通知（PC 锁屏/解锁/解锁失败）：不携带分辨率，仅更新提示状态
             if (json.has("status")) {
-                val locked = json.optString("status") == "locked"
-                logger.info("Control: PC lock status = ${json.optString("status")}")
-                listener?.onPcLockStatus(locked)
+                when (json.optString("status")) {
+                    "locked" -> listener?.onPcLockStatus(true)
+                    "unlocked" -> listener?.onPcLockStatus(false)
+                    "unlock_failed" -> listener?.onPcUnlockFailed()
+                }
+                logger.info("Control: PC status = ${json.optString("status")}")
                 return
             }
 
