@@ -55,6 +55,10 @@ class SessionViewModel(
     private val _connectionMode = MutableStateFlow(RemoteSessionManager.ConnectionMode.RELAY)
     val connectionMode: StateFlow<RemoteSessionManager.ConnectionMode> = _connectionMode.asStateFlow()
 
+    /** PC 端锁屏状态（锁屏时连接保持、画面暂停，等待解锁恢复）。 */
+    private val _pcLocked = MutableStateFlow(false)
+    val pcLocked: StateFlow<Boolean> = _pcLocked.asStateFlow()
+
     /** 会话状态变更监听器。 */
     private val stateListener = object : RemoteSessionManager.Listener {
         override fun onStateChanged(state: RemoteSessionManager.SessionState) {
@@ -73,6 +77,10 @@ class SessionViewModel(
             _videoWidth.value = w
             _videoHeight.value = h
         }
+
+        override fun onPcLockStatus(locked: Boolean) {
+            _pcLocked.value = locked
+        }
     }
 
     init {
@@ -89,6 +97,7 @@ class SessionViewModel(
         _device.value = device
         _state.value = RemoteSessionManager.SessionState.CONNECTING
         _errorMessage.value = ""
+        _pcLocked.value = false
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 val config = settingsStore.serverConfig.first()

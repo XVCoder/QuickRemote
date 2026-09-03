@@ -25,7 +25,8 @@ import kotlin.math.abs
  * - 单指轻点（位移小于触摸阈值）= 左键点击
  * - 单指拖动 = 平移画面（查看被裁掉的部分）
  * - 长按 = 右键
- * - 双指缩放 = 画面缩放（1x~5x，围绕捏合中心，带阻尼）
+ * - 双指缩放 = 画面缩放（fit 整幅可见 ~ 5x，围绕捏合中心，带阻尼；
+ *   fit 状态竖屏下宽度撑满、上下留空，可拖动摆放位置）
  * - 双指拖动 = 平移画面
  * - 双指垂直滑动 = 滚轮
  *
@@ -133,6 +134,8 @@ class RemoteDisplayView(
         parentH = h
         logger.info("RemoteDisplayView: viewport ${w}x${h}")
         post {
+            // 视口变化（如旋转）后 fit 比例改变，重新收敛缩放范围
+            displayScale = displayScale.coerceIn(minScale(), MAX_SCALE)
             clampPan()
             applyTransform()
         }
@@ -267,12 +270,23 @@ class RemoteDisplayView(
     // ============ 显示变换（缩放/平移，pivot=0 模型） ============
 
     /**
+     * 最小缩放 = 整幅画面完整可见（fit）：
+     * 竖屏下宽度撑满屏幕、上下留空（可上下拖动摆放），横屏下高度撑满、左右留空。
+     * View 布局为 cover 尺寸（高度撑满），故 fit 比例 = min(视口宽/View宽, 视口高/View高)。
+     */
+    private fun minScale(): Float {
+        if (width <= 0 || height <= 0 || parentW <= 0 || parentH <= 0) return 1f
+        return minOf(parentW.toFloat() / width, parentH.toFloat() / height)
+            .coerceIn(FIT_SCALE_FLOOR, 1f)
+    }
+
+    /**
      * 围绕本地坐标点 (focusX, focusY) 缩放（ZoomLayout 风格）。
      * 模型：显示位置 = layout位置 + pan + scale * 本地坐标。
      * 围绕 F 缩放 r：pan' = pan + scale * F * (1 - r)。
      */
     private fun applyScale(newScale: Float, focusX: Float, focusY: Float) {
-        val clamped = newScale.coerceIn(MIN_SCALE, MAX_SCALE)
+        val clamped = newScale.coerceIn(minScale(), MAX_SCALE)
         if (abs(clamped - displayScale) < 0.001f) return
         val r = clamped / displayScale
         panX += displayScale * focusX * (1 - r)
@@ -283,21 +297,27 @@ class RemoteDisplayView(
     }
 
     /**
-     * 平移 clamp：画面边缘不越入屏幕（cover 超出部分可拖入视野）。
+     * 平移 clamp：
+     * - 内容大于屏幕（放大/cover）：边缘贴齐，超出部分可拖入视野；
+     * - 内容小于屏幕（fit 缩放、上下/左右留空）：内容完整留在屏幕内，可自由拖动摆放。
      * View 由 Compose 居中布局：layoutLeft = (parentW - width) / 2。
-     * 内容缩小后不足以覆盖屏幕时（宽度方向留白），平移归零居中。
      */
     private fun clampPan() {
         if (parentW <= 0 || parentH <= 0 || width <= 0 || height <= 0) return
         val layoutLeft = (parentW - width) / 2f
         val layoutTop = (parentH - height) / 2f
-        // 内容显示区间需覆盖屏幕
-        val minPanX = parentW - layoutLeft - width * displayScale
-        val maxPanX = -layoutLeft
-        val minPanY = parentH - layoutTop - height * displayScale
-        val maxPanY = -layoutTop
-        panX = if (minPanX > maxPanX) 0f else panX.coerceIn(minPanX, maxPanX)
-        panY = if (minPanY > maxPanY) 0f else panY.coerceIn(minPanY, maxPanY)
+        val contentW = width * displayScale
+        val contentH = height * displayScale
+        panX = if (contentW >= parentW) {
+            panX.coerceIn(parentW - layoutLeft - contentW, -layoutLeft)
+        } else {
+            panX.coerceIn(-layoutLeft, parentW - layoutLeft - contentW)
+        }
+        panY = if (contentH >= parentH) {
+            panY.coerceIn(parentH - layoutTop - contentH, -layoutTop)
+        } else {
+            panY.coerceIn(-layoutTop, parentH - layoutTop - contentH)
+        }
     }
 
     private fun applyTransform() {
@@ -336,8 +356,8 @@ class RemoteDisplayView(
         private const val LONG_PRESS_MS = 550L
         private const val WHEEL_THRESHOLD = 40f
 
-        /** 缩放范围与阻尼系数。 */
-        private const val MIN_SCALE = 1f
+        /** 缩放范围与阻尼系数。最小值动态为 fit（整幅可见），此处仅为下限保护。 */
+        private const val FIT_SCALE_FLOOR = 0.05f
         private const val MAX_SCALE = 5f
 
         /** 缩放阻尼：手指移动 1 单位，画面只变 0.7，更平滑不易抖动。 */

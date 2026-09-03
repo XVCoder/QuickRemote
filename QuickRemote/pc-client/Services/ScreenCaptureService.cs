@@ -27,6 +27,26 @@ public sealed class ScreenCaptureService : IDisposable
     /// <summary>屏幕高度（像素）。</summary>
     public int Height => _height;
 
+    /// <summary>
+    /// 判断异常是否为锁屏/安全桌面导致的 DXGI 访问问题（可等待解锁后恢复）。
+    /// - 0x887A0026 DXGI_ERROR_ACCESS_LOST：锁屏/UAC 切换桌面导致复制失效
+    /// - 0x80070005 E_ACCESSDENIED：锁屏期间重建 Output Duplication 被拒
+    /// </summary>
+    public static bool IsAccessDeniedOrLost(Exception ex)
+    {
+        for (Exception? e = ex; e != null; e = e.InnerException)
+        {
+            if (e is SharpGenException sge)
+            {
+                int code = sge.ResultCode.Code;
+                if (code == unchecked((int)0x887A0026) ||
+                    code == unchecked((int)0x80070005))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>初始化 DXGI Desktop Duplication。需要在 UI 线程或有桌面会话的线程调用。</summary>
     public void Start()
     {

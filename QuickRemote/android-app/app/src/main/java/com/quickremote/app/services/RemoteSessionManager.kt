@@ -92,6 +92,9 @@ class RemoteSessionManager(
     interface Listener {
         fun onStateChanged(state: SessionState) {}
         fun onVideoFrame(w: Int, h: Int) {}
+
+        /** PC 端锁屏状态通知（锁屏时连接保持、画面暂停）。 */
+        fun onPcLockStatus(locked: Boolean) {}
     }
 
     var listener: Listener? = null
@@ -283,6 +286,15 @@ class RemoteSessionManager(
     private fun handleControl(data: ByteArray) {
         try {
             val json = JSONObject(String(data, Charsets.UTF_8))
+
+            // 状态通知（PC 锁屏/解锁）：不携带分辨率，仅更新提示状态
+            if (json.has("status")) {
+                val locked = json.optString("status") == "locked"
+                logger.info("Control: PC lock status = ${json.optString("status")}")
+                listener?.onPcLockStatus(locked)
+                return
+            }
+
             val w = json.optInt("width", 1280)
             val h = json.optInt("height", 720)
             val c = json.optString("codec", "h264")

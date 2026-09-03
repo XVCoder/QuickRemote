@@ -40,6 +40,9 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>初始码率（kbps），压缩率调整时按比例缩放。</summary>
     private readonly int _baseBitrateKbps;
 
+    /// <summary>当前压缩率百分比（Android 端调整后更新，锁屏恢复重建编码器时保持）。</summary>
+    private int _qualityPercent = 100;
+
     /// <summary>会话 ID。</summary>
     public string SessionId { get; private set; } = "";
 
@@ -126,8 +129,31 @@ public sealed class RemoteSessionManager : IDisposable
             _logger.Info("Remote transport connected");
 
             // 2. 初始化屏幕捕获
-            _capture = new ScreenCaptureService();
-            _capture.Start();
+            // PC 锁屏时 DXGI DuplicateOutput 被拒绝（E_ACCESSDENIED）：等待解锁期间
+            // 保持连接并通知 Android 端展示"PC 已锁屏"提示，解锁后自动恢复。
+            bool wasLocked = false;
+            while (true)
+            {
+                try
+                {
+                    _capture = new ScreenCaptureService();
+                    _capture.Start();
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    if (!ScreenCaptureService.IsAccessDeniedOrLost(ex) || _transport?.IsConnected != true)
+                        throw;
+                    if (!wasLocked)
+                    {
+                        wasLocked = true;
+                        _logger.Warn("Screen capture unavailable (PC locked?), waiting for unlock...");
+                        SendStatusControl("locked");
+                    }
+                    Thread.Sleep(2000);
+                }
+            }
+            if (wasLocked) SendStatusControl("unlocked");
             _logger.Info($"Screen capture started: {_capture.Width}x{_capture.Height}");
 
             // 2.1 输入处理器需要画面尺寸做坐标归一化
@@ -155,9 +181,7 @@ public sealed class RemoteSessionManager : IDisposable
             }
 
             // 4. 发送控制帧（握手：分辨率/帧率/编码器信息给 Android 端）
-            var control = Encoding.UTF8.GetBytes(
-                $"{{\"width\":{_capture.Width},\"height\":{_capture.Height},\"fps\":{_fps},\"codec\":\"{encoderName}\"}}");
-            _transport.Send(RemoteFrameProtocol.TYPE_CONTROL, control);
+            SendHandshakeControl(encoderName);
 
             // 5. 启动捕获线程（抓帧入队）与编码线程（消费发送）
             _running = true;
@@ -189,40 +213,88 @@ public sealed class RemoteSessionManager : IDisposable
         }
     }
 
-    /// <summary>捕获线程：抓帧 → 入队（不编码，保证帧率）。</summary>
+    /// <summary>
+    /// 捕获线程：抓帧 → 入队（不编码，保证帧率）。
+    /// PC 锁屏/UAC 安全桌面会导致 DXGI 访问丢失（ACCESS_LOST）：此时销毁捕获并
+    /// 每秒尝试重建，期间心跳保持连接，解锁后自动恢复推流（不结束会话）。
+    /// </summary>
     private void CaptureLoop()
     {
         var interval = TimeSpan.FromMilliseconds(1000.0 / _fps);
         var lastControlSent = DateTime.UtcNow;
+        var lastRebuildTry = DateTime.MinValue;
+        var lockNotified = false;
 
         while (_running)
         {
             var sw = Stopwatch.StartNew();
             try
             {
-                var frame = _capture?.CaptureFrame(100);
-                if (frame != null && frame.HasChanges)
+                if (_capture == null)
                 {
-                    // 队列满则丢弃最旧的帧（跳帧），避免捕获线程阻塞
-                    if (!_frameQueue.TryAdd(frame))
+                    // 捕获失效（锁屏中）：每秒尝试重建一次，等待解锁
+                    if ((DateTime.UtcNow - lastRebuildTry).TotalMilliseconds >= 1000)
                     {
-                        _frameQueue.TryTake(out _);
-                        _frameQueue.TryAdd(frame);
+                        lastRebuildTry = DateTime.UtcNow;
+                        var capture = new ScreenCaptureService();
+                        capture.Start();
+                        var oldW = _inputHandler.VideoWidth;
+                        var oldH = _inputHandler.VideoHeight;
+                        _capture = capture;
+                        _inputHandler.VideoWidth = capture.Width;
+                        _inputHandler.VideoHeight = capture.Height;
+                        _logger.Info($"Screen capture restored: {capture.Width}x{capture.Height}");
+                        lockNotified = false;
+                        SendStatusControl("unlocked");
+                        // 分辨率变化（切换显示器/分辨率）：重建编码器并重新握手
+                        if (capture.Width != oldW || capture.Height != oldH)
+                        {
+                            ReconfigureEncoder(_qualityPercent);
+                            SendHandshakeControl(_encoder?.CodecName ?? "jpeg");
+                        }
                     }
                 }
-
-                // 周期性心跳（5 秒），保持连接活性；同时刷新流量统计
-                if ((DateTime.UtcNow - lastControlSent).TotalSeconds >= 5)
+                else
                 {
-                    _transport?.Send(RemoteFrameProtocol.TYPE_HEARTBEAT, Array.Empty<byte>());
-                    UpdateTrafficStats();
-                    lastControlSent = DateTime.UtcNow;
+                    var frame = _capture.CaptureFrame(100);
+                    if (frame != null && frame.HasChanges)
+                    {
+                        // 队列满则丢弃最旧的帧（跳帧），避免捕获线程阻塞
+                        if (!_frameQueue.TryAdd(frame))
+                        {
+                            _frameQueue.TryTake(out _);
+                            _frameQueue.TryAdd(frame);
+                        }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.Warn($"Capture loop error: {ex.Message}");
-                break;
+                if (ScreenCaptureService.IsAccessDeniedOrLost(ex))
+                {
+                    // 锁屏/安全桌面：销毁捕获等待解锁，会话保持
+                    try { _capture?.Dispose(); } catch { }
+                    _capture = null;
+                    if (!lockNotified)
+                    {
+                        lockNotified = true;
+                        _logger.Warn("Screen capture lost (PC locked?), waiting for unlock...");
+                        SendStatusControl("locked");
+                    }
+                }
+                else
+                {
+                    _logger.Warn($"Capture loop error: {ex.Message}");
+                    break;
+                }
+            }
+
+            // 周期性心跳（5 秒），保持连接活性；同时刷新流量统计（锁屏等待期间也保持）
+            if ((DateTime.UtcNow - lastControlSent).TotalSeconds >= 5)
+            {
+                _transport?.Send(RemoteFrameProtocol.TYPE_HEARTBEAT, Array.Empty<byte>());
+                UpdateTrafficStats();
+                lastControlSent = DateTime.UtcNow;
             }
 
             sw.Stop();
@@ -233,6 +305,25 @@ public sealed class RemoteSessionManager : IDisposable
 
         _logger.Info("Capture loop ended");
         Cleanup();
+    }
+
+    /// <summary>发送握手控制帧（分辨率/帧率/编码器信息给 Android 端）。</summary>
+    private void SendHandshakeControl(string encoderName)
+    {
+        var control = Encoding.UTF8.GetBytes(
+            $"{{\"width\":{_capture?.Width ?? 0},\"height\":{_capture?.Height ?? 0},\"fps\":{_fps},\"codec\":\"{encoderName}\"}}");
+        _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, control);
+    }
+
+    /// <summary>向客户端发送状态通知（locked/unlocked，锁屏提示）。</summary>
+    private void SendStatusControl(string status)
+    {
+        try
+        {
+            var json = Encoding.UTF8.GetBytes($"{{\"status\":\"{status}\"}}");
+            _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, json);
+        }
+        catch { }
     }
 
     /// <summary>把传输层字节计数同步到会话信息（UI 流量展示）。</summary>
@@ -307,6 +398,7 @@ public sealed class RemoteSessionManager : IDisposable
             {
                 var percent = percentProp.GetInt32();
                 _logger.Info($"Quality adjust request: {percent}%");
+                _qualityPercent = percent;
                 ReconfigureEncoder(percent);
             }
         }

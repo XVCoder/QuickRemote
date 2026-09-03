@@ -18,13 +18,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -90,6 +93,7 @@ fun RemoteSessionScreen(
     val videoWidth by viewModel.videoWidth.collectAsState()
     val videoHeight by viewModel.videoHeight.collectAsState()
     val connectionMode by viewModel.connectionMode.collectAsState()
+    val pcLocked by viewModel.pcLocked.collectAsState()
 
     // 进入页面自动开始截屏远程会话（无需凭据）
     LaunchedEffect(device.device_id) {
@@ -325,8 +329,30 @@ fun RemoteSessionScreen(
                 SessionOverlay(
                     state = state,
                     tunnel = tunnel,
-                    errorMessage = errorMessage
+                    errorMessage = errorMessage,
+                    onReconnect = { viewModel.startSession(device) }
                 )
+            }
+
+            // PC 锁屏提示条（连接保持，等待 PC 解锁后自动恢复画面）
+            if (pcLocked && state == RemoteSessionManager.SessionState.CONNECTED) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 24.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(BgCard)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StatusIndicator(color = StatusColor.YELLOW, size = 8.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "PC 处于锁屏状态，等待解锁…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary
+                    )
+                }
             }
 
             // 隐藏键盘输入框：捕获软键盘文本与物理键盘按键，映射为 VK 码发送
@@ -442,7 +468,8 @@ private fun ToolBarButton(
 private fun SessionOverlay(
     state: RemoteSessionManager.SessionState,
     tunnel: com.quickremote.app.data.models.TunnelResponse?,
-    errorMessage: String
+    errorMessage: String,
+    onReconnect: () -> Unit = {}
 ) {
     val (color, text) = when (state) {
         RemoteSessionManager.SessionState.CONNECTING -> StatusColor.YELLOW to "连接中…"
@@ -473,6 +500,18 @@ private fun SessionOverlay(
                 style = MaterialTheme.typography.bodySmall,
                 color = Warning
             )
+        }
+
+        // 断连/失败时提供重连入口
+        if (state == RemoteSessionManager.SessionState.FAILED ||
+            state == RemoteSessionManager.SessionState.DISCONNECTED
+        ) {
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(onClick = onReconnect) {
+                Icon(Icons.Filled.Refresh, contentDescription = null, tint = TextPrimary)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("重新连接", color = TextPrimary)
+            }
         }
 
         tunnel?.let { t ->

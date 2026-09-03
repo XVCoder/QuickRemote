@@ -14,32 +14,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.22",
-    "changelog": "修复局域网直连 5 秒后静默断连（认证读超时泄漏到会话读循环）导致的触控完全无反应；增加输入帧接收与 SendInput 失败诊断日志",
+    "latest_version": "1.1.23",
+    "changelog": "PC 锁屏不再断开会话：锁屏期间保持连接与心跳，每秒尝试恢复屏幕捕获，解锁后自动恢复推流（分辨率变化时自动重建编码器）；连接时 PC 已锁屏同样等待解锁",
     "versions": {
+      "1.1.23": {
+        "zip": "https://qd.solutionx.top/d/p/3a6b106a-829f-46ae-8f5b-d3fe0c03ca3f"
+      },
       "1.1.22": {
         "zip": "https://qd.solutionx.top/d/p/969792cb-1751-4d75-9e35-02b577e1258f"
       },
       "1.1.21": {
         "zip": "https://qd.solutionx.top/d/p/4c2354ee-2a2f-451f-8b9e-65263f5c0a09"
-      },
-      "1.1.20": {
-        "zip": "https://qd.solutionx.top/d/p/5123baf5-fb4f-49b0-98fd-0a3795bb8a09"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.34",
-    "changelog": "修复触控完全无反应的根因：触摸回调在主线程直接写 socket 抛 NetworkOnMainThreadException（Android 禁止主线程网络 I/O），输入帧从未离开手机；现所有输入写入转发到专用后台线程",
+    "latest_version": "1.0.35",
+    "changelog": "双指缩放最小值改为整幅画面可见（竖屏宽度撑满、上下留空可拖动摆放）；断连/失败时展示重连按钮；PC 锁屏时顶部提示等待解锁",
     "versions": {
+      "1.0.35": {
+        "apk": "https://qd.solutionx.top/d/p/092725c3-8677-4e32-bb74-3b7cbb4cb7ef"
+      },
       "1.0.34": {
         "apk": "https://qd.solutionx.top/d/p/27fa70b5-081d-4a7f-9ef7-02d04840b25a"
       },
       "1.0.33": {
         "apk": "https://qd.solutionx.top/d/p/9a7b38b9-8cb4-48d2-8d11-ae38f98c03f1"
-      },
-      "1.0.32": {
-        "apk": "https://qd.solutionx.top/d/p/78219e9d-c704-41fc-97f7-143329688c45"
       }
     }
   }
