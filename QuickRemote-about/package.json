@@ -1,6 +1,6 @@
 {
   "name": "quickremote-about",
-  "version": "1.0.38",
+  "version": "1.0.85",
   "description": "QuickRemote 项目关于页面（介绍用途、部署与使用方法）",
   "type": "module",
   "main": "server.js",

@@ -28,6 +28,9 @@ object RemoteFrameProtocol {
     /** 局域网直连认证，Android→PC：[auth_key 64B hex ASCII]。 */
     const val TYPE_AUTH: Byte = 0x07
 
+    /** Unicode 文本输入，Android→PC：[UTF-8 文本]（中文/emoji 等无法映射 VK 的字符）。 */
+    const val TYPE_INPUT_TEXT: Byte = 0x08
+
     /** 帧头长度：1 类型 + 4 长度。 */
     const val HEADER_SIZE = 5
 

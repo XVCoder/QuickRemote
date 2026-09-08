@@ -102,7 +102,7 @@ public sealed class ScreenCaptureService : IDisposable
     /// 捕获一帧桌面画面。
     /// </summary>
     /// <param name="timeoutMs">等待超时（毫秒），0=立即返回，-1=无限等待</param>
-    /// <returns>捕获的帧（BGRA 像素），如果无变化返回 null</returns>
+    /// <returns>捕获的帧（BGRA 像素，Acquire 成功时总是完整桌面快照）；超时无新帧返回 null</returns>
     public CapturedFrame? CaptureFrame(int timeoutMs = 500)
     {
         if (_disposed || _duplication == null)
@@ -122,15 +122,10 @@ public sealed class ScreenCaptureService : IDisposable
 
         try
         {
-            // 判断是否有像素变化
-            // AccumulatedFrames > 0 表示有新帧；PointerPosition 变化不产生像素变化
-            bool hasChanges = frameInfo.AccumulatedFrames > 0;
-            if (!hasChanges)
-            {
-                _duplication.ReleaseFrame();
-                return CapturedFrame.NoChanges;
-            }
-
+            // AccumulatedFrames == 0 表示仅指针位置变化（无像素更新），
+            // 但 AcquireNextFrame 成功时 desktopResource 始终是完整桌面快照——
+            // 必须照常读取像素投递编码器：静止桌面下若跳过（旧逻辑返回 NoChanges），
+            // 编码器永远等不到输入帧，远程端黑屏（2026-09-06 公网连接黑屏根因）。
             using var desktopTexture = desktopResource.QueryInterface<ID3D11Texture2D>();
 
             // 复制桌面纹理到 staging（CPU 可读）
@@ -167,7 +162,7 @@ public sealed class ScreenCaptureService : IDisposable
                     Data = data,
                     Width = _width,
                     Height = _height,
-                    HasChanges = true,
+                    HasChanges = frameInfo.AccumulatedFrames > 0,
                     PointerX = frameInfo.PointerPosition.Position.X,
                     PointerY = frameInfo.PointerPosition.Position.Y
                 };
@@ -189,10 +184,13 @@ public sealed class ScreenCaptureService : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        _stagingTexture?.Dispose();
-        _duplication?.Dispose();
-        _context?.Dispose();
-        _device?.Dispose();
+        // 逐个隔离：某个 Dispose 抛出（如并发使用中）不能跳过其余对象——
+        // _duplication 未释放会泄漏活的输出复制对象，之后同进程内任何
+        // DuplicateOutput 都将永久 E_INVALIDARG（每输出仅允许一个复制）
+        try { _stagingTexture?.Dispose(); } catch { }
+        try { _duplication?.Dispose(); } catch { }
+        try { _context?.Dispose(); } catch { }
+        try { _device?.Dispose(); } catch { }
     }
 }
 
@@ -216,7 +214,4 @@ public sealed class CapturedFrame
 
     /// <summary>鼠标 Y 坐标（桌面坐标）。</summary>
     public int PointerY;
-
-    /// <summary>表示"无变化"的帧。</summary>
-    public static CapturedFrame NoChanges { get; } = new() { HasChanges = false };
 }

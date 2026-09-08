@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace QuickRemote.PCClient.Services;
 
@@ -10,6 +11,7 @@ namespace QuickRemote.PCClient.Services;
 ///     action: 0=移动 1=左按下 2=左释放 3=右按下 4=右释放 5=中按下 6=中释放
 ///   INPUT_KEY   (0x03): [vkCode 2B][down 1B]
 ///   INPUT_WHEEL (0x04): [delta 2B(有符号)][x 2B][y 2B]
+///   INPUT_TEXT  (0x08): [UTF-8 文本]（中文/emoji，KEYEVENTF_UNICODE 注入）
 /// </summary>
 public sealed class RemoteInputHandler
 {
@@ -48,6 +50,9 @@ public sealed class RemoteInputHandler
                     break;
                 case RemoteFrameProtocol.TYPE_INPUT_WHEEL when data.Length >= 6:
                     HandleWheel(data);
+                    break;
+                case RemoteFrameProtocol.TYPE_INPUT_TEXT when data.Length >= 1:
+                    HandleText(data);
                     break;
             }
         }
@@ -166,6 +171,39 @@ public sealed class RemoteInputHandler
         SendInputInternal(ref input);
     }
 
+    /// <summary>
+    /// Unicode 文本注入：逐 UTF-16 码元以 KEYEVENTF_UNICODE 模拟按键
+    /// （wVk=0 + wScan=码元；代理对由系统按相邻事件组合成完整字符）。
+    /// </summary>
+    private void HandleText(byte[] data)
+    {
+        var text = Encoding.UTF8.GetString(data);
+        foreach (var ch in text)
+        {
+            SendUnicodeKey(ch, down: true);
+            SendUnicodeKey(ch, down: false);
+        }
+    }
+
+    private void SendUnicodeKey(char ch, bool down)
+    {
+        var input = new INPUT
+        {
+            type = INPUT_KEYBOARD,
+            U = new InputUnion
+            {
+                ki = new KEYBDINPUT
+                {
+                    wVk = 0,
+                    wScan = ch,
+                    dwFlags = (down ? 0u : KEYEVENTF_KEYUP) | KEYEVENTF_UNICODE,
+                    dwExtraInfo = IntPtr.Zero
+                }
+            }
+        };
+        SendInputInternal(ref input);
+    }
+
     // ============ 滚轮 ============
 
     private void HandleWheel(byte[] data)
@@ -173,8 +211,19 @@ public sealed class RemoteInputHandler
         var delta = (short)(data[0] | data[1] << 8);
         var x = (ushort)(data[2] | data[3] << 8);
         var y = (ushort)(data[4] | data[5] << 8);
+        // 水平滚动增量（v1.1.43 起 Android 端追加在帧尾；旧 6B 帧无此字段，视为 0）
+        short deltaH = 0;
+        if (data.Length >= 8) deltaH = (short)(data[6] | data[7] << 8);
         var (dx, dy) = Normalize(x, y);
 
+        // 垂直/水平是互斥的 dwFlags，各自构造输入分别提交
+        if (delta != 0) SendWheelInput(dx, dy, delta, MOUSEEVENTF_WHEEL);
+        if (deltaH != 0) SendWheelInput(dx, dy, deltaH, MOUSEEVENTF_HWHEEL);
+    }
+
+    /// <summary>滚轮输入：wheelFlag 选 WHEEL(垂直)/HWHEEL(水平)，带 MOVE 定位光标到指定坐标。</summary>
+    private void SendWheelInput(int dx, int dy, int delta, uint wheelFlag)
+    {
         var input = new INPUT
         {
             type = INPUT_MOUSE,
@@ -186,7 +235,7 @@ public sealed class RemoteInputHandler
                     dy = dy,
                     mouseData = unchecked((uint)delta),
                     // 带 MOVE 保证滚轮事件同时把光标定位到指定坐标
-                    dwFlags = MOUSEEVENTF_WHEEL | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                    dwFlags = wheelFlag | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     dwExtraInfo = IntPtr.Zero
                 }
             }
@@ -220,9 +269,11 @@ public sealed class RemoteInputHandler
     private const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
     private const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
     private const uint MOUSEEVENTF_WHEEL = 0x0800;
+    private const uint MOUSEEVENTF_HWHEEL = 0x1000;
     private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
     private const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_UNICODE = 0x0004;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);

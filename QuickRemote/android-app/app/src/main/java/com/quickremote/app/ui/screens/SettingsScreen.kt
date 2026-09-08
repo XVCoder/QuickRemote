@@ -1,5 +1,6 @@
 package com.quickremote.app.ui.screens
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
@@ -57,6 +58,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.core.content.FileProvider
 import com.quickremote.app.BuildConfig
 import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.ResolutionMode
@@ -70,6 +74,15 @@ import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
 import com.quickremote.app.ui.theme.TextSecondary
 import com.quickremote.app.viewmodels.MainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * 设置页：服务器地址、显示分辨率、颜色深度、音频重定向、版本检查、更新记录、日志上传、关于。
@@ -119,6 +132,12 @@ fun SettingsScreen(
             kotlinx.coroutines.delay(4000)
             statusMessage = null
         }
+    }
+
+    // 发现新版本时不产生 toast（以弹窗代替），需单独复位检查按钮的 loading，
+    // 否则弹窗点「以后再说」后按钮仍在转圈
+    LaunchedEffect(updateInfo) {
+        if (updateInfo != null) isCheckingUpdate = false
     }
 
     Scaffold(
@@ -265,6 +284,80 @@ fun SettingsScreen(
                 )
                 Text(
                     "公网连接建议降低（20-60%），局域网可保持 80-100%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+
+                Divider()
+                ToggleRow(
+                    label = "空白区触摸板",
+                    checked = settings.blankTouchpad,
+                    onCheckedChange = { settings = settings.copy(blankTouchpad = it) }
+                )
+                Text(
+                    "画面外空白区域作为触摸板：单指滑动移动光标，轻点左键，双指轻点右键、双指滑动滚动；关闭后仅保留点击与滚轮",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+
+                Divider()
+                Text(
+                    "光标速度 ${settings.touchpadSpeed}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary
+                )
+                Slider(
+                    value = settings.touchpadSpeed.toFloat(),
+                    onValueChange = {
+                        settings = settings.copy(touchpadSpeed = (it.toInt() / 10 * 10).coerceIn(50, 300))
+                    },
+                    valueRange = 50f..300f,
+                    steps = 24
+                )
+                Text(
+                    "触摸板单指滑动移动光标的速度（100% 与悬浮球长按同速）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+
+                Divider()
+                ToggleRow(
+                    label = "双击拖动",
+                    checked = settings.touchpadDoubleTapDrag,
+                    onCheckedChange = {
+                        settings = settings.copy(touchpadDoubleTapDrag = it)
+                    }
+                )
+                Text(
+                    "单指快速双击后按住拖动 = 按住左键拖动",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+
+                Divider()
+                ToggleRow(
+                    label = "三指手势",
+                    checked = settings.touchpadThreeFinger,
+                    onCheckedChange = {
+                        settings = settings.copy(touchpadThreeFinger = it)
+                    }
+                )
+                Text(
+                    "上滑多任务视图 / 下滑显示桌面 / 左右滑切换应用 / 轻点搜索",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+
+                Divider()
+                ToggleRow(
+                    label = "四指手势",
+                    checked = settings.touchpadFourFinger,
+                    onCheckedChange = {
+                        settings = settings.copy(touchpadFourFinger = it)
+                    }
+                )
+                Text(
+                    "左右滑切换虚拟桌面 / 轻点通知中心",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -561,10 +654,14 @@ fun SettingsScreen(
             )
         }
 
-        // 发现新版本对话框（展示更新内容 + 确认更新按钮）
+        // 发现新版本对话框（展示更新内容 + App 内下载安装）
         updateInfo?.let { info ->
+            var downloading by remember(info) { mutableStateOf(false) }
+            var progress by remember(info) { mutableStateOf(0f) }
+            var downloadError by remember(info) { mutableStateOf<String?>(null) }
+            val scope = rememberCoroutineScope()
             AlertDialog(
-                onDismissRequest = { viewModel.dismissUpdate() },
+                onDismissRequest = { if (!downloading) viewModel.dismissUpdate() },
                 title = {
                     Text("发现新版本 v${info.latestVersion}", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                 },
@@ -591,19 +688,49 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                        if (downloading) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Accent
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "正在下载安装包… ${(progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        downloadError?.let { err ->
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(err, style = MaterialTheme.typography.bodySmall, color = Danger)
+                        }
                     }
                 },
                 confirmButton = {
                     Button(
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl))
-                            context.startActivity(intent)
-                            viewModel.dismissUpdate()
+                            downloading = true
+                            downloadError = null
+                            scope.launch {
+                                try {
+                                    val file = withContext(Dispatchers.IO) {
+                                        downloadUpdateApk(context, info.downloadUrl, info.latestVersion) { p -> progress = p }
+                                    }
+                                    // 下载完成，直接唤起系统安装器（App 内更新，不经浏览器/文件管理器）
+                                    openApkInstaller(context, file)
+                                    downloading = false
+                                } catch (e: Exception) {
+                                    downloading = false
+                                    downloadError = "下载失败：${e.message ?: "未知错误"}，请重试或改用浏览器下载"
+                                }
+                            }
                         },
-                        enabled = info.downloadUrl.isNotBlank(),
+                        enabled = info.downloadUrl.isNotBlank() && !downloading,
                         colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = TextPrimary)
                     ) {
-                        Text("立即更新", fontWeight = FontWeight.SemiBold)
+                        Text(if (downloading) "下载中…" else "立即更新", fontWeight = FontWeight.SemiBold)
                     }
                 },
                 dismissButton = {
@@ -627,6 +754,100 @@ private fun SectionTitle(text: String) {
         color = TextMuted,
         modifier = Modifier.padding(start = 2.dp, bottom = 8.dp)
     )
+}
+
+/**
+ * App 内下载更新 APK 到应用外部私有目录（无需存储权限）。
+ * 此前"立即更新"只是打开浏览器链接，用户需在下载目录手动找文件安装，
+ * 连续两次装成旧版本（v1.0.39 装成 1.0.38、v1.0.41 装成 1.0.40），
+ * 现改为 App 内直接下载并唤起系统安装器，全程不离开 App。
+ *
+ * v1.0.44 加固：v1.0.43 升级时曾出现"下载进度 100%、安装器显示成功，
+ * 但实际装入的仍是旧版 APK"（同 versionCode 覆盖重装也会显示安装成功）。
+ * 现下载前清除旧文件、URL 加时间戳防缓存污染、下载后校验 APK 内嵌
+ * versionName 与期望版本一致，不一致直接拦截不再唤起安装器。
+ */
+private fun downloadUpdateApk(context: Context, url: String, expectedVersion: String, onProgress: (Float) -> Unit): File {
+    val dir = context.getExternalFilesDir(null)
+        ?: File(context.filesDir, "update").apply { mkdirs() }
+    val file = File(dir, "QuickRemote-update.apk")
+    // 防旧安装包残留干扰：每次下载前清除
+    if (file.exists() && !file.delete()) {
+        throw IOException("无法清除旧安装包缓存，请重试")
+    }
+    // 加时间戳参数防中间层缓存返回旧内容
+    val cacheBustingUrl = if (url.contains("?")) "$url&_t=${System.currentTimeMillis()}" else "$url?_t=${System.currentTimeMillis()}"
+    val conn = URL(cacheBustingUrl).openConnection() as HttpURLConnection
+    conn.connectTimeout = 15000
+    conn.readTimeout = 60000
+    conn.instanceFollowRedirects = true
+    conn.setRequestProperty("Cache-Control", "no-cache")
+    try {
+        if (conn.responseCode != 200) throw IOException("服务器返回 HTTP ${conn.responseCode}")
+        val total = conn.contentLengthLong.toFloat()
+        conn.inputStream.use { input ->
+            FileOutputStream(file).use { out ->
+                val buf = ByteArray(64 * 1024)
+                var done = 0L
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    done += n
+                    if (total > 0) onProgress((done / total).coerceIn(0f, 1f))
+                }
+                // 流提前结束且未下满声明长度，视为下载不完整
+                if (total > 0 && done < total.toLong()) {
+                    throw IOException("下载中断（${done}/${total.toLong()} 字节）")
+                }
+            }
+        }
+    } finally {
+        conn.disconnect()
+    }
+    // 简单完整性校验：APK 是 zip 包（PK 头）且体积应大于 1MB
+    if (file.length() < 1_000_000) throw IOException("安装包不完整（${file.length()} 字节）")
+    FileInputStream(file).use { it.read() == 0x50 && it.read() == 0x4B }.let { isZip ->
+        if (!isZip) {
+            file.delete()
+            throw IOException("下载内容不是有效安装包")
+        }
+    }
+    // 关键校验：读取 APK 内嵌版本号，防止下载被缓存污染后装入旧版
+    //（旧场景：versionCode 相同的旧包覆盖重装，安装器同样显示"安装成功"）
+    val pkgInfo = try {
+        context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
+    } catch (e: Exception) {
+        null
+    }
+    if (pkgInfo == null) {
+        file.delete()
+        throw IOException("安装包解析失败，请重试")
+    }
+    val actualVersion = pkgInfo.versionName.orEmpty().trim().trimStart('v', 'V')
+    if (actualVersion != expectedVersion.trim().trimStart('v', 'V')) {
+        file.delete()
+        throw IOException("下载到旧版本安装包（实际 v$actualVersion，应为 v$expectedVersion），已拦截。请稍后重试")
+    }
+    return file
+}
+
+/** 通过 FileProvider 唤起系统安装器安装指定 APK。失败时回退到浏览器打开下载页。 */
+private fun openApkInstaller(context: Context, apk: File) {
+    try {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        // FileProvider 或安装器唤起失败（极老 ROM）：回退浏览器
+        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/about"))
+        fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(fallback)
+    }
 }
 
 @Composable

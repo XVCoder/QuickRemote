@@ -12,8 +12,8 @@ android {
         applicationId = "com.quickremote.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 38
-        versionName = "1.0.38"
+        versionCode = 68
+        versionName = "1.0.68"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -85,6 +85,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material") // M2 仅用 pullRefresh 下拉刷新组件（与 M3 共存，版本随 BOM）
     implementation("androidx.compose.material:material-icons-extended")
 
     // Navigation Compose

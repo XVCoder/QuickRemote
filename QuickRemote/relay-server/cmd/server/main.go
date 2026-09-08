@@ -20,7 +20,7 @@ import (
 )
 
 // Version 是中转服务器的版本号，可在编译时通过 -ldflags="-X main.Version=x.y.z" 注入。
-var Version = "1.0.5"
+var Version = "1.0.7"
 
 func main() {
 	configPath := "config.yaml"
@@ -58,8 +58,8 @@ func main() {
 	defer tunnelListener.Stop()
 	log.Printf("tunnel listener started on port %d", tunnelListener.Port())
 
-	// 初始化控制服务器
-	controlSrv := control.NewServer(authService, reg, tunnelMgr, 9100)
+	// 初始化控制服务器（tunnelListener 供 PC→PC 远程控制的 tunnel_open 注册会话）
+	controlSrv := control.NewServer(authService, reg, tunnelMgr, tunnelListener, 9100)
 
 	// 如果配置了 TLS 证书，为控制连接启用 TLS
 	if cfg.Server.TLS.Cert != "" && cfg.Server.TLS.Key != "" {
@@ -80,12 +80,13 @@ func main() {
 	// 初始化 API 处理器
 	apiHandler := api.New(authService, reg, tunnelMgr, tunnelListener, controlSrv, cfg.QuickDeploy.BaseURL, cfg.QuickDeploy.UploadToken)
 
-	// 启动心跳超时检查
+	// 启动心跳超时检查（同时周期广播设备列表，兜底陈旧清理导致的离线状态变化）
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			reg.MarkStaleOffline(60 * time.Second)
+			controlSrv.BroadcastDeviceList()
 		}
 	}()
 

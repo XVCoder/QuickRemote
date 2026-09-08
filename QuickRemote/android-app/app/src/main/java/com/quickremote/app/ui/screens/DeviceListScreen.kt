@@ -16,10 +16,15 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +58,7 @@ import com.quickremote.app.viewmodels.MainViewModel
  * 所有设备统一走截屏方案连接（经中继隧道），不再有内网 RDP 直连
  * （曾导致 PC 端黑屏，相关实现已彻底移除）。
  */
+@OptIn(androidx.compose.material.ExperimentalMaterialApi::class)
 @Composable
 fun DeviceListScreen(
     viewModel: MainViewModel,
@@ -140,9 +146,20 @@ fun DeviceListScreen(
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        // 下拉刷新（列表滚动到顶再下拉触发；空列表区域同样支持）
+        val pullRefreshState = rememberPullRefreshState(
+            refreshing = isRefreshing,
+            onRefresh = { viewModel.refreshDevices() }
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .pullRefresh(pullRefreshState)
+        ) {
             if (devices.isEmpty() && !isRefreshing) {
-                EmptyState()
+                // verticalScroll 让空态区域也能产生嵌套滚动，否则下拉手势无法触发
+                EmptyState(modifier = Modifier.verticalScroll(rememberScrollState()))
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -165,6 +182,14 @@ fun DeviceListScreen(
                     }
                 }
             }
+            PullRefreshIndicator(
+                refreshing = isRefreshing,
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+                backgroundColor = BgCard,
+                contentColor = Accent,
+                scale = true
+            )
         }
     }
 
@@ -172,9 +197,9 @@ fun DeviceListScreen(
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(modifier: Modifier = Modifier) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

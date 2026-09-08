@@ -38,6 +38,11 @@ class SettingsStore(private val context: Context) {
         val AUTO_UPDATE = booleanPreferencesKey("auto_update")
         val MANIFEST_URL = stringPreferencesKey("manifest_url")
         val QUALITY_PERCENT = intPreferencesKey("quality_percent")
+        val BLANK_TOUCHPAD = booleanPreferencesKey("blank_touchpad")
+        val TOUCHPAD_SPEED = intPreferencesKey("touchpad_speed")
+        val TOUCHPAD_DOUBLE_TAP_DRAG = booleanPreferencesKey("touchpad_double_tap_drag")
+        val TOUCHPAD_THREE_FINGER = booleanPreferencesKey("touchpad_three_finger")
+        val TOUCHPAD_FOUR_FINGER = booleanPreferencesKey("touchpad_four_finger")
     }
 
     val serverConfig: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
@@ -61,7 +66,12 @@ class SettingsStore(private val context: Context) {
             colorDepth = prefs[SettingsKeys.COLOR_DEPTH] ?: 32,
             audioRedirect = prefs[SettingsKeys.AUDIO_REDIRECT] ?: false,
             autoUpdate = prefs[SettingsKeys.AUTO_UPDATE] ?: true,
-            qualityPercent = prefs[SettingsKeys.QUALITY_PERCENT] ?: 80
+            qualityPercent = prefs[SettingsKeys.QUALITY_PERCENT] ?: 80,
+            blankTouchpad = prefs[SettingsKeys.BLANK_TOUCHPAD] ?: true,
+            touchpadSpeed = (prefs[SettingsKeys.TOUCHPAD_SPEED] ?: 100).coerceIn(50, 300),
+            touchpadDoubleTapDrag = prefs[SettingsKeys.TOUCHPAD_DOUBLE_TAP_DRAG] ?: true,
+            touchpadThreeFinger = prefs[SettingsKeys.TOUCHPAD_THREE_FINGER] ?: true,
+            touchpadFourFinger = prefs[SettingsKeys.TOUCHPAD_FOUR_FINGER] ?: true
         )
     }
 
@@ -105,6 +115,11 @@ class SettingsStore(private val context: Context) {
             prefs[SettingsKeys.AUDIO_REDIRECT] = settings.audioRedirect
             prefs[SettingsKeys.AUTO_UPDATE] = settings.autoUpdate
             prefs[SettingsKeys.QUALITY_PERCENT] = settings.qualityPercent
+            prefs[SettingsKeys.BLANK_TOUCHPAD] = settings.blankTouchpad
+            prefs[SettingsKeys.TOUCHPAD_SPEED] = settings.touchpadSpeed.coerceIn(50, 300)
+            prefs[SettingsKeys.TOUCHPAD_DOUBLE_TAP_DRAG] = settings.touchpadDoubleTapDrag
+            prefs[SettingsKeys.TOUCHPAD_THREE_FINGER] = settings.touchpadThreeFinger
+            prefs[SettingsKeys.TOUCHPAD_FOUR_FINGER] = settings.touchpadFourFinger
         }
     }
 

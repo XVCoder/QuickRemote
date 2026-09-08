@@ -163,6 +163,95 @@
             </Setter>
         </Style>
 
+        <!-- 设置项下拉框（深色） -->
+        <Style x:Key="SettingCombo" TargetType="ComboBox">
+            <Setter Property="Background" Value="{StaticResource BgPrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Width" Value="220"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="MaxDropDownHeight" Value="240"/>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                        <Setter Property="Padding" Value="8,5"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="bd" Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="3">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                            <Setter TargetName="bd" Property="Opacity" Value="0.25"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                            <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="bd" Background="{StaticResource BgPrimaryBrush}"
+                                                BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1"
+                                                CornerRadius="4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0"
+                                                                  Content="{TemplateBinding Content}"
+                                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                                  Margin="8,5,4,5"
+                                                                  HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                <Path Grid.Column="1" Data="M 0 0 L 4 4 L 8 0"
+                                                      Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
+                                                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                                <!-- 选中项文本（经 ContentPresenter 转发到 ToggleButton 内容区） -->
+                                <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                            </ToggleButton>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
+                                   StaysOpen="False">
+                                <Border Background="{StaticResource BgPrimaryBrush}"
+                                        BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1"
+                                        CornerRadius="4" Margin="0,2,0,0" MinWidth="{TemplateBinding ActualWidth}">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter Margin="2"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 状态点脉冲动画 -->
         <Storyboard x:Key="PulseStoryboard" AutoReverse="True" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetName="StatusDot"
@@ -385,8 +474,132 @@
                                    HorizontalAlignment="Center"/>
                     </Border>
 
-                    <!-- 设置 -->
-                    <TextBlock Text="设置" FontSize="11" FontWeight="Medium"
+                    <!-- 远程设备（PC→PC 远程控制） -->
+                    <TextBlock Text="远程设备" FontSize="11" FontWeight="Medium"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Margin="2,16,0,8"/>
+                    <ItemsControl ItemsSource="{Binding RemoteDevices}" Margin="0,0,0,4">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:RemoteDeviceInfo}">
+                                <Border Background="{StaticResource BgCardBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="8"
+                                        Padding="14,10" Margin="0,0,0,8">
+                                    <Grid Cursor="Hand">
+                                        <Grid.InputBindings>
+                                            <MouseBinding Gesture="LeftClick"
+                                                          Command="{Binding DataContext.ConnectDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          CommandParameter="{Binding}"/>
+                                        </Grid.InputBindings>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <Border Background="#1E3A5F" CornerRadius="4"
+                                                        Width="16" Height="16" Margin="0,0,8,0"
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="🖥" FontSize="10"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                                                           FontWeight="Medium"
+                                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                                           VerticalAlignment="Center"/>
+                                                <!-- 本机私有备注（仅本机可见；为空时隐藏） -->
+                                                <TextBlock FontSize="11" FontStyle="Italic" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{StaticResource AccentBrush}"
+                                                           VerticalAlignment="Center" Margin="6,0,0,0"
+                                                           MaxWidth="140"
+                                                           ToolTip="本机备注（仅本机可见）">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Remark}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Remark}" Value="{x:Null}">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                    <Run Text="〔"/><Run Text="{Binding Remark, Mode=OneWay}"/><Run Text="〕"/>
+                                                </TextBlock>
+                                                <Ellipse Width="7" Height="7" Margin="12,0,5,0"
+                                                         VerticalAlignment="Center">
+                                                    <Ellipse.Style>
+                                                        <Style TargetType="Ellipse">
+                                                            <Setter Property="Fill" Value="{StaticResource TextMutedBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                                                    <Setter Property="Fill" Value="{StaticResource SuccessBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Ellipse.Style>
+                                                </Ellipse>
+                                                <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                           Foreground="{StaticResource TextMutedBrush}"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock FontSize="11"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       TextTrimming="CharacterEllipsis">
+                                                <!-- Run.Text 默认 TwoWay，只读属性必须显式 OneWay，
+                                                     否则渲染即抛 XamlParseException → 布局无限重试 → UI 死循环（v1.1.46 修复） -->
+                                                <Run Text="{Binding DeviceId, Mode=OneWay}"/>
+                                                <Run Text=" · "/>
+                                                <Run Text="{Binding SubtitleText, Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="&#x270E;" FontSize="13"
+                                                    Padding="8,4" Margin="10,0,0,0"
+                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                    Foreground="{StaticResource TextMutedBrush}"
+                                                    ToolTip="设置备注（仅本机可见，不影响设备名称）"
+                                                    Command="{Binding DataContext.SetDeviceRemarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"/>
+                                            <!-- 软删除：仅离线设备可见，上线自动恢复 -->
+                                            <Button Content="&#x2715;" FontSize="12"
+                                                    Padding="8,4" Margin="2,0,0,0"
+                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                    Foreground="{StaticResource TextMutedBrush}"
+                                                    ToolTip="从列表移除（仅本机隐藏；设备上线后自动恢复）"
+                                                    Command="{Binding DataContext.RemoveDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- 空设备状态 -->
+                    <Border Padding="0,12" Visibility="{Binding HasRemoteDevices, Converter={StaticResource InverseBoolToVisConverter}}">
+                        <TextBlock Text="暂无其他设备，其他 PC 连接服务器后将自动出现在此处" FontSize="12"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   HorizontalAlignment="Center" TextAlignment="Center"/>
+                    </Border>
+
+                    <!-- 基本配置 -->
+                    <TextBlock Text="基本配置" FontSize="11" FontWeight="Medium"
                                Foreground="{StaticResource TextMutedBrush}"
                                Margin="2,16,0,8"/>
                     <Border Background="{StaticResource BgCardBrush}"
@@ -420,6 +633,18 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="设备名称" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Style="{StaticResource SettingInput}"
+                                         Text="{Binding DeviceNameInput, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="留空则由服务器自动分配默认名称"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="开机自启动" FontSize="12"
                                            Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
                                 <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
@@ -446,6 +671,150 @@
                                            Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
                                 <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
                                               IsChecked="{Binding AutoUploadLogs, Mode=TwoWay}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 远程配置（本机远程其他主机时的参数） -->
+                    <TextBlock Text="远程配置（本机远程其他主机时）" FontSize="11" FontWeight="Medium"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Margin="2,0,0,8"/>
+                    <Border Background="{StaticResource BgCardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,16">
+                        <StackPanel>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="目标分辨率上限" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="远程画面超过该高度时自动等比缩小以节省流量；原始分辨率 = 不缩放"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding MaxHeightOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding ViewerTargetMaxHeight, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="图像质量" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="按百分比缩放被控端编码码率：低质量省流量，高质量画质清晰"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding QualityOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding ViewerQualityPercent, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="目标帧率" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="请求被控端按该帧率推送画面（5-60 fps）"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding FpsOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding ViewerFps, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="颜色深度" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="16 位高彩色会量化画面色彩以提升压缩率"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding ColorDepthOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding ViewerColorDepth, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="局域网直连优先" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="同网段时优先直连（低延迟）；关闭后强制走公网中继"/>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding ViewerPreferLan, Mode=TwoWay}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 被远程配置（本机被其他主机远程连接时） -->
+                    <TextBlock Text="被远程配置（本机被远程连接时）" FontSize="11" FontWeight="Medium"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Margin="2,0,0,8"/>
+                    <Border Background="{StaticResource BgCardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,16">
+                        <StackPanel>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="默认帧率" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="无主控端下发参数时的画面推送帧率（5-60 fps）"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding FpsOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding HostFps, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="基准码率" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="编码输出码率基准；主控端质量百分比按此基准缩放"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding BitrateOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding HostBitrateKbps, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="输出分辨率上限" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="画面超过该高度时自动等比缩小以节省流量；原始分辨率 = 不缩放"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding MaxHeightOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding HostMaxHeight, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="颜色深度" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="16 位高彩色会量化画面色彩以提升压缩率"/>
+                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
+                                          ItemsSource="{Binding ColorDepthOptions}"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding HostColorDepth, Mode=TwoWay}"/>
                             </Grid>
                         </StackPanel>
                     </Border>

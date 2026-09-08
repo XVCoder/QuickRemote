@@ -1,0 +1,26 @@
+loaded 85433 bytes
+split into 27 access units
+MFStartup hr=0x00000000
+MFTEnumEx hr=0x00000000 count=1
+candidate[0] name=Microsoft H264 Video Decoder MFT
+ActivateObject hr=0x00000000
+MF_TRANSFORM_ASYNC hr=0xC00D36E6 value=0
+SetInputType hr=0x00000000
+GetOutputAvailableType hr=0x00000000
+  subtype=3231564E-0000...
+SetOutputType hr=0x00000000
+GetAttributes hr=0x00000000
+SetLowLatency hr=0x00000000
+outInfo flags=0x7 cbSize=4147200
+  f0 NEED_MORE_INPUT
+  f1 STREAM_CHANGE
+  re-SetOutputType hr=0x00000000
+  f1 OUTPUT #1: 1382400 bytes
+  f1 NEED_MORE_INPUT
+  f2 OUTPUT #2: 1382400 bytes
+  f2 NEED_MORE_INPUT
+  f3 OUTPUT #3: 1382400 bytes
+  f4 OUTPUT #4: 1382400 bytes
+  f5 OUTPUT #5: 1382400 bytes
+TOTAL outputs: 5
+DONE

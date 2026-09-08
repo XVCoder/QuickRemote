@@ -1,0 +1,26 @@
+===== 09/05/2026 21:23:53 =====
+Application: QuickRemote.PCClient.exe
+CoreCLR Version: 8.0.2726.22922
+.NET Version: 8.0.27
+Description: The process was terminated due to an unhandled exception.
+Exception Info: System.AccessViolationException: Attempted to read or write protected memory. This is often an indication that other memory is corrupt.
+Stack:
+   at QuickRemote.PCClient.Services.IMFTransform.ProcessInput(Int32, QuickRemote.PCClient.Services.IMFSample, Int32)
+   at QuickRemote.PCClient.Services.IMFTransform.ProcessInput(Int32, QuickRemote.PCClient.Services.IMFSample, Int32)
+   at QuickRemote.PCClient.Services.H264Encoder.EncodeFrame(Byte[])
+   at QuickRemote.PCClient.Services.RemoteSessionManager.EncodeLoop()
+   at System.Threading.ExecutionContext.RunInternal(System.Threading.ExecutionContext, System.Threading.ContextCallback, System.Object)
+
+===== 09/05/2026 21:21:26 =====
+Application: QuickRemote.PCClient.exe
+CoreCLR Version: 8.0.2726.22922
+.NET Version: 8.0.27
+Description: The process was terminated due to an unhandled exception.
+Exception Info: System.AccessViolationException: Attempted to read or write protected memory. This is often an indication that other memory is corrupt.
+Stack:
+   at QuickRemote.PCClient.Services.IMFTransform.ProcessInput(Int32, QuickRemote.PCClient.Services.IMFSample, Int32)
+   at QuickRemote.PCClient.Services.IMFTransform.ProcessInput(Int32, QuickRemote.PCClient.Services.IMFSample, Int32)
+   at QuickRemote.PCClient.Services.H264Encoder.EncodeFrame(Byte[])
+   at QuickRemote.PCClient.Services.RemoteSessionManager.EncodeLoop()
+   at System.Threading.ExecutionContext.RunInternal(System.Threading.ExecutionContext, System.Threading.ContextCallback, System.Object)
+

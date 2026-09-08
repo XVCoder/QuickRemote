@@ -49,6 +49,9 @@
         <Border Grid.Row="2" Background="{StaticResource BgPrimaryBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="清空日志" Click="BtnClear_Click"
+                        Background="Transparent" Foreground="{StaticResource DangerBrush}"
+                        BorderThickness="0" Cursor="Hand" Padding="10,4" FontSize="12"/>
                 <Button Content="打开日志目录" Click="BtnOpenFolder_Click"
                         Background="Transparent" Foreground="{StaticResource TextSecondaryBrush}"
                         BorderThickness="0" Cursor="Hand" Padding="10,4" FontSize="12"/>

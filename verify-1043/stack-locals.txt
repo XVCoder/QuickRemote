@@ -1,0 +1,17 @@
+Loading core dump: C:\Users\xiong\AppData\Local\CrashDumps\QuickRemote.PCClient.exe.2228.dmp ...
+OS Thread Id: 0xdde4 (46)
+        Child SP               IP Call Site
+000000444D1BF5B8 00007ffcf9b8453d [InlinedCallFrame: 000000444d1bf5b8] QuickRemote.PCClient.Services.IMFTransform.ProcessInput(Int32, QuickRemote.PCClient.Services.IMFSample, Int32)
+000000444D1BF5B8 00007ffc9b56f27b [InlinedCallFrame: 000000444d1bf5b8] QuickRemote.PCClient.Services.IMFTransform.ProcessInput(Int32, QuickRemote.PCClient.Services.IMFSample, Int32)
+000000444D1BF580 00007FFC9B56F27B ILStubClass.IL_STUB_CLRtoCOM(Int32, QuickRemote.PCClient.Services.IMFSample, Int32)
+
+000000444D1BF670 00007FFC9B56D261 QuickRemote.PCClient.Services.H264Encoder.EncodeFrame(Byte[])
+    LOCALS:
+        
+000000444D1BF900 00007FFC9B568948 QuickRemote.PCClient.Services.RemoteSessionManager.EncodeLoop()
+    LOCALS:
+        
+000000444D1BFA80 00007FFC9B432C0B System.Threading.ExecutionContext.RunInternal(System.Threading.ExecutionContext, System.Threading.ContextCallback, System.Object) [/_/src/libraries/System.Private.CoreLib/src/System/Threading/ExecutionContext.cs @ 154]
+    LOCALS:
+        
+000000444D1BFD18 00007ffcf9a8f053 [DebuggerU2MCatchHandlerFrame: 000000444d1bfd18] 

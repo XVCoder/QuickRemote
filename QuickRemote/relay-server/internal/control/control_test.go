@@ -30,7 +30,7 @@ func NewTestServer(t *testing.T) *testServer {
 		t.Fatalf("create registry: %v", err)
 	}
 	tunnelMgr := tunnel.NewManager()
-	srv := NewServer(authService, reg, tunnelMgr, 9100)
+	srv := NewServer(authService, reg, tunnelMgr, nil, 9100)
 
 	if err := srv.Start("127.0.0.1:0"); err != nil {
 		t.Fatalf("start server: %v", err)
@@ -107,9 +107,10 @@ func TestHandleConnection_Heartbeat(t *testing.T) {
 		"type":      "heartbeat",
 		"device_id": "machine-001",
 	})
-	resp := readTestMessage(t, conn)
-	if resp["type"] != "heartbeat_ack" {
-		t.Errorf("expected heartbeat_ack, got %v", resp["type"])
+	// 注册后服务器会广播 device_list，循环读到 heartbeat_ack 为止
+	resp := readUntilType(t, conn, "heartbeat_ack")
+	if resp == nil {
+		t.Error("expected heartbeat_ack, got timeout")
 	}
 }
 
@@ -140,6 +141,18 @@ func TestHandleConnection_AuthFailed(t *testing.T) {
 	if resp["status"] != "auth_failed" {
 		t.Errorf("expected status auth_failed, got %v", resp["status"])
 	}
+}
+
+// readUntilType 循环读消息直到遇到指定类型（最多 10 条），找不到返回 nil。
+func readUntilType(t *testing.T, conn net.Conn, wantType string) map[string]interface{} {
+	t.Helper()
+	for i := 0; i < 10; i++ {
+		msg := readTestMessage(t, conn)
+		if msg["type"] == wantType {
+			return msg
+		}
+	}
+	return nil
 }
 
 // sendTestMessage 使用 4 字节大端长度前缀 + JSON 载荷发送消息。

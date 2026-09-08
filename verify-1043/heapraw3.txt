@@ -1,0 +1,7 @@
+Loading core dump: C:\Users\xiong\AppData\Local\CrashDumps\QuickRemote.PCClient.exe.2228.dmp ...
+Ready to process analysis commands. Type 'help' to list available commands or 'help [command]' to get detailed help on a command.
+Type 'quit' or 'exit' to exit the session.
+<END_COMMAND_OUTPUT>
+> dumpheap -stat
+<END_COMMAND_OUTPUT>
+> exit

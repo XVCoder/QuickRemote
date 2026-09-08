@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- App 内更新 APK 下载目录（getExternalFilesDir），供系统安装器读取 -->
+    <external-files-path name="updates" path="." />
+    <files-path name="internal" path="." />
+</paths>

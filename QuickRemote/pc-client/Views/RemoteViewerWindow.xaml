@@ -1,0 +1,61 @@
+<Window x:Class="QuickRemote.PCClient.Views.RemoteViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="远程控制" Height="720" Width="1152" MinHeight="360" MinWidth="480"
+        WindowStartupLocation="CenterOwner"
+        Background="#FF0D1117"
+        Icon="/app.png"
+        FontFamily="{StaticResource UiFont}"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        PreviewKeyUp="Window_PreviewKeyUp"
+        TextInput="Window_TextInput"
+        MouseWheel="Window_MouseWheel"
+        Closed="Window_Closed">
+
+    <!-- WPF 仅左/右键有专用事件，中键经 MouseDown/Up 的 ChangedButton 区分 -->
+    <Grid x:Name="ContentGrid"
+          MouseMove="Grid_MouseMove"
+          MouseDown="Grid_MouseDown"
+          MouseUp="Grid_MouseUp"
+          Cursor="Cross">
+
+        <!-- 远程画面（Stretch=Uniform 居中，坐标转换按内容矩形换算） -->
+        <Image x:Name="VideoImage" Stretch="Uniform"
+               RenderOptions.BitmapScalingMode="NearestNeighbor"
+               SnapsToDevicePixels="True"/>
+
+        <!-- 状态覆盖层（连接中/等待画面/错误） -->
+        <Border x:Name="StatusOverlay" Background="#E60D1117">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock x:Name="StatusText" Text="正在连接..."
+                           FontSize="16" FontWeight="Medium"
+                           Foreground="#E6EDF3" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="StatusSubText" Text=""
+                           FontSize="12" FontFamily="{StaticResource MonoFont}"
+                           Foreground="#8B949E" HorizontalAlignment="Center"
+                           Margin="0,10,0,0" TextWrapping="Wrap"
+                           MaxWidth="420" TextAlignment="Center"/>
+                <Button x:Name="BtnReconnect" Content="重新连接"
+                        Visibility="Collapsed" Margin="0,16,0,0"
+                        Padding="16,7" FontSize="12" Cursor="Hand"
+                        Background="{StaticResource AccentBrush}"
+                        Foreground="White" BorderThickness="0"
+                        Click="BtnReconnect_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                    CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

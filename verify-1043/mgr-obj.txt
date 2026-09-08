@@ -1,0 +1,4 @@
+Loading core dump: C:\Users\xiong\AppData\Local\CrashDumps\QuickRemote.PCClient.exe.2228.dmp ...
+<Note: this object has an invalid CLASS field>
+Invalid object
+

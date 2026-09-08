@@ -1,4 +1,4 @@
-# QuickRemote PC Client 打包脚本
+﻿# QuickRemote PC Client 打包脚本
 # 用法: powershell -ExecutionPolicy Bypass -File build-pcclient.ps1 [-Version 1.0.7]
 #
 # 生成干净的扁平 ZIP 包（不含顶层目录），可直接用于自动更新覆盖。
@@ -56,7 +56,10 @@ if (Test-Path $UpdaterExe) {
     Write-Host "         The release package will NOT support automatic update!" -ForegroundColor Red
 }
 
-# 3.2 纳入 SYSTEM 辅助程序 QuickRemote.Agent.exe（锁屏密码解锁 + 锁屏输入代理，需随包分发）
+# 3.2 纳入 SYSTEM 辅助程序 QuickRemote.Agent（锁屏密码解锁 + 锁屏输入代理，需随包分发）
+#     framework-dependent apphost 必须连同 .dll/.deps.json/.runtimeconfig.json 一起分发，
+#     缺 .dll 时 exe 启动即崩（"The application to execute does not exist"），
+#     曾导致远程解锁/锁屏输入代理在线上完全失效（v1.1.25~1.1.27）
 $AgentProject = Join-Path (Split-Path -Parent $ScriptDir) "pc-unlocker"
 Write-Host "  Building pc-agent..." -ForegroundColor DarkGray
 dotnet build $AgentProject -c Release --nologo -v q
@@ -64,13 +67,27 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: pc-agent build failed" -ForegroundColor Red
     exit 1
 }
-$AgentExe = Join-Path $AgentProject "bin\Release\net8.0-windows\QuickRemote.Agent.exe"
-if (Test-Path $AgentExe) {
-    Copy-Item $AgentExe -Destination (Join-Path $StagingDir "QuickRemote.Agent.exe") -Force
-    Write-Host "  + QuickRemote.Agent.exe (unlock + locked-screen input agent)" -ForegroundColor DarkGray
-} else {
-    Write-Host "  [WARN] QuickRemote.Agent.exe not found at $AgentExe" -ForegroundColor Red
-    Write-Host "         The release package will NOT support remote unlock!" -ForegroundColor Red
+$AgentBin = Join-Path $AgentProject "bin\Release\net8.0-windows"
+$AgentFiles = @(
+    "QuickRemote.Agent.exe",
+    "QuickRemote.Agent.dll",
+    "QuickRemote.Agent.deps.json",
+    "QuickRemote.Agent.runtimeconfig.json"
+)
+$missing = @()
+foreach ($f in $AgentFiles) {
+    $src = Join-Path $AgentBin $f
+    if (Test-Path $src) {
+        Copy-Item $src -Destination (Join-Path $StagingDir $f) -Force
+        Write-Host "  + $f (unlock + locked-screen input agent)" -ForegroundColor DarkGray
+    } else {
+        $missing += $f
+    }
+}
+if ($missing.Count -gt 0) {
+    Write-Host "ERROR: pc-agent output incomplete, missing: $($missing -join ', ')" -ForegroundColor Red
+    Write-Host "       The release package would NOT support remote unlock!" -ForegroundColor Red
+    exit 1
 }
 
 # 列出暂存目录内容

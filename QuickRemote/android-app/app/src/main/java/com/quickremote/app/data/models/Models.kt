@@ -111,7 +111,17 @@ data class AppSettings(
     val audioRedirect: Boolean = false,
     val autoUpdate: Boolean = true,
     /** 图像质量百分比（20-100），压缩率设置。 */
-    val qualityPercent: Int = 80
+    val qualityPercent: Int = 80,
+    /** 画面外空白区触摸板（单指滑动移光标/轻点左键/双指右键与滚动），默认启用。 */
+    val blankTouchpad: Boolean = true,
+    /** 触摸板光标速度（百分比 50-300，100 = 与悬浮球长按同速）。 */
+    val touchpadSpeed: Int = 100,
+    /** 触摸板双击拖动（单指快速双击后按住拖动 = 左键按住拖动）。 */
+    val touchpadDoubleTapDrag: Boolean = true,
+    /** 触摸板三指手势（上滑多任务/下滑显示桌面/左右滑切换应用/轻点搜索）。 */
+    val touchpadThreeFinger: Boolean = true,
+    /** 触摸板四指手势（左右滑切换虚拟桌面/轻点通知中心）。 */
+    val touchpadFourFinger: Boolean = true
 )
 
 enum class ResolutionMode { AUTO, ORIGINAL, CUSTOM }

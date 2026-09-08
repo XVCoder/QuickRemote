@@ -5,14 +5,18 @@ import android.view.Surface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.quickremote.app.data.local.SettingsStore
+import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.Logger
 import com.quickremote.app.services.RemoteSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -41,6 +45,8 @@ class SessionViewModel(
     private val _isFullscreen = MutableStateFlow(false)
     val isFullscreen: StateFlow<Boolean> = _isFullscreen.asStateFlow()
 
+    private val _isAutoFullscreen = MutableStateFlow(false)
+
     private val _isKeyboardVisible = MutableStateFlow(false)
     val isKeyboardVisible: StateFlow<Boolean> = _isKeyboardVisible.asStateFlow()
 
@@ -62,6 +68,15 @@ class SessionViewModel(
     /** 远程解锁失败原因（null 表示无错误）。 */
     private val _pcUnlockError = MutableStateFlow<String?>(null)
     val pcUnlockError: StateFlow<String?> = _pcUnlockError.asStateFlow()
+
+    /** 画面外空白区触摸板开关（设置页可改，默认启用）。 */
+    val blankTouchpad: StateFlow<Boolean> = settingsStore.appSettings
+        .map { it.blankTouchpad }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** 触摸板完整配置（速度/双击拖动/三指/四指手势开关）。 */
+    val touchpadConfig: StateFlow<AppSettings> = settingsStore.appSettings
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
 
     /** 会话状态变更监听器。 */
     private val stateListener = object : RemoteSessionManager.Listener {
@@ -147,10 +162,28 @@ class SessionViewModel(
 
     fun toggleFullscreen() {
         _isFullscreen.value = !_isFullscreen.value
+        _isAutoFullscreen.value = false
     }
+
+    /**
+     * 直接设置全屏状态（横屏自动全屏用，避免 toggle 在状态竞争时不精确）。
+     * @param auto true 表示由方向变化自动触发（竖屏时会自动退出），false 为用户手动
+     */
+    fun setFullscreen(value: Boolean, auto: Boolean = false) {
+        _isFullscreen.value = value
+        _isAutoFullscreen.value = value && auto
+    }
+
+    /** 横屏自动进入的全屏标记：竖屏时自动退出；用户手动全屏不受影响。 */
+    val isAutoFullscreen: StateFlow<Boolean> get() = _isAutoFullscreen
 
     fun toggleKeyboard() {
         _isKeyboardVisible.value = !_isKeyboardVisible.value
+    }
+
+    /** 同步真实 IME 可见状态（用户按系统返回键收起键盘时修正状态，避免按钮高亮失真）。 */
+    fun setKeyboardVisible(visible: Boolean) {
+        _isKeyboardVisible.value = visible
     }
 
     override fun onCleared() {

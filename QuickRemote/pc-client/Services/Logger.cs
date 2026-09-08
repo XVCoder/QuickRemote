@@ -80,6 +80,22 @@ public sealed class Logger : IDisposable
     /// <summary>获取日志目录。</summary>
     public static string GetLogDirectory() => LogDir;
 
+    /// <summary>清空全部日志文件（下次写入时自动重建当天文件）。</summary>
+    public static void ClearLogs()
+    {
+        try
+        {
+            foreach (var file in Directory.GetFiles(LogDir, "quickremote-*.log"))
+            {
+                try { File.Delete(file); } catch { }
+            }
+        }
+        catch
+        {
+            // 清空失败不影响主流程
+        }
+    }
+
     public void Dispose()
     {
     }

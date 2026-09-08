@@ -19,6 +19,9 @@ public sealed class RelayRemoteTransport : IRemoteTransport
     private readonly NetworkStream _stream;
     private readonly Thread _readThread;
     private volatile bool _running;
+    // Dispose 引发的 ReadLoop 退出不再触发 Disconnected（同 LocalRemoteTransport：
+    // 防止接管清理旧传输时迟到事件误杀新会话）
+    private volatile bool _disposed;
     private readonly object _writeLock = new();
 
     /// <inheritdoc/>
@@ -53,6 +56,9 @@ public sealed class RelayRemoteTransport : IRemoteTransport
         var client = new TcpClient();
         try
         {
+            // 禁用 Nagle 算法：视频帧/心跳/控制帧小包立即发出，
+            // 否则 Nagle+延迟ACK 交互会给小 P 帧和控制帧带来最多 200ms 额外延迟
+            client.NoDelay = true;
             await client.ConnectAsync(host, port, ct);
             var stream = client.GetStream();
 
@@ -122,7 +128,8 @@ public sealed class RelayRemoteTransport : IRemoteTransport
         {
             _running = false;
             try { _client.Dispose(); } catch { }
-            Disconnected?.Invoke();
+            // Dispose 主动关闭（会话接管/程序退出）不触发断开事件
+            if (!_disposed) Disconnected?.Invoke();
         }
     }
 
@@ -141,6 +148,7 @@ public sealed class RelayRemoteTransport : IRemoteTransport
     /// <inheritdoc/>
     public void Dispose()
     {
+        _disposed = true;
         _running = false;
         try { _client.Dispose(); } catch { }
     }

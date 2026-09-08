@@ -1,7 +1,10 @@
 package com.quickremote.app.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,11 +15,14 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
@@ -25,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardCommandKey
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
@@ -45,14 +52,25 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -63,11 +81,18 @@ import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.KeyMapper
 import com.quickremote.app.services.RemoteFrameProtocol
 import com.quickremote.app.services.RemoteSessionManager
+import com.quickremote.app.ui.components.LogViewerDialog
+import com.quickremote.app.ui.components.MouseFloatingBall
+import com.quickremote.app.ui.components.PixelWheel
 import com.quickremote.app.ui.components.RemoteDisplayView
+import com.quickremote.app.ui.components.RemoteEditText
+import com.quickremote.app.ui.components.ScrollVelocityTracker
 import com.quickremote.app.ui.components.StatusColor
 import com.quickremote.app.ui.components.StatusIndicator
+import com.quickremote.app.ui.components.WheelAccumulator
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
+import com.quickremote.app.ui.theme.BgHover
 import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
@@ -76,6 +101,12 @@ import com.quickremote.app.ui.theme.Warning
 import com.quickremote.app.viewmodels.SessionViewModel
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 远程桌面会话页（截屏方案）。
@@ -102,22 +133,35 @@ fun RemoteSessionScreen(
     val connectionMode by viewModel.connectionMode.collectAsState()
     val pcLocked by viewModel.pcLocked.collectAsState()
     val pcUnlockError by viewModel.pcUnlockError.collectAsState()
+    val blankTouchpad by viewModel.blankTouchpad.collectAsState()
+    val touchpadCfg by viewModel.touchpadConfig.collectAsState()
 
     // 进入页面自动开始截屏远程会话（无需凭据）
     LaunchedEffect(device.device_id) {
         viewModel.startSession(device)
     }
 
-    // 会话页沉浸模式：仅隐藏底部导航栏（保留顶部状态栏：时间/电量/网络可见），
-    // 退出时恢复。屏幕方向不自动横屏：由工具栏「旋转」按钮手动切换横竖屏。
+    // 会话页沉浸模式：非全屏仅隐藏底部导航栏（保留顶部状态栏：时间/电量/网络可见），
+    // 全屏完全沉浸（状态栏+导航栏都隐藏，滑动临时浮现）。退出页面时恢复。
     val activity = LocalContext.current.findActivity()
-    var isLandscape by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+
+    // 当前屏幕方向（manifest 已配置 orientation 不重建 Activity，旋转时此值实时更新）
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    // 全屏联动沉浸模式：横屏自动全屏时状态栏一并隐藏（向日葵式完全沉浸）
+    LaunchedEffect(isFullscreen) {
         activity?.window?.let { win ->
             androidx.core.view.WindowInsetsControllerCompat(
                 win, win.decorView
             ).apply {
-                hide(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+                if (isFullscreen) {
+                    hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                } else {
+                    show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+                    hide(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+                }
                 systemBarsBehavior =
                     androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
@@ -129,24 +173,55 @@ fun RemoteSessionScreen(
             activity?.window?.let { win ->
                 androidx.core.view.WindowInsetsControllerCompat(
                     win, win.decorView
-                ).show(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+                ).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             }
         }
     }
 
-    /** 切换横屏/竖屏。 */
-    fun toggleOrientation() {
-        isLandscape = !isLandscape
-        activity?.requestedOrientation = if (isLandscape) {
-            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        } else {
-            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    // 横屏自动全屏：转横屏时自动进入全屏（记录为"自动"），转回竖屏时仅退出
+    // 自动进入的全屏——用户在竖屏手动开的全屏不受影响。
+    LaunchedEffect(isLandscape) {
+        if (isLandscape) {
+            if (!isFullscreen) viewModel.setFullscreen(true, auto = true)
+        } else if (viewModel.isAutoFullscreen.value) {
+            viewModel.setFullscreen(false)
         }
     }
 
-    // 隐藏键盘输入框引用（软键盘字符/物理键盘按键捕获）
-    var keyInput by remember { mutableStateOf<android.widget.EditText?>(null) }
-    var lastKeyText by remember { mutableStateOf("") }
+    /** 切换横屏/竖屏（基于当前实际方向取反，物理旋转后按钮语义依然正确）。 */
+    fun toggleOrientation() {
+        activity?.requestedOrientation = if (isLandscape) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+    }
+
+    // 隐藏键盘输入框引用（软键盘文本/物理键盘按键捕获）
+    var keyInput by remember { mutableStateOf<RemoteEditText?>(null) }
+
+    // 触摸板虚拟光标位置（远程坐标；< 0 = 尚未使用触摸板，不显示）。
+    // 状态提升到画面层：RemoteDisplayView 上叠加绘制虚拟光标（PC 画面本身不含指针）
+    var padCursorX by remember { mutableStateOf(-1f) }
+    var padCursorY by remember { mutableStateOf(-1f) }
+    // 悬浮球展开状态（提升到本层：收缩态在画面外空白区启用鼠标手势层）
+    var padExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(videoWidth, videoHeight) {
+        // 分辨率变化（连接建立/重连）时光标重新定位（悬浮球内会视为屏幕中心）
+        padCursorX = -1f
+        padCursorY = -1f
+    }
+
+    // 快捷键面板显示状态 + 粘滞修饰键（点击激活后保持，随普通按键组合发送，再次点击取消）
+    var showHotkeyPanel by remember { mutableStateOf(false) }
+    var stickyMods by remember { mutableStateOf(setOf<Int>()) }
+
+    // 同步真实 IME 可见状态（用户按系统返回键收起键盘时修正，避免按钮高亮失真）
+    val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(imeBottomPx, isKeyboardVisible) {
+        val actuallyVisible = imeBottomPx > 0
+        if (actuallyVisible != isKeyboardVisible) viewModel.setKeyboardVisible(actuallyVisible)
+    }
 
     /** 发送键盘事件帧：[vkCode 2B][down 1B]。 */
     fun sendKeyRaw(vk: Int, down: Boolean) {
@@ -157,12 +232,64 @@ fun RemoteSessionScreen(
         viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_KEY, data)
     }
 
-    /** 发送一次按键（含 Shift 组合与按下/释放）。 */
-    fun sendKeyPress(vk: Int, needShift: Boolean) {
-        if (needShift) sendKeyRaw(0x10, true)  // VK_SHIFT down
+    /**
+     * 发送一次按键（包裹粘滞修饰键与 Shift）。
+     * 修饰键顺序：先按下所有激活的修饰键 → 目标键按下/释放 → 释放修饰键。
+     */
+    fun sendKeyCombo(vk: Int, needShift: Boolean = false) {
+        val mods = stickyMods.toList()
+        val shiftExtra = needShift && 0x10 !in mods
+        if (shiftExtra) sendKeyRaw(0x10, true)
+        mods.forEach { sendKeyRaw(it, true) }
         sendKeyRaw(vk, true)
         sendKeyRaw(vk, false)
-        if (needShift) sendKeyRaw(0x10, false)
+        mods.forEach { sendKeyRaw(it, false) }
+        if (shiftExtra) sendKeyRaw(0x10, false)
+    }
+
+    /**
+     * 发送上屏文本：可映射 VK 的 ASCII 字符走按键帧（保留游戏等按键语义），
+     * 其余（中文/emoji 等）合并为 UTF-8 文本帧，PC 端用 KEYEVENTF_UNICODE 注入。
+     */
+    fun sendTextToRemote(text: String) {
+        val unicodeBuf = StringBuilder()
+        fun flushUnicode() {
+            if (unicodeBuf.isNotEmpty()) {
+                viewModel.sendInput(
+                    RemoteFrameProtocol.TYPE_INPUT_TEXT,
+                    unicodeBuf.toString().toByteArray(Charsets.UTF_8)
+                )
+                unicodeBuf.clear()
+            }
+        }
+        text.forEach { ch ->
+            val mapped = KeyMapper.charToVk(ch)
+            if (mapped != null) {
+                flushUnicode()
+                sendKeyCombo(mapped.first, mapped.second)
+            } else {
+                unicodeBuf.append(ch)
+            }
+        }
+        flushUnicode()
+    }
+
+    /** 唤起/收起软键盘（工具栏按钮与全屏悬浮按钮共用）。 */
+    fun toggleIme() {
+        val willShow = !isKeyboardVisible
+        viewModel.toggleKeyboard()
+        val ime = activity?.getSystemService(Context.INPUT_METHOD_SERVICE)
+                as? android.view.inputmethod.InputMethodManager
+        if (willShow) {
+            keyInput?.let { et ->
+                et.requestFocus()
+                // post 到下一帧，确保焦点生效后再弹出（部分设备直接 show 不生效）
+                et.post { ime?.showSoftInput(et, 0) }
+            }
+        } else {
+            ime?.hideSoftInputFromWindow(keyInput?.windowToken, 0)
+            keyInput?.clearFocus()
+        }
     }
 
     /** 物理键盘按键按下：映射 VK 并发送（含修饰键状态）。 */
@@ -173,10 +300,7 @@ fun RemoteSessionScreen(
             return true
         }
         val vk = KeyMapper.androidKeyToVk(keyCode) ?: return false
-        val needShift = event.isShiftPressed
-        if (needShift) sendKeyRaw(0x10, true)
-        sendKeyRaw(vk, true)
-        if (needShift) sendKeyRaw(0x10, false)
+        sendKeyCombo(vk, event.isShiftPressed)
         return true
     }
 
@@ -189,6 +313,22 @@ fun RemoteSessionScreen(
         val vk = KeyMapper.androidKeyToVk(keyCode) ?: return false
         sendKeyRaw(vk, false)
         return true
+    }
+
+    /** IME sendKeyEvent（部分输入法的回车/删除走这里，与 deleteSurroundingText 互斥不重复）。 */
+    fun handleImeKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action != android.view.KeyEvent.ACTION_DOWN) return false
+        return when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                sendKeyCombo(0x0D)
+                true
+            }
+            android.view.KeyEvent.KEYCODE_DEL -> {
+                sendKeyCombo(0x08)
+                true
+            }
+            else -> false
+        }
     }
 
     Scaffold(
@@ -238,8 +378,9 @@ fun RemoteSessionScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        // union 取最大值：无键盘时避让导航栏，键盘弹出时避让 IME（工具栏浮在键盘上方）
+                        .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -247,20 +388,13 @@ fun RemoteSessionScreen(
                         icon = Icons.Filled.Keyboard,
                         label = "键盘",
                         active = isKeyboardVisible,
-                        onClick = {
-                            // 先根据当前状态决定动作，再翻转（避免读到旧状态）
-                            val willShow = !isKeyboardVisible
-                            viewModel.toggleKeyboard()
-                            val ime = activity?.getSystemService(Context.INPUT_METHOD_SERVICE)
-                                    as? android.view.inputmethod.InputMethodManager
-                            if (willShow) {
-                                keyInput?.requestFocus()
-                                ime?.showSoftInput(keyInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-                            } else {
-                                ime?.hideSoftInputFromWindow(keyInput?.windowToken, 0)
-                                keyInput?.clearFocus()
-                            }
-                        }
+                        onClick = { toggleIme() }
+                    )
+                    ToolBarButton(
+                        icon = Icons.Filled.KeyboardCommandKey,
+                        label = "快捷键",
+                        active = showHotkeyPanel,
+                        onClick = { showHotkeyPanel = !showHotkeyPanel }
                     )
                     ToolBarButton(
                         icon = Icons.Filled.ScreenRotation,
@@ -283,23 +417,83 @@ fun RemoteSessionScreen(
                 .fillMaxSize()
                 .background(Color.Black)
                 .padding(padding)
+                // 全屏无底部工具栏，键盘弹出时自行避让（画面等比缩小，远程底部输入框可见）；
+                // 非全屏时 bottomBar 已含 IME 避让（Scaffold content padding 已挤压本区域），无需重复
+                .then(if (isFullscreen) Modifier.imePadding() else Modifier)
         ) {
             val density = LocalDensity.current
             val parentWpx = constraints.maxWidth
             val parentHpx = constraints.maxHeight
 
-            // 高度拉满模式（类似相册缩放打开的照片）：缩放比 = 父高/远程高，
-            // 画面高度铺满、宽度同比例（横屏远程宽度超出屏幕，View 超出父边界可左右拖动）。
+            // 高度拉满模式（类似相册缩放打开的照片）：缩放比 = 可用高/远程高。
+            // 上下各留 VReserve 边距（即便键盘未弹出）：画面默认不铺满，
+            // 可上下拖动避让悬浮球等底部元素遮挡；横屏远程宽度超出屏幕可左右拖动。
             // 用 requiredSize 强制子项尺寸（Compose 会忽略子 View 内部设置的 layoutParams）。
-            val (coverWdp, coverHdp) = remember(videoWidth, videoHeight, parentWpx, parentHpx, density) {
+            val vReservePx = with(density) { VReserve.toPx() }.toInt()
+            val (coverWpx, coverHpx) = remember(videoWidth, videoHeight, parentWpx, parentHpx, vReservePx) {
                 if (videoWidth > 0 && videoHeight > 0 && parentWpx > 0 && parentHpx > 0) {
-                    val baseScale = parentHpx.toFloat() / videoHeight
-                    val coverW = (videoWidth * baseScale).toInt().coerceAtLeast(1)
-                    val coverH = (videoHeight * baseScale).toInt().coerceAtLeast(1)
-                    with(density) { coverW.toDp() to coverH.toDp() }
-                } else {
-                    with(density) { parentWpx.toDp() to parentHpx.toDp() }
-                }
+                    val availH = (parentHpx - 2 * vReservePx).coerceAtLeast(parentHpx / 3)
+                    val baseScale = availH.toFloat() / videoHeight
+                    ((videoWidth * baseScale).toInt().coerceAtLeast(1)) to
+                        ((videoHeight * baseScale).toInt().coerceAtLeast(1))
+                } else parentWpx to parentHpx  // 视频未就绪：占满父容器（保证 Surface 正常创建）
+            }
+            val (coverWdp, coverHdp) = remember(coverWpx, coverHpx, density) {
+                with(density) { coverWpx.toDp() to coverHpx.toDp() }
+            }
+
+            // 画面显示变换（RemoteDisplayView 的 pan/scale），拖动/缩放时回调更新，
+            // 供虚拟光标层将远程坐标换算为屏幕坐标
+            var viewScale by remember { mutableStateOf(1f) }
+            var viewPanX by remember { mutableStateOf(0f) }
+            var viewPanY by remember { mutableStateOf(0f) }
+
+            // 画面外空白区手势层（位于画面 View 之下，仅画面 View 布局边界外的触摸
+            // 落入本层）：悬浮球收缩时启用——单指轻点=左键、双指轻点=右键、
+            // 双指同向滑动=滚轮（上下/左右），坐标 = 当前虚拟光标位置。
+            // 空白区触摸板开启时单指滑动 = 光标相对移动（与悬浮球长按同款增益），
+            // 底部叠加半透明水印提示用途（画面拖过来会被自然遮挡）
+            if (state == RemoteSessionManager.SessionState.CONNECTED && !padExpanded) {
+                BlankAreaGestureLayer(
+                    cursorX = padCursorX,
+                    cursorY = padCursorY,
+                    remoteWidth = videoWidth,
+                    remoteHeight = videoHeight,
+                    viewScale = viewScale,
+                    touchpadEnabled = blankTouchpad,
+                    cursorSpeed = touchpadCfg.touchpadSpeed / 100f,
+                    doubleTapDrag = touchpadCfg.touchpadDoubleTapDrag,
+                    threeFinger = touchpadCfg.touchpadThreeFinger,
+                    fourFinger = touchpadCfg.touchpadFourFinger,
+                    parentHpx = parentHpx,
+                    onCursorMove = { x, y ->
+                        sendMouseAction(viewModel, 0, x, y)  // action 0 = 光标移动
+                    },
+                    onCursorChange = { x, y ->
+                        padCursorX = x
+                        padCursorY = y
+                    },
+                    onLeftDown = { x, y ->
+                        sendMouseAction(viewModel, 1, x, y)  // 左按下
+                    },
+                    onLeftUp = { x, y ->
+                        sendMouseAction(viewModel, 2, x, y)  // 左释放
+                    },
+                    onLeftClick = { x, y ->
+                        sendMouseAction(viewModel, 1, x, y)  // 左按下
+                        sendMouseAction(viewModel, 2, x, y)  // 左释放
+                    },
+                    onRightClick = { x, y ->
+                        sendMouseAction(viewModel, 3, x, y)  // 右按下
+                        sendMouseAction(viewModel, 4, x, y)  // 右释放
+                    },
+                    onWheel = { x, y, deltaV, deltaH ->
+                        sendWheel(viewModel, x, y, deltaV, deltaH)
+                    },
+                    onGestureKey = { gesture ->
+                        sendGestureKeys(viewModel, gesture)
+                    }
+                )
             }
 
             // 渲染视图（MediaCodec 解码渲染目标）
@@ -313,14 +507,28 @@ fun RemoteSessionScreen(
                             viewModel.setSurface(surface)
                         }
                         onLeftClick = { x, y ->
+                            // 直接触控也会移动 PC 指针，同步虚拟光标位置防错位
+                            padCursorX = x.toFloat()
+                            padCursorY = y.toFloat()
                             sendMouseAction(viewModel, 1, x, y)  // 左按下
                             sendMouseAction(viewModel, 2, x, y)  // 左释放
                         }
                         onRightClick = { x, y ->
+                            padCursorX = x.toFloat()
+                            padCursorY = y.toFloat()
                             sendMouseAction(viewModel, 3, x, y)  // 右按下
                             sendMouseAction(viewModel, 4, x, y)  // 右释放
                         }
-                        onWheel = { x, y, delta -> sendWheel(viewModel, x, y, delta) }
+                        onWheel = { x, y, deltaV, deltaH ->
+                            padCursorX = x.toFloat()
+                            padCursorY = y.toFloat()
+                            sendWheel(viewModel, x, y, deltaV, deltaH)
+                        }
+                        onTransformChanged = { s, px, py ->
+                            viewScale = s
+                            viewPanX = px
+                            viewPanY = py
+                        }
                     }
                 },
                 update = { view ->
@@ -332,14 +540,118 @@ fun RemoteSessionScreen(
                 }
             )
 
+            // 虚拟鼠标光标（触摸板模式）：DXGI 捕获的 PC 画面不含鼠标指针，
+            // 触摸板相对移动必须在客户端画出光标才知道位置（向日葵同款方案）
+            if (padCursorX >= 0 && videoWidth > 0 && videoHeight > 0 && coverWpx > 0) {
+                VirtualCursorOverlay(
+                    remoteX = padCursorX,
+                    remoteY = padCursorY,
+                    remoteW = videoWidth.toFloat(),
+                    remoteH = videoHeight.toFloat(),
+                    viewW = coverWpx.toFloat(),
+                    viewH = coverHpx.toFloat(),
+                    scale = viewScale,
+                    panX = viewPanX,
+                    panY = viewPanY
+                )
+            }
+
+            // 全屏模式：右侧悬浮按钮组（输入法/快捷键/旋转/退出全屏——
+            // 全屏时无工具栏，必须有退出入口；旋转按钮供横屏全屏直接切回竖屏）
+            if (isFullscreen) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 36.dp, end = 10.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    FloatingToolButton(
+                        icon = Icons.Filled.Keyboard,
+                        contentDescription = "输入法",
+                        active = isKeyboardVisible,
+                        onClick = { toggleIme() }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FloatingToolButton(
+                        icon = Icons.Filled.KeyboardCommandKey,
+                        contentDescription = "快捷键",
+                        active = showHotkeyPanel,
+                        onClick = { showHotkeyPanel = !showHotkeyPanel }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FloatingToolButton(
+                        icon = Icons.Filled.ScreenRotation,
+                        contentDescription = if (isLandscape) "切换竖屏" else "切换横屏",
+                        active = isLandscape,
+                        onClick = { toggleOrientation() }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FloatingToolButton(
+                        icon = Icons.Filled.FullscreenExit,
+                        contentDescription = "退出全屏",
+                        active = false,
+                        onClick = { viewModel.toggleFullscreen() }
+                    )
+                }
+            }
+
+            // 快捷键面板：叠加在画面底部（非全屏时位于底部工具栏上方；键盘弹出时位于键盘上方）
+            if (showHotkeyPanel) {
+                HotkeyPanel(
+                    stickyMods = stickyMods,
+                    onToggleMod = { vk ->
+                        stickyMods = if (vk in stickyMods) stickyMods - vk else stickyMods + vk
+                    },
+                    onKey = { vk -> sendKeyCombo(vk) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                )
+            }
+
+            // 鼠标悬浮球（向日葵式精准操控）：拖动移位（松手贴边）、长按拖动移动
+            // 远程光标（画面上叠加虚拟光标显示位置）、点击展开左/中/右三键环
+            // （中键支持按住上下滑动模拟滚轮）。
+            // 根节点铺满容器但仅球与按键区域响应触摸，不遮挡画面操作
+            if (state == RemoteSessionManager.SessionState.CONNECTED) {
+                MouseFloatingBall(
+                    remoteWidth = videoWidth,
+                    remoteHeight = videoHeight,
+                    cursorX = padCursorX,
+                    cursorY = padCursorY,
+                    padExpanded = padExpanded,
+                    onPadExpandedChange = { padExpanded = it },
+                    onCursorMove = { x, y ->
+                        sendMouseAction(viewModel, 0, x, y)  // action 0 = 光标移动
+                    },
+                    onCursorChange = { x, y ->
+                        padCursorX = x
+                        padCursorY = y
+                    },
+                    onButtonClick = { button, x, y ->
+                        sendMouseAction(viewModel, button.actionDown, x, y)
+                        sendMouseAction(viewModel, button.actionUp, x, y)
+                    },
+                    onWheel = { x, y, deltaV, deltaH ->
+                        sendWheel(viewModel, x, y, deltaV, deltaH)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
             // 状态覆盖层（连接中/失败时显示）
             if (state != RemoteSessionManager.SessionState.CONNECTED) {
+                var showLogViewer by remember { mutableStateOf(false) }
                 SessionOverlay(
                     state = state,
                     tunnel = tunnel,
                     errorMessage = errorMessage,
-                    onReconnect = { viewModel.startSession(device) }
+                    onReconnect = { viewModel.startSession(device) },
+                    onViewLogs = { showLogViewer = true }
                 )
+                if (showLogViewer) {
+                    LogViewerDialog(onDismiss = { showLogViewer = false })
+                }
             }
 
             // PC 锁屏提示条：锁屏时输入由 PC 端 SYSTEM 代理注入 Winlogon 桌面，
@@ -361,7 +673,7 @@ fun RemoteSessionScreen(
                         StatusIndicator(color = StatusColor.YELLOW, size = 8.dp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "PC 已锁屏 · 画面可直接点击，或点此输密码解锁",
+                            "PC 已锁屏 · 画面可直接点击，或点此输 PIN/密码解锁",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextPrimary
                         )
@@ -386,15 +698,14 @@ fun RemoteSessionScreen(
                 }
             }
 
-            // 隐藏键盘输入框：捕获软键盘文本与物理键盘按键，映射为 VK 码发送
+            // 隐藏键盘输入框：捕获软键盘文本（InputConnection 方案，正确处理中文输入法）与物理键盘按键
             AndroidView(
                 modifier = Modifier.size(1.dp),
                 factory = { ctx ->
-                    android.widget.EditText(ctx).apply {
-                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                        isCursorVisible = false
-                        isFocusableInTouchMode = true
-                        textSize = 1f
+                    RemoteEditText(ctx).apply {
+                        onCommitText = { text -> sendTextToRemote(text) }
+                        onBackspace = { sendKeyCombo(0x08) }
+                        onImeKeyEvent = { event -> handleImeKeyEvent(event) }
                         // 物理键盘：直接转发按键事件
                         setOnKeyListener { _, keyCode, event ->
                             when (event.action) {
@@ -405,27 +716,6 @@ fun RemoteSessionScreen(
                             }
                             true
                         }
-                        // 软键盘：文本变化 → 逐字符映射发送
-                        addTextChangedListener(object : android.text.TextWatcher {
-                            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                            override fun afterTextChanged(s: android.text.Editable?) {
-                                val newText = s?.toString().orEmpty()
-                                val old = lastKeyText
-                                if (newText.length > old.length) {
-                                    // 新增字符（可能一次提交多个，如中文输入法）
-                                    newText.substring(old.length).forEach { ch ->
-                                        KeyMapper.charToVk(ch)?.let { (vk, shift) ->
-                                            sendKeyPress(vk, shift)
-                                        }
-                                    }
-                                } else if (newText.length < old.length) {
-                                    // 删除 → 退格
-                                    repeat(old.length - newText.length) { sendKeyPress(0x08, false) }
-                                }
-                                lastKeyText = newText
-                            }
-                        })
                         keyInput = this
                     }
                 }
@@ -444,6 +734,517 @@ private fun Context.findActivity(): Activity? {
     return null
 }
 
+/** 远程画面上下预留边距（画面默认上下各留此宽度，可拖动避让悬浮球等遮挡）。 */
+private val VReserve = 48.dp
+
+/** 空白区双指轻点判定的最长持续时间（超时视为按住而非点击）。 */
+private const val BLANK_TWO_FINGER_TAP_MS = 300L
+
+/** 空白区指间距偏离起始超过此比例判定为捏合（空白区无画面，捏合不触发任何操作）。 */
+private const val BLANK_ZOOM_RATIO = 0.12f
+
+/**
+ * 画面外空白区手势层（悬浮球收缩时由 RemoteSessionScreen 挂载）：
+ * 铺满会话区但位于画面 View 之下，仅画面 View 布局边界之外的触摸会落入本层。
+ * 手势映射对齐 Win11 精确式触摸板：
+ *
+ * - 单指轻点 = 左键点击；单指滑动 = 光标相对移动（速度设置页可调）
+ * - 单指快速双击后按住拖动（双击拖动）= 左键按住拖动（快速第二次按下即发
+ *   左键按下，滑动拖动、抬指释放；未拖动直接抬起则等价双击）
+ * - 双指轻点 = 右键；双指同向滑动 = 滚轮（自然滚动：内容跟随手指——
+ *   上滑滚动条下拉 / 下滑上拉 / 左滑右拉 / 右滑左拉）；
+ *   像素级换算（手机像素/画面显示比例 = 远程像素，1cm 手指 = 1cm 画面内容
+ *   位移），松手后带惯性（速度衰减阻尼，只多滑一小段）；
+ *   指间距变化主导 = 捏合（空白区无画面，忽略不触发）
+ * - 三指上滑 = 多任务视图（Win+Tab）、三指下滑 = 显示桌面（Win+D）、
+ *   三指左右滑 = 切换应用（Alt+Tab 方向，连续滑动连续切换）、
+ *   三指点按 = 搜索（Win+S）
+ * - 四指左右滑 = 切换虚拟桌面（Ctrl+Win+方向，连续滑动连续切换）、
+ *   四指点按 = 通知中心（Win+N）
+ *
+ * 「空白区触摸板」总开关关闭时仅保留基础手势（单指轻点左键/双指轻点右键/
+ * 双指滚轮）；双击拖动、三指、四指手势另有独立开关（设置页，默认全开）。
+ * 点击/滚轮坐标 = 当前虚拟光标位置（未使用过则取远程屏幕中心）。
+ */
+@Composable
+private fun BlankAreaGestureLayer(
+    cursorX: Float,
+    cursorY: Float,
+    remoteWidth: Int,
+    remoteHeight: Int,
+    viewScale: Float,
+    touchpadEnabled: Boolean,
+    cursorSpeed: Float,
+    doubleTapDrag: Boolean,
+    threeFinger: Boolean,
+    fourFinger: Boolean,
+    parentHpx: Int,
+    onCursorMove: (x: Int, y: Int) -> Unit,
+    onCursorChange: (x: Float, y: Float) -> Unit,
+    onLeftDown: (x: Int, y: Int) -> Unit,
+    onLeftUp: (x: Int, y: Int) -> Unit,
+    onLeftClick: (x: Int, y: Int) -> Unit,
+    onRightClick: (x: Int, y: Int) -> Unit,
+    onWheel: (x: Int, y: Int, deltaV: Int, deltaH: Int) -> Unit,
+    onGestureKey: (TouchpadGesture) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // pointerInput 的 lambda 不随外部状态变化重启，经 rememberUpdatedState 读最新值
+    val effX = if (cursorX >= 0) cursorX else if (remoteWidth > 0) remoteWidth / 2f else 0f
+    val effY = if (cursorY >= 0) cursorY else if (remoteHeight > 0) remoteHeight / 2f else 0f
+    val latestX by rememberUpdatedState(effX)
+    val latestY by rememberUpdatedState(effY)
+    val latestRemoteW by rememberUpdatedState(remoteWidth)
+    val latestRemoteH by rememberUpdatedState(remoteHeight)
+    val latestScale by rememberUpdatedState(viewScale.coerceAtLeast(0.05f))
+    val latestTouchpad by rememberUpdatedState(touchpadEnabled)
+    val latestSpeed by rememberUpdatedState(cursorSpeed)
+    val latestDoubleTapDrag by rememberUpdatedState(doubleTapDrag)
+    val latestThreeFinger by rememberUpdatedState(threeFinger)
+    val latestFourFinger by rememberUpdatedState(fourFinger)
+    val latestOnCursorMove by rememberUpdatedState(onCursorMove)
+    val latestOnCursorChange by rememberUpdatedState(onCursorChange)
+    val latestLeftDown by rememberUpdatedState(onLeftDown)
+    val latestLeftUp by rememberUpdatedState(onLeftUp)
+    val latestLeft by rememberUpdatedState(onLeftClick)
+    val latestRight by rememberUpdatedState(onRightClick)
+    val latestWheel by rememberUpdatedState(onWheel)
+    val latestGestureKey by rememberUpdatedState(onGestureKey)
+    val scope = rememberCoroutineScope()
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                val slop = 8.dp.toPx()
+                val dblTapRange = 40.dp.toPx()
+                val threeStepH = 48.dp.toPx()
+                val fourStep = 64.dp.toPx()
+                // 双指滚轮（像素换算 + 惯性，与画面内手势同款）：手机像素/画面
+                // 显示比例 = 远程像素，1cm 手指 = 1cm 画面内容位移；
+                // 累积器跨手势保留余量，惯性 Job 由新手势打断
+                val wheelAccumV = WheelAccumulator { u ->
+                    latestWheel(latestX.roundToInt(), latestY.roundToInt(), u, 0)
+                }
+                val wheelAccumH = WheelAccumulator { u ->
+                    latestWheel(latestX.roundToInt(), latestY.roundToInt(), 0, u)
+                }
+                var flingJob: Job? = null
+                // 跨手势状态：上次单指轻点的时间/位置（双击拖动判定锚点）
+                var lastTapUpTime = 0L
+                var lastTapPos = Offset.Zero
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    // 新手势打断惯性，重置滚轮余量
+                    flingJob?.cancel()
+                    flingJob = null
+                    wheelAccumV.reset()
+                    wheelAccumH.reset()
+                    // 当前按下的指针（id → 最新位置）：Release 事件的 changes 只含
+                    // 抬起的那根，其余仍按着的指针沿用之前的记录
+                    val active = HashMap<PointerId, Offset>()
+                    active[down.id] = down.position
+                    var singleMoved = false
+                    var everTwo = false
+                    var tapEligible = false
+                    var twoDownTime = 0L
+                    var startSpan = 0f
+                    var startCx = 0f
+                    var startCy = 0f
+                    var lastCx = 0f
+                    var lastCy = 0f
+                    var zoomed = false
+                    var axis = 0
+                    var totalX = 0f
+                    var totalY = 0f
+                    // 滚轮累计（远程像素）与速度采样（惯性初速）
+                    var scrollCum = 0f
+                    val scrollTracker = ScrollVelocityTracker()
+                    var wheelFired = false
+                    // 本手势已启动惯性（双指同时抬起的兜底判定用）
+                    var flingStarted = false
+                    var maxCount = 1
+                    // 双击拖动：本手势死亡（拖动被多指打断后不再触发任何手势）
+                    var gestureDead = false
+                    // 三/四指手势状态
+                    var threeInit = false
+                    var threeSuppressed = false
+                    var threeMode = 0          // 3=三指 4=四指（以第三指落下时计）
+                    var threeDownTime = 0L
+                    var threeLastCx = 0f
+                    var threeLastCy = 0f
+                    var threeAxis = 0
+                    var threeTotalX = 0f
+                    var threeTotalY = 0f
+                    var threeAccumX = 0f
+                    var threeVFired = false
+                    var threeAnyFired = false
+
+                    // 双击拖动判定：上次轻点后 300ms 内、位置接近 → 第二次按下
+                    // 即发左键按下（拖动中光标跟手移动，抬指释放；
+                    // 未移动直接抬起 = 双击的第二击，行为自然兼容）
+                    var dragging = false
+                    if (latestTouchpad && latestDoubleTapDrag &&
+                        down.uptimeMillis - lastTapUpTime < BLANK_TWO_FINGER_TAP_MS &&
+                        (down.position - lastTapPos).getDistance() < dblTapRange
+                    ) {
+                        dragging = true
+                        latestLeftDown(latestX.roundToInt(), latestY.roundToInt())
+                    }
+                    // 本手势是否以双击拖动开场（决定全抬时不再补发轻点/锚点）
+                    val wasDragging = dragging
+
+                    // 触摸板光标相对移动：手势开始时光标取当前虚拟位置，
+                    // 之后本地累积（不依赖 recompose 时序），基准增益与悬浮球
+                    // 长按一致（屏幕一划 ≈ 1.8 屏宽）× 设置的光标速度
+                    var padCurX = latestX
+                    var padCurY = latestY
+                    var lastSingle = down.position
+                    fun moveCursorBy(dx: Float, dy: Float) {
+                        if (latestRemoteW <= 0 || latestRemoteH <= 0) return
+                        val gain = 1.8f * latestRemoteW / size.width.coerceAtLeast(1) *
+                                latestSpeed
+                        padCurX = (padCurX + dx * gain).coerceIn(0f, (latestRemoteW - 1).toFloat())
+                        padCurY = (padCurY + dy * gain).coerceIn(0f, (latestRemoteH - 1).toFloat())
+                        latestOnCursorChange(padCurX, padCurY)
+                        latestOnCursorMove(padCurX.roundToInt(), padCurY.roundToInt())
+                    }
+
+                    var upTime = 0L
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val wasCount = active.size
+                        for (c in event.changes) {
+                            if (c.pressed) active[c.id] = c.position
+                            else active.remove(c.id)
+                        }
+                        val count = active.size
+                        if (count == 0) {
+                            upTime = event.changes.first().uptimeMillis
+                            break
+                        }
+                        if (count > maxCount) maxCount = count
+
+                        when {
+                            // 三/四指落下（首次达到 3 指或 3 指升级 4 指未触发时）
+                            count >= 3 && wasCount < 3 || (threeInit && threeMode == 3 &&
+                                count >= 4 && !threeAnyFired) -> {
+                                // 双击拖动被多指打断：立即释放左键，本手势死亡
+                                if (dragging) {
+                                    latestLeftUp(latestX.roundToInt(), latestY.roundToInt())
+                                    dragging = false
+                                    gestureDead = true
+                                }
+                                if (!threeInit) {
+                                    threeInit = true
+                                    // 此前已有双指滚动/捏合/单指拖动 → 抑制三/四指
+                                    threeSuppressed = wheelFired || zoomed || singleMoved
+                                    threeMode = if (count >= 4) 4 else 3
+                                    threeDownTime = event.changes.first().uptimeMillis
+                                    val pts = active.values.toList()
+                                    threeLastCx = pts.map { it.x }.sum() / pts.size
+                                    threeLastCy = pts.map { it.y }.sum() / pts.size
+                                } else if (threeMode == 3 && count >= 4 && !threeAnyFired) {
+                                    threeMode = 4
+                                }
+                            }
+                            // 三/四指移动：轴锁定后触发对应手势
+                            count >= 3 && threeInit && !threeSuppressed && !gestureDead -> {
+                                if ((threeMode == 3 && !latestThreeFinger) ||
+                                    (threeMode >= 4 && !latestFourFinger)
+                                ) {
+                                    threeSuppressed = true
+                                } else {
+                                    val pts = active.values.toList()
+                                    val cx = pts.map { it.x }.sum() / pts.size
+                                    val cy = pts.map { it.y }.sum() / pts.size
+                                    val dx = cx - threeLastCx
+                                    val dy = cy - threeLastCy
+                                    threeLastCx = cx
+                                    threeLastCy = cy
+                                    if (threeAxis == 0) {
+                                        threeTotalX += dx
+                                        threeTotalY += dy
+                                        if (abs(threeTotalY) > slop) threeAxis = 1
+                                        else if (abs(threeTotalX) > slop) threeAxis = 2
+                                    }
+                                    if (threeAxis == 1 && !threeVFired) {
+                                        // 垂直一次性手势：y 向下正，上滑 totalY<0
+                                        threeVFired = true
+                                        threeAnyFired = true
+                                        latestGestureKey(
+                                            when {
+                                                threeMode == 3 && threeTotalY < 0 ->
+                                                    TouchpadGesture.TASK_VIEW
+                                                threeMode == 3 -> TouchpadGesture.SHOW_DESKTOP
+                                                threeTotalY < 0 -> TouchpadGesture.DESKTOP_PREV
+                                                else -> TouchpadGesture.DESKTOP_NEXT
+                                            }
+                                        )
+                                    } else if (threeAxis == 2) {
+                                        // 水平连续手势：每滑一步触发一次
+                                        val step = if (threeMode == 3) threeStepH else fourStep
+                                        threeAccumX += dx
+                                        while (abs(threeAccumX) >= step) {
+                                            threeAnyFired = true
+                                            latestGestureKey(
+                                                if (threeAccumX > 0)
+                                                    (if (threeMode == 3) TouchpadGesture.APP_NEXT
+                                                    else TouchpadGesture.DESKTOP_NEXT)
+                                                else (if (threeMode == 3) TouchpadGesture.APP_PREV
+                                                else TouchpadGesture.DESKTOP_PREV)
+                                            )
+                                            threeAccumX -= if (threeAccumX > 0) step else -step
+                                        }
+                                    }
+                                }
+                            }
+                            // 落入双指：初始化双指手势状态（首指未拖动才有轻点资格）
+                            count == 2 && wasCount == 1 && maxCount < 3 -> {
+                                everTwo = true
+                                tapEligible = !singleMoved
+                                twoDownTime = event.changes.first().uptimeMillis
+                                val pts = active.values.toList()
+                                startSpan = (pts[0] - pts[1]).getDistance()
+                                startCx = (pts[0].x + pts[1].x) / 2f
+                                startCy = (pts[0].y + pts[1].y) / 2f
+                                lastCx = startCx
+                                lastCy = startCy
+                                zoomed = false
+                                axis = 0
+                                totalX = 0f
+                                totalY = 0f
+                                scrollCum = 0f
+                                scrollTracker.reset()
+                                wheelFired = false
+                            }
+                            // 双指抬起到单指：双指轻点 = 右键（无捏合、未滚动、
+                            // 未锁定主轴且持续足够短）
+                            count == 1 && wasCount == 2 && everTwo && maxCount < 3 &&
+                                !gestureDead -> {
+                                if (tapEligible && !zoomed && !wheelFired && axis == 0 &&
+                                    event.changes.first().uptimeMillis - twoDownTime <
+                                        BLANK_TWO_FINGER_TAP_MS
+                                ) {
+                                    latestRight(latestX.roundToInt(), latestY.roundToInt())
+                                }
+                                // 双指滚动结束 → 惯性：取最近 100ms 位移差商为初速，
+                                // 指数衰减继续滚动（阻尼感，只多滑一小段），
+                                // 再次触摸即由新手势打断
+                                if (!zoomed && axis != 0) {
+                                    val v = scrollTracker.velocity()
+                                    if (abs(v) > PixelWheel.FLING_MIN_START) {
+                                        flingStarted = true
+                                        val flingAxisF = axis
+                                        flingJob?.cancel()
+                                        flingJob = scope.launch {
+                                            var vel = v
+                                            val acc =
+                                                if (flingAxisF == 1) wheelAccumV else wheelAccumH
+                                            while (abs(vel) > PixelWheel.FLING_STOP) {
+                                                delay(16)
+                                                val dt = 16f
+                                                acc.scrollRemoteBy(vel * dt)
+                                                vel *= exp(-dt / PixelWheel.FLING_TAU_MS)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // 双指移动：中心位移 = 滚轮（捏合判定与画面内手势同款）
+                            count == 2 && everTwo && maxCount < 3 && !gestureDead -> {
+                                val pts = active.values.toList()
+                                val cx = (pts[0].x + pts[1].x) / 2f
+                                val cy = (pts[0].y + pts[1].y) / 2f
+                                val span = (pts[0] - pts[1]).getDistance()
+                                val dx = cx - lastCx
+                                val dy = cy - lastCy
+                                if (!zoomed && !wheelFired && axis == 0 && startSpan > 0f) {
+                                    val spanChange = abs(span - startSpan)
+                                    val centerDist =
+                                        Offset(cx - startCx, cy - startCy).getDistance()
+                                    if (spanChange > startSpan * BLANK_ZOOM_RATIO &&
+                                        spanChange > centerDist
+                                    ) {
+                                        zoomed = true
+                                    }
+                                }
+                                if (!zoomed) {
+                                    if (axis == 0) {
+                                        totalX += dx
+                                        totalY += dy
+                                        if (abs(totalY) > slop) axis = 1
+                                        else if (abs(totalX) > slop) axis = 2
+                                    }
+                                    if (axis == 1) {
+                                        // 像素换算：手机像素/画面显示比例 = 远程像素，
+                                        // 1cm 手指 = 1cm 画面内容位移；自然滚动方向不变
+                                        // （手指上移 → deltaV 负 = 滚动条下拉看下方）
+                                        val remotePx = dy / latestScale
+                                        scrollCum += remotePx
+                                        scrollTracker.add(
+                                            event.changes.first().uptimeMillis, scrollCum
+                                        )
+                                        if (wheelAccumV.scrollRemoteBy(remotePx)) {
+                                            wheelFired = true
+                                        }
+                                    } else if (axis == 2) {
+                                        // 自然滚动：手指左移 → deltaH 正 = 滚动条右拉
+                                        val remotePx = -dx / latestScale
+                                        scrollCum += remotePx
+                                        scrollTracker.add(
+                                            event.changes.first().uptimeMillis, scrollCum
+                                        )
+                                        if (wheelAccumH.scrollRemoteBy(remotePx)) {
+                                            wheelFired = true
+                                        }
+                                    }
+                                }
+                                lastCx = cx
+                                lastCy = cy
+                            }
+                            // 单指移动：双击拖动中 = 拖动；触摸板开 = 光标相对移动
+                            // （滑动后不算轻点，也失去双指轻点资格）
+                            count == 1 && !everTwo -> {
+                                val p = active.values.first()
+                                if (!singleMoved &&
+                                    (p - down.position).getDistance() > slop
+                                ) {
+                                    singleMoved = true
+                                }
+                                if (dragging || latestTouchpad) {
+                                    moveCursorBy(p.x - lastSingle.x, p.y - lastSingle.y)
+                                }
+                                lastSingle = p
+                            }
+                        }
+                    }
+                    // 全部抬起：先释放可能挂着的左键（双击拖动）
+                    if (dragging) {
+                        latestLeftUp(latestX.roundToInt(), latestY.roundToInt())
+                        dragging = false
+                    }
+                    // 兜底：两指同一事件批次抬起（未经历 2→1）时的惯性
+                    if (!flingStarted && everTwo && maxCount == 2 && axis != 0 &&
+                        !zoomed && !gestureDead
+                    ) {
+                        val v = scrollTracker.velocity()
+                        if (abs(v) > PixelWheel.FLING_MIN_START) {
+                            val flingAxisF = axis
+                            flingJob?.cancel()
+                            flingJob = scope.launch {
+                                var vel = v
+                                val acc = if (flingAxisF == 1) wheelAccumV else wheelAccumH
+                                while (abs(vel) > PixelWheel.FLING_STOP) {
+                                    delay(16)
+                                    val dt = 16f
+                                    acc.scrollRemoteBy(vel * dt)
+                                    vel *= exp(-dt / PixelWheel.FLING_TAU_MS)
+                                }
+                            }
+                        }
+                    }
+                    when {
+                        // 三/四指点按：未触发滑动、无抑制、位移小、持续短
+                        threeInit && !threeSuppressed && !threeAnyFired && !gestureDead &&
+                            threeTotalX * threeTotalX + threeTotalY * threeTotalY < slop * slop &&
+                            upTime - threeDownTime < BLANK_TWO_FINGER_TAP_MS -> {
+                            if (threeMode == 3 && latestThreeFinger) {
+                                latestGestureKey(TouchpadGesture.SEARCH)
+                            } else if (threeMode >= 4 && latestFourFinger) {
+                                latestGestureKey(TouchpadGesture.NOTIFICATIONS)
+                            }
+                        }
+                        // 单指轻点 = 左键（未拖动、无双指介入），记录双击拖动锚点
+                        // （双击拖动开场的手势不补发：其 down/up 已等价第二击）
+                        maxCount == 1 && !singleMoved && !wasDragging -> {
+                            latestLeft(latestX.roundToInt(), latestY.roundToInt())
+                            lastTapUpTime = upTime
+                            lastTapPos = down.position
+                        }
+                    }
+                }
+            }
+    ) {
+        // 底部触摸板水印提示（不改变区域样式，画面拖过来会被自然遮挡）：
+        // 位于底部 1/6 屏高处 ≈ 底部空白（至少 1/3 屏高）的中央
+        if (touchpadEnabled) {
+            val density = LocalDensity.current
+            val bottomPad = with(density) { (parentHpx / 6f).toDp() }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = bottomPad),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "触摸板 · 单指滑动移光标 / 轻点左键 / 双击后拖动 = 按住拖动",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted.copy(alpha = 0.55f),
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    "双指轻点右键 / 滑动滚动 · 三指切换应用与桌面 · 四指切虚拟桌面",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted.copy(alpha = 0.45f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 虚拟鼠标光标叠加层（触摸板模式）：经典箭头（白填充黑描边），热点在尖端。
+ *
+ * PC 端 DXGI 桌面复制捕获的画面纹理不包含鼠标指针，触摸板相对移动必须在
+ * 客户端自行绘制光标才知道当前位置（向日葵同款方案）。注入用坐标即本光标
+ * 位置，显示与注入天然自洽。
+ *
+ * 坐标换算：远程坐标 → View 本地坐标（View 与远程画面等比布局）→ 屏幕坐标。
+ * View 由 Compose 居中布局 layout=(parent-view)/2，View 变换链为
+ * translation(pan) + scale(pivot=0)，故 屏幕坐标 = layout + pan + scale*本地坐标。
+ */
+@Composable
+private fun VirtualCursorOverlay(
+    remoteX: Float,
+    remoteY: Float,
+    remoteW: Float,
+    remoteH: Float,
+    viewW: Float,
+    viewH: Float,
+    scale: Float,
+    panX: Float,
+    panY: Float,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        if (remoteW <= 0f || remoteH <= 0f || viewW <= 0f || viewH <= 0f) return@Canvas
+        val layoutLeft = (size.width - viewW) / 2f
+        val layoutTop = (size.height - viewH) / 2f
+        val sx = layoutLeft + panX + scale * (remoteX / remoteW * viewW)
+        val sy = layoutTop + panY + scale * (remoteY / remoteH * viewH)
+
+        // 光标尺寸固定（不随画面缩放，始终清晰可见）；基准形状高 17px，放大 1.8 倍 ≈ 30px
+        val arrow = Path().apply {
+            moveTo(0f, 0f)
+            lineTo(0f, 14.44f)
+            lineTo(3.36f, 11.5f)
+            lineTo(5.89f, 17f)
+            lineTo(8.5f, 15.87f)
+            lineTo(5.97f, 10.5f)
+            lineTo(10.42f, 10.5f)
+            close()
+        }
+        translate(left = sx, top = sy) {
+            scale(scale = 1.8f, pivot = Offset.Zero) {
+                drawPath(arrow, Color.White)
+                drawPath(arrow, Color.Black, style = Stroke(width = 0.9f))
+            }
+        }
+    }
+}
+
 /** 发送鼠标事件帧：[action 1B][x 2B][y 2B]（远程坐标）。 */
 private fun sendMouseAction(
     viewModel: SessionViewModel,
@@ -459,19 +1260,107 @@ private fun sendMouseAction(
     viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_MOUSE, data)
 }
 
-/** 发送滚轮事件帧：[delta 2B(有符号)][x 2B][y 2B]（远程坐标）。 */
+/** 发送滚轮事件帧：[deltaV 2B(有符号)][x 2B][y 2B][deltaH 2B(有符号)]（远程坐标；deltaH 为水平滚动，旧 PC 端忽略）。 */
 private fun sendWheel(
     viewModel: SessionViewModel,
     x: Int,
     y: Int,
-    delta: Int
+    deltaV: Int,
+    deltaH: Int
 ) {
-    val data = ByteBuffer.allocate(6).order(ByteOrder.LITTLE_ENDIAN)
-        .putShort(delta.toShort())
+    val data = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
+        .putShort(deltaV.toShort())
         .putShort(x.toShort())
         .putShort(y.toShort())
+        .putShort(deltaH.toShort())
         .array()
     viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_WHEEL, data)
+}
+
+/** 发送按键事件帧：[vkCode 2B(有符号)][down 1B]（Windows 虚拟键码）。 */
+private fun sendKey(
+    viewModel: SessionViewModel,
+    vk: Int,
+    down: Boolean
+) {
+    val data = ByteBuffer.allocate(3).order(ByteOrder.LITTLE_ENDIAN)
+        .putShort(vk.toShort())
+        .put(if (down) 1.toByte() else 0.toByte())
+        .array()
+    viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_KEY, data)
+}
+
+// Win11 触摸板手势 → Windows 组合键（VK 码）
+private const val VK_TAB = 0x09
+private const val VK_SHIFT = 0x10
+private const val VK_CONTROL = 0x11
+private const val VK_MENU = 0x12          // Alt
+private const val VK_LWIN = 0x5B
+private const val VK_LEFT = 0x25
+private const val VK_RIGHT = 0x27
+private const val VK_D = 0x44
+private const val VK_N = 0x4E
+private const val VK_S = 0x53
+
+/** 触摸板三/四指手势语义（Win11 精确式触摸板默认映射）。 */
+enum class TouchpadGesture {
+    /** 三指上滑：多任务视图（Win+Tab）。 */
+    TASK_VIEW,
+    /** 三指下滑：显示桌面（Win+D）。 */
+    SHOW_DESKTOP,
+    /** 三指右滑：切换到下一个应用（Alt+Tab）。 */
+    APP_NEXT,
+    /** 三指左滑：切换到上一个应用（Shift+Alt+Tab）。 */
+    APP_PREV,
+    /** 三指点按：搜索（Win+S）。 */
+    SEARCH,
+    /** 四指右滑/下滑：下一个虚拟桌面（Ctrl+Win+Right）。 */
+    DESKTOP_NEXT,
+    /** 四指左滑/上滑：上一个虚拟桌面（Ctrl+Win+Left）。 */
+    DESKTOP_PREV,
+    /** 四指点按：通知中心（Win+N）。 */
+    NOTIFICATIONS
+}
+
+/** 发送完整组合键序列（按下→抬起，修饰键包裹）。 */
+private fun sendGestureKeys(viewModel: SessionViewModel, gesture: TouchpadGesture) {
+    when (gesture) {
+        TouchpadGesture.TASK_VIEW -> {
+            sendKey(viewModel, VK_LWIN, true); sendKey(viewModel, VK_TAB, true)
+            sendKey(viewModel, VK_TAB, false); sendKey(viewModel, VK_LWIN, false)
+        }
+        TouchpadGesture.SHOW_DESKTOP -> {
+            sendKey(viewModel, VK_LWIN, true); sendKey(viewModel, VK_D, true)
+            sendKey(viewModel, VK_D, false); sendKey(viewModel, VK_LWIN, false)
+        }
+        TouchpadGesture.APP_NEXT -> {
+            sendKey(viewModel, VK_MENU, true); sendKey(viewModel, VK_TAB, true)
+            sendKey(viewModel, VK_TAB, false); sendKey(viewModel, VK_MENU, false)
+        }
+        TouchpadGesture.APP_PREV -> {
+            sendKey(viewModel, VK_MENU, true); sendKey(viewModel, VK_SHIFT, true)
+            sendKey(viewModel, VK_TAB, true); sendKey(viewModel, VK_TAB, false)
+            sendKey(viewModel, VK_SHIFT, false); sendKey(viewModel, VK_MENU, false)
+        }
+        TouchpadGesture.SEARCH -> {
+            sendKey(viewModel, VK_LWIN, true); sendKey(viewModel, VK_S, true)
+            sendKey(viewModel, VK_S, false); sendKey(viewModel, VK_LWIN, false)
+        }
+        TouchpadGesture.DESKTOP_NEXT -> {
+            sendKey(viewModel, VK_CONTROL, true); sendKey(viewModel, VK_LWIN, true)
+            sendKey(viewModel, VK_RIGHT, true); sendKey(viewModel, VK_RIGHT, false)
+            sendKey(viewModel, VK_LWIN, false); sendKey(viewModel, VK_CONTROL, false)
+        }
+        TouchpadGesture.DESKTOP_PREV -> {
+            sendKey(viewModel, VK_CONTROL, true); sendKey(viewModel, VK_LWIN, true)
+            sendKey(viewModel, VK_LEFT, true); sendKey(viewModel, VK_LEFT, false)
+            sendKey(viewModel, VK_LWIN, false); sendKey(viewModel, VK_CONTROL, false)
+        }
+        TouchpadGesture.NOTIFICATIONS -> {
+            sendKey(viewModel, VK_LWIN, true); sendKey(viewModel, VK_N, true)
+            sendKey(viewModel, VK_N, false); sendKey(viewModel, VK_LWIN, false)
+        }
+    }
 }
 
 @Composable
@@ -486,7 +1375,7 @@ private fun ToolBarButton(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (active) BgCard else Color.Transparent)
-            .padding(horizontal = 24.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
         IconButton(onClick = onClick) {
             Icon(icon, contentDescription = label, tint = if (active) Success else TextPrimary)
@@ -495,7 +1384,133 @@ private fun ToolBarButton(
     }
 }
 
-/** 远程解锁对话框：输入 Windows 登录密码，发送到 PC 端锁屏桌面注入解锁。 */
+/** 全屏模式悬浮工具按钮（圆形）。 */
+@Composable
+private fun FloatingToolButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    active: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (active) Accent else BgCard.copy(alpha = 0.85f))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (active) Color.White else TextPrimary,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+/** 快捷键面板：粘滞修饰键 + F1-F12 + 常用编辑/方向键。 */
+@Composable
+private fun HotkeyPanel(
+    stickyMods: Set<Int>,
+    onToggleMod: (Int) -> Unit,
+    onKey: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(BgCard.copy(alpha = 0.95f))
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // 粘滞修饰键：点击激活（高亮保持），随普通按键组合发送，再次点击取消
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                0x11 to "Ctrl",
+                0x10 to "Shift",
+                0x12 to "Alt",
+                0x5B to "Win"
+            ).forEach { (vk, label) ->
+                HotkeyButton(
+                    label = label,
+                    active = vk in stickyMods,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onToggleMod(vk) }
+                )
+            }
+        }
+        // 功能键 F1-F12（两行）
+        (0x70..0x7B).mapIndexed { i, vk -> vk to "F${i + 1}" }
+            .chunked(6)
+            .forEach { row ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { (vk, label) ->
+                        HotkeyButton(
+                            label = label,
+                            active = false,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onKey(vk) }
+                        )
+                    }
+                }
+            }
+        // 常用编辑键
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                0x1B to "Esc", 0x09 to "Tab", 0x14 to "CapsLk", 0x2D to "Ins",
+                0x2E to "Del", 0x08 to "Bksp", 0x0D to "Enter"
+            ).forEach { (vk, label) ->
+                HotkeyButton(
+                    label = label,
+                    active = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onKey(vk) }
+                )
+            }
+        }
+        // 方向与导航键
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                0x24 to "Home", 0x23 to "End", 0x21 to "PgUp", 0x22 to "PgDn",
+                0x25 to "←", 0x26 to "↑", 0x27 to "→", 0x28 to "↓"
+            ).forEach { (vk, label) ->
+                HotkeyButton(
+                    label = label,
+                    active = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onKey(vk) }
+                )
+            }
+        }
+    }
+}
+
+/** 快捷键面板单个按键（修饰键激活时高亮）。 */
+@Composable
+private fun HotkeyButton(
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (active) Accent else BgHover)
+            .clickable { onClick() }
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (active) Color.White else TextPrimary,
+            maxLines = 1
+        )
+    }
+}
+
+/** 远程解锁对话框：输入 Windows 登录 PIN 或密码，发送到 PC 端锁屏桌面注入解锁。 */
 @Composable
 private fun UnlockDialog(
     onConfirm: (String) -> Unit,
@@ -510,7 +1525,7 @@ private fun UnlockDialog(
         text = {
             Column {
                 Text(
-                    "输入 PC 端的 Windows 登录密码，将在锁屏界面自动输入并解锁。",
+                    "输入 PC 锁屏界面要求的登录凭证（PIN 或密码——即平时在 PC 上输入的那个），将在锁屏界面自动输入并解锁。",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -520,7 +1535,7 @@ private fun UnlockDialog(
                     onValueChange = { password = it },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    placeholder = { Text("Windows 登录密码", color = TextSecondary) },
+                    placeholder = { Text("登录 PIN 或密码", color = TextSecondary) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -547,7 +1562,8 @@ private fun SessionOverlay(
     state: RemoteSessionManager.SessionState,
     tunnel: com.quickremote.app.data.models.TunnelResponse?,
     errorMessage: String,
-    onReconnect: () -> Unit = {}
+    onReconnect: () -> Unit = {},
+    onViewLogs: () -> Unit = {}
 ) {
     val (color, text) = when (state) {
         RemoteSessionManager.SessionState.CONNECTING -> StatusColor.YELLOW to "连接中…"
@@ -580,7 +1596,7 @@ private fun SessionOverlay(
             )
         }
 
-        // 断连/失败时提供重连入口
+        // 断连/失败时提供重连 + 查看日志入口
         if (state == RemoteSessionManager.SessionState.FAILED ||
             state == RemoteSessionManager.SessionState.DISCONNECTED
         ) {
@@ -590,6 +1606,16 @@ private fun SessionOverlay(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("重新连接", color = TextPrimary)
             }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                "查看日志",
+                style = MaterialTheme.typography.labelMedium,
+                color = Accent,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clickable(onClick = onViewLogs)
+                    .padding(vertical = 4.dp)
+            )
         }
 
         tunnel?.let { t ->

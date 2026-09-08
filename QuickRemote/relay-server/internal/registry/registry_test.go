@@ -26,7 +26,7 @@ func TestRegisterAndGetDevice(t *testing.T) {
 		Version:   "1.0.0",
 	}
 
-	deviceID, err := reg.Register(dev)
+	deviceID, _, err := reg.Register(dev)
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestRegisterAndGetDevice(t *testing.T) {
 	}
 
 	// 同一台机器再次注册应该更新而非新增
-	deviceID2, err := reg.Register(dev)
+	deviceID2, _, err := reg.Register(dev)
 	if err != nil {
 		t.Fatalf("Re-register failed: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestMarkOffline(t *testing.T) {
 	dev := &Device{
 		MachineID: "m1", Hostname: "PC1", OS: "Win11", RDPPort: 3389, Version: "1.0.0",
 	}
-	deviceID, _ := reg.Register(dev)
+	deviceID, _, _ := reg.Register(dev)
 
 	err := reg.MarkOffline(deviceID)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestUpdateHeartbeat(t *testing.T) {
 	dev := &Device{
 		MachineID: "m1", Hostname: "PC1", OS: "Win11", RDPPort: 3389, Version: "1.0.0",
 	}
-	deviceID, _ := reg.Register(dev)
+	deviceID, _, _ := reg.Register(dev)
 
 	oldTime := time.Now()
 	time.Sleep(10 * time.Millisecond)

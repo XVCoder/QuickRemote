@@ -1,0 +1,3 @@
+
+package: name='com.quickremote.app' versionCode='46' versionName='1.0.46' platformBuildVersionName='14' platformBuildVersionCode='34' compileSdkVersion='34' compileSdkVersionCodename='14'
+

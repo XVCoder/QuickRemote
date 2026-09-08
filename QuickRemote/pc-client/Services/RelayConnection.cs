@@ -32,6 +32,13 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     private readonly RemoteSessionManager _remoteSessionManager;
     private CancellationTokenSource? _cts;
     private int _rdpPort = 3389;
+    // 控制连接写锁：心跳任务（MessageLoop 内）与 UI 触发的 tunnel_open/rename 并发写
+    // 同一流会交错帧（WriteMessage 分两次 WriteAsync），必须串行化
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    // 当前已连接的控制流（UI 触发请求发送用；断开时置 null）
+    private volatile Stream? _stream;
+    // 待响应的隧道请求（同一时刻仅一个查看器连接流程在等）
+    private TaskCompletionSource<ControlMessage>? _pendingTunnelAck;
 
     private ConnectionStatus _status = ConnectionStatus.Disconnected;
     private string _serverAddress = string.Empty;
@@ -39,6 +46,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     private string _tlsHost = string.Empty;
     private string _deviceName = string.Empty;
     private string _deviceId = string.Empty;
+    private string _myDisplayName = string.Empty;
     private DateTime _lastHeartbeat;
     private string _lastMessage = string.Empty;
 
@@ -86,6 +94,13 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         private set { _deviceId = value; OnPropertyChanged(); }
     }
 
+    /// <summary>本机生效的显示名称（register_ack 由服务器返回：自定义名或默认分配名）。</summary>
+    public string MyDisplayName
+    {
+        get => _myDisplayName;
+        private set { _myDisplayName = value; OnPropertyChanged(); }
+    }
+
     /// <summary>上次心跳时间。</summary>
     public DateTime LastHeartbeat
     {
@@ -96,6 +111,12 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    /// <summary>服务器推送设备列表（全部设备，含离线；任何设备上下线/改名后触发）。</summary>
+    public event Action<System.Collections.Generic.List<Models.RemoteDeviceInfo>>? DeviceListUpdated;
+
+    /// <summary>改名结果（成功时 name 为新名称，失败时 message 为原因）。</summary>
+    public event Action<bool, string>? RenameResult;
 
     public RelayConnection(TunnelManager tunnelManager, RemoteSessionManager remoteSessionManager, Logger logger)
     {
@@ -110,7 +131,9 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     /// <param name="machineId">本机唯一 ID</param>
     /// <param name="rdpPort">本地 RDP 端口</param>
     /// <param name="version">客户端版本</param>
-    public void Start(string serverAddress, string preSharedKey, string machineId, int rdpPort, string version)
+    /// <param name="deviceName">本机设备显示名称（空 = 服务器分配默认名）</param>
+    public void Start(string serverAddress, string preSharedKey, string machineId, int rdpPort, string version,
+        string deviceName = "")
     {
         Stop();
         _rdpPort = rdpPort;
@@ -120,8 +143,10 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         _useTls = useTls;
         _tlsHost = host;
         DeviceName = SystemInfo.Hostname;
+        _pendingTunnelAck?.TrySetException(new InvalidOperationException("连接重启，隧道请求已取消"));
+        _pendingTunnelAck = null;
         _cts = new CancellationTokenSource();
-        _ = RunAsync(serverAddress, preSharedKey, machineId, rdpPort, version, _cts.Token);
+        _ = RunAsync(serverAddress, preSharedKey, machineId, rdpPort, version, deviceName, _cts.Token);
     }
 
     /// <summary>停止连接。</summary>
@@ -134,7 +159,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     }
 
     private async Task RunAsync(string serverAddress, string preSharedKey, string machineId,
-        int rdpPort, string version, CancellationToken ct)
+        int rdpPort, string version, string deviceName, CancellationToken ct)
     {
         int backoffIndex = 0;
 
@@ -169,20 +194,21 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
 
                 _logger.Info("Connected, sending register");
 
-                // 发送注册消息
+                // 发送注册消息（display_name 非空 = 用户自定义名；空 = 保留服务器侧现名/默认分配）
                 var authKey = ComputeAuthKey(preSharedKey);
                 var registerMsg = new ControlMessage
                 {
                     Type = "register",
                     MachineId = machineId,
                     Hostname = SystemInfo.Hostname,
+                    DisplayName = deviceName ?? string.Empty,
                     OS = SystemInfo.OsInfo,
                     LanIp = SystemInfo.GetLanIp(),
                     RDPPort = rdpPort,
                     Version = version,
                     AuthKey = authKey
                 };
-                await WriteMessage(stream, registerMsg, ct);
+                await WriteMessageLocked(stream, registerMsg, ct);
 
                 // 读取注册确认（带 10 秒超时，防止连错端口时无限等待）
                 ControlMessage? ack;
@@ -216,11 +242,13 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
                 }
 
                 DeviceId = ack.DeviceId ?? string.Empty;
+                MyDisplayName = ack.DisplayName ?? string.Empty;
                 Status = ConnectionStatus.Connected;
                 LastMessage = $"已连接，设备 ID: {DeviceId}";
                 LastHeartbeat = DateTime.Now;
                 backoffIndex = 0;
-                _logger.Info($"Registered OK, device_id={DeviceId}");
+                _logger.Info($"Registered OK, device_id={DeviceId}, display_name={MyDisplayName}");
+                _stream = stream;
 
                 // 进入消息循环（含心跳）
                 await MessageLoop(stream, ct);
@@ -238,6 +266,13 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
             {
                 LastMessage = $"连接错误：{ex.Message}";
                 _logger.Warn($"Connection error: {ex.Message}");
+            }
+            finally
+            {
+                // 连接断开（任何路径）：清空控制流引用并唤醒等待隧道响应的调用方
+                _stream = null;
+                _pendingTunnelAck?.TrySetException(new InvalidOperationException("控制连接已断开"));
+                _pendingTunnelAck = null;
             }
 
             if (ct.IsCancellationRequested) break;
@@ -277,6 +312,27 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
                         HandleTunnelRequest(msg);
                         break;
 
+                    case "device_list":
+                        HandleDeviceList(msg);
+                        break;
+
+                    case "tunnel_ack":
+                        // tunnel_open 的响应（PC→PC 远程控制）
+                        _pendingTunnelAck?.TrySetResult(msg);
+                        break;
+
+                    case "rename_ack":
+                        if (msg.Status == "ok")
+                        {
+                            MyDisplayName = msg.DisplayName ?? MyDisplayName;
+                            RenameResult?.Invoke(true, msg.DisplayName ?? string.Empty);
+                        }
+                        else
+                        {
+                            RenameResult?.Invoke(false, MapTunnelAckError(msg.Status));
+                        }
+                        break;
+
                     default:
                         _logger.Info($"Received message type: {msg.Type}");
                         break;
@@ -303,7 +359,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(HeartbeatIntervalMs, ct);
-                await WriteMessage(stream, new ControlMessage { Type = "heartbeat" }, ct);
+                await WriteMessageLocked(stream, new ControlMessage { Type = "heartbeat" }, ct);
                 _logger.Info("Heartbeat sent");
             }
         }
@@ -313,6 +369,101 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
             _logger.Warn($"Heartbeat error: {ex.Message}");
         }
     }
+
+    /// <summary>处理服务器设备列表广播（全部设备含离线，主线程外触发，订阅方自行调度 UI）。</summary>
+    private void HandleDeviceList(ControlMessage msg)
+    {
+        var devices = new System.Collections.Generic.List<Models.RemoteDeviceInfo>();
+        if (msg.Devices != null)
+        {
+            foreach (var d in msg.Devices)
+            {
+                devices.Add(new Models.RemoteDeviceInfo
+                {
+                    DeviceId = d.DeviceId ?? string.Empty,
+                    Hostname = d.Hostname ?? string.Empty,
+                    DisplayName = d.DisplayName ?? string.Empty,
+                    LanIp = d.LanIp ?? string.Empty,
+                    Version = d.Version ?? string.Empty,
+                    Status = d.Status == "online" ? "online" : "offline",
+                });
+            }
+        }
+        DeviceListUpdated?.Invoke(devices);
+    }
+
+    /// <summary>修改本机设备显示名称（即时生效，服务器广播新列表）。</summary>
+    public async Task SendRenameAsync(string deviceName)
+    {
+        var name = (deviceName ?? string.Empty).Trim();
+        if (name.Length == 0 || name.Length > 64)
+        {
+            RenameResult?.Invoke(false, "设备名称长度需为 1-64 个字符");
+            return;
+        }
+        var stream = _stream;
+        if (stream == null || Status != ConnectionStatus.Connected)
+        {
+            RenameResult?.Invoke(false, "未连接服务器，改名将在下次连接时生效");
+            return;
+        }
+        await WriteMessageLocked(stream, new ControlMessage { Type = "rename", DisplayName = name }, CancellationToken.None);
+        _logger.Info($"Rename request sent: {name}");
+    }
+
+    /// <summary>
+    /// PC→PC 远程控制：请求建立到目标设备的隧道。
+    /// 服务器创建会话并通知被控端连入，返回 (session_id, tunnel_port) 供主控端连接。
+    /// </summary>
+    public async Task<(string SessionId, int TunnelPort)> RequestTunnelAsync(string targetDeviceId)
+    {
+        var stream = _stream;
+        if (stream == null || Status != ConnectionStatus.Connected)
+            throw new InvalidOperationException("未连接服务器，无法建立远程控制");
+
+        var tcs = new TaskCompletionSource<ControlMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingTunnelAck?.TrySetException(new InvalidOperationException("新的隧道请求已取代前一个"));
+        _pendingTunnelAck = tcs;
+
+        try
+        {
+            await WriteMessageLocked(stream, new ControlMessage
+            {
+                Type = "tunnel_open",
+                TargetDevice = targetDeviceId
+            }, CancellationToken.None);
+            _logger.Info($"Tunnel open request sent: target={targetDeviceId}");
+
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+            if (completed != tcs.Task)
+                throw new TimeoutException("请求隧道超时（服务器未响应）");
+
+            var ack = await tcs.Task;
+            if (ack.Status != "ok")
+                throw new InvalidOperationException(MapTunnelAckError(ack.Status));
+
+            return (ack.SessionId ?? string.Empty, ack.TunnelPort);
+        }
+        finally
+        {
+            if (ReferenceEquals(_pendingTunnelAck, tcs))
+                _pendingTunnelAck = null;
+        }
+    }
+
+    /// <summary>隧道/改名应答错误码 → 用户可读消息。</summary>
+    private static string MapTunnelAckError(string? status) => status switch
+    {
+        "device_offline" => "目标设备离线",
+        "device_not_found" => "目标设备不存在",
+        "target_unreachable" => "无法通知目标设备（其控制连接可能已断开）",
+        "tunnel_creation_failed" => "服务器创建隧道失败",
+        "tunnel_unavailable" => "服务器隧道服务不可用",
+        "bad_request" => "无效的请求参数",
+        "invalid_name" => "设备名称无效（1-64 个字符）",
+        "rename_failed" => "服务器改名失败",
+        _ => $"服务器返回错误：{status ?? "unknown"}"
+    };
 
     /// <summary>处理隧道建立请求：启动远程会话（截屏方案）。</summary>
     private void HandleTunnelRequest(ControlMessage msg)
@@ -343,7 +494,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     /// http://   → 明文，默认 8444
     /// 无 scheme → 明文，默认 8444
     /// </summary>
-    private static (string host, int port, bool useTls) ParseAddress(string address)
+    public static (string host, int port, bool useTls) ParseAddress(string address)
     {
         var addr = address.Trim();
         var useTls = false;
@@ -375,6 +526,20 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         var seconds = BackoffSeconds[Math.Min(backoffIndex, BackoffSeconds.Length - 1)];
         try { await Task.Delay(seconds * 1000, ct); }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>带写锁写入一条 JSON 帧消息（心跳任务与 UI 触发请求并发安全）。</summary>
+    private async Task WriteMessageLocked(Stream stream, ControlMessage msg, CancellationToken ct)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            await WriteMessage(stream, msg, ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     /// <summary>写入一条 JSON 帧消息。</summary>
@@ -438,6 +603,9 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         [JsonPropertyName("hostname")]
         public string? Hostname { get; set; }
 
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
         [JsonPropertyName("os")]
         public string? OS { get; set; }
 
@@ -456,6 +624,9 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         [JsonPropertyName("device_id")]
         public string? DeviceId { get; set; }
 
+        [JsonPropertyName("target_device")]
+        public string? TargetDevice { get; set; }
+
         [JsonPropertyName("session_id")]
         public string? SessionId { get; set; }
 
@@ -464,5 +635,31 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
 
         [JsonPropertyName("timestamp")]
         public long Timestamp { get; set; }
+
+        /// <summary>device_list 广播携带的设备数组。</summary>
+        [JsonPropertyName("devices")]
+        public List<DeviceListEntry>? Devices { get; set; }
+    }
+
+    /// <summary>device_list 广播条目（服务器 registry.Device JSON 字段）。</summary>
+    private sealed class DeviceListEntry
+    {
+        [JsonPropertyName("device_id")]
+        public string? DeviceId { get; set; }
+
+        [JsonPropertyName("hostname")]
+        public string? Hostname { get; set; }
+
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
+        [JsonPropertyName("lan_ip")]
+        public string? LanIp { get; set; }
+
+        [JsonPropertyName("version")]
+        public string? Version { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
     }
 }

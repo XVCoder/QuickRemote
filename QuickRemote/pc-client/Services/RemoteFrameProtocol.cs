@@ -29,6 +29,9 @@ public static class RemoteFrameProtocol
     /// <summary>局域网直连认证，Android→PC：[auth_key 64B hex ASCII]。</summary>
     public const byte TYPE_AUTH = 0x07;
 
+    /// <summary>Unicode 文本输入，Android→PC：[UTF-8 文本]（中文/emoji 等无法映射 VK 的字符）。</summary>
+    public const byte TYPE_INPUT_TEXT = 0x08;
+
     /// <summary>帧头长度：1 类型 + 4 长度。</summary>
     public const int HEADER_SIZE = 5;
 

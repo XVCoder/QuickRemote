@@ -24,6 +24,70 @@ public class AppConfig
 
     [JsonPropertyName("MachineId")]
     public string MachineId { get; set; } = string.Empty;
+
+    /// <summary>本机设备名称（PC 端"远程设备"列表展示用；空 = 由服务器分配默认名"PC客户端N"）。</summary>
+    [JsonPropertyName("DeviceName")]
+    public string DeviceName { get; set; } = string.Empty;
+
+    /// <summary>远程设备备注（设备 ID → 备注文本；仅本机可见，不上传服务器）。</summary>
+    [JsonPropertyName("DeviceRemarks")]
+    public Dictionary<string, string> DeviceRemarks { get; set; } = new();
+
+    /// <summary>软删除（从列表隐藏）的远程设备 ID；设备再次上线时自动移除出该列表。</summary>
+    [JsonPropertyName("HiddenDevices")]
+    public List<string> HiddenDevices { get; set; } = new();
+
+    /// <summary>远程配置：本机作为主控端远程其他主机时的参数（连接后经 configure 控制帧下发给被控端）。</summary>
+    [JsonPropertyName("Viewer")]
+    public ViewerConfig Viewer { get; set; } = new();
+
+    /// <summary>被远程配置：本机被其他主机远程连接时的默认会话参数。</summary>
+    [JsonPropertyName("Host")]
+    public HostConfig Host { get; set; } = new();
+}
+
+/// <summary>远程配置（主控端：本机远程其他主机时生效）。</summary>
+public class ViewerConfig
+{
+    /// <summary>目标分辨率高度上限（0 = 原始分辨率不缩放；720/1080/1440/2160 = 等比缩放上限）。</summary>
+    [JsonPropertyName("TargetMaxHeight")]
+    public int TargetMaxHeight { get; set; }
+
+    /// <summary>图像质量百分比（20-100），映射被控端码率缩放。</summary>
+    [JsonPropertyName("QualityPercent")]
+    public int QualityPercent { get; set; } = 100;
+
+    /// <summary>目标帧率（5-60）。</summary>
+    [JsonPropertyName("Fps")]
+    public int Fps { get; set; } = 30;
+
+    /// <summary>颜色深度（32 = 真彩色；16 = 高彩色，通道量化提升压缩率）。</summary>
+    [JsonPropertyName("ColorDepth")]
+    public int ColorDepth { get; set; } = 32;
+
+    /// <summary>局域网直连优先（同网段低延迟；关闭则强制走公网中继）。</summary>
+    [JsonPropertyName("PreferLan")]
+    public bool PreferLan { get; set; } = true;
+}
+
+/// <summary>被远程配置（被控端：本机被其他主机远程连接时的默认参数；主控端下发的 configure 请求会覆盖会话内值）。</summary>
+public class HostConfig
+{
+    /// <summary>默认帧率（5-60）。</summary>
+    [JsonPropertyName("Fps")]
+    public int Fps { get; set; } = 15;
+
+    /// <summary>基准码率（kbps，200-12000），质量百分比按此基准缩放。</summary>
+    [JsonPropertyName("BitrateKbps")]
+    public int BitrateKbps { get; set; } = 4000;
+
+    /// <summary>输出分辨率高度上限（0 = 原始分辨率不缩放）。</summary>
+    [JsonPropertyName("MaxHeight")]
+    public int MaxHeight { get; set; }
+
+    /// <summary>颜色深度（32 = 真彩色；16 = 高彩色）。</summary>
+    [JsonPropertyName("ColorDepth")]
+    public int ColorDepth { get; set; } = 32;
 }
 
 public class ServerConfig

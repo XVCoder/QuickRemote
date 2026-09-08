@@ -8,6 +8,12 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Socket
 
+// 看门狗参数：检查间隔 5s；无任何数据超时 30s；无视频帧超时 30s。
+// PC 端心跳 5s/次 + 静止桌面保底帧 1fps，正常会话不会触碰这两个阈值。
+private const val WATCHDOG_CHECK_INTERVAL_MS = 5_000L
+private const val WATCHDOG_NO_DATA_TIMEOUT_MS = 30_000L
+private const val WATCHDOG_NO_VIDEO_TIMEOUT_MS = 30_000L
+
 /**
  * Android 端远程会话管理器（截屏方案，替代 FreeRDP）。
  *
@@ -75,6 +81,31 @@ class RemoteSessionManager(
     private var input: DataInputStream? = null
     private var output: DataOutputStream? = null
     private var receiveThread: Thread? = null
+
+    // ============ 无数据看门狗（v1.0.50 公网黑屏防御） ============
+    // 中继竞态等故障下隧道连接建立但 PC 端从未真正加入数据通道：
+    // 连接显示成功、心跳全无、零视频帧 → 无限黑屏直到用户手动退出。
+    // PC 端正常时至少每 5 秒一个心跳帧、每秒一个视频帧（静止保底），
+    // 因此以下两个超时均不可能在正常会话中触发。
+
+    /** 最近一次收到任意帧（视频/控制/心跳）的时间戳。 */
+    @Volatile
+    private var lastDataAt = 0L
+
+    /** 最近一次收到视频帧的时间戳（0=本会话从未收到）。 */
+    @Volatile
+    private var lastVideoFrameAt = 0L
+
+    /** PC 锁屏中：锁屏时画面合法暂停（心跳保持），看门狗不判定视频超时。 */
+    @Volatile
+    private var pcLocked = false
+
+    /** 视频帧宽限期起点：连接建立时；PC 解锁时重置（画面恢复重新计宽限）。 */
+    @Volatile
+    private var connectedAt = 0L
+
+    /** 会话代数：新会话启动时递增，旧看门狗线程据此自杀，避免误杀新会话。 */
+    private val sessionGeneration = java.util.concurrent.atomic.AtomicInteger(0)
 
     /**
      * 输入事件发送线程。触摸回调在主线程触发，直接写 socket 会抛
@@ -177,6 +208,10 @@ class RemoteSessionManager(
                 running = true
                 connectionMode = ConnectionMode.RELAY
                 state = SessionState.CONNECTED
+                connectedAt = System.currentTimeMillis()
+                lastDataAt = connectedAt
+                lastVideoFrameAt = 0L
+                startWatchdog()
                 logger.info("Remote session connected (relay)")
                 listener?.onStateChanged(state)
                 receiveLoop()
@@ -184,6 +219,35 @@ class RemoteSessionManager(
                 fail("连接失败：${e.message}")
             }
         }.apply { isDaemon = true }.start()
+    }
+
+    /**
+     * 无数据看门狗：会话连接后监控数据流，防止"连接成功但无限黑屏"。
+     * - 30 秒无任何帧（连心跳都没有）→ 链路中断或 PC 未加入隧道（中继竞态）
+     * - 30 秒未收到任何视频帧（心跳正常）→ PC 推流异常（编码器故障等）
+     * PC 锁屏时画面合法暂停（心跳保持），跳过视频超时判定。
+     * 超时通过 fail() 主动断开并提示用户，而不是永远黑屏。
+     */
+    private fun startWatchdog() {
+        val gen = sessionGeneration.incrementAndGet()
+        Thread {
+            while (running && sessionGeneration.get() == gen) {
+                try { Thread.sleep(WATCHDOG_CHECK_INTERVAL_MS) } catch (_: InterruptedException) { return@Thread }
+                if (!running || sessionGeneration.get() != gen || state != SessionState.CONNECTED) continue
+                if (pcLocked) continue
+                val now = System.currentTimeMillis()
+                if (now - lastDataAt > WATCHDOG_NO_DATA_TIMEOUT_MS) {
+                    logger.warn("Watchdog: no data for ${(now - lastDataAt) / 1000}s, disconnecting")
+                    fail("连接后${WATCHDOG_NO_DATA_TIMEOUT_MS / 1000}秒无任何数据（链路中断或隧道未建立），已自动断开，请重连")
+                    break
+                }
+                if (lastVideoFrameAt == 0L && now - connectedAt > WATCHDOG_NO_VIDEO_TIMEOUT_MS) {
+                    logger.warn("Watchdog: no video frame since connect (${(now - connectedAt) / 1000}s), disconnecting")
+                    fail("连接后${WATCHDOG_NO_VIDEO_TIMEOUT_MS / 1000}秒未收到视频画面（远端推流异常），已自动断开，请重连")
+                    break
+                }
+            }
+        }.apply { isDaemon = true; name = "qr-watchdog" }.start()
     }
 
     /** 发送压缩率控制帧：{action:"quality", percent:N}。 */
@@ -199,6 +263,29 @@ class RemoteSessionManager(
             }
             logger.info("Quality control sent: $qualityPercent%")
         } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * 请求 PC 端立即输出 IDR 关键帧：{action:"keyframe"}。
+     * 解码器启动可能晚于 PC 端首个关键帧（中继模式下 PC 先推流），
+     * 错过 IDR 后全是 P 帧无法解码 → 黑屏；主动请求秒级出画。
+     * 走 inputExecutor 避免网络阻塞时拖累接收线程。
+     */
+    private fun requestKeyframe() {
+        val out = output ?: return
+        val data = "{\"action\":\"keyframe\"}".toByteArray(Charsets.UTF_8)
+        inputExecutor.execute {
+            try {
+                synchronized(out) {
+                    out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_CONTROL, data.size))
+                    out.write(data)
+                    out.flush()
+                }
+                logger.info("Keyframe request sent")
+            } catch (e: Exception) {
+                logger.warn("Keyframe request failed: ${e.javaClass.name}: ${e.message}")
+            }
         }
     }
 
@@ -255,6 +342,10 @@ class RemoteSessionManager(
             running = true
             connectionMode = ConnectionMode.LAN
             state = SessionState.CONNECTED
+            connectedAt = System.currentTimeMillis()
+            lastDataAt = connectedAt
+            lastVideoFrameAt = 0L
+            startWatchdog()
             logger.info("Remote session connected (LAN direct)")
             listener?.onStateChanged(state)
             receiveLoop()
@@ -287,8 +378,12 @@ class RemoteSessionManager(
                 val data = ByteArray(len)
                 if (len > 0) readExactly(ins, data, len)
 
+                // 看门狗喂狗：任意帧到达即刷新数据活性时间戳
+                lastDataAt = System.currentTimeMillis()
+
                 when (type) {
                     RemoteFrameProtocol.TYPE_VIDEO_FRAME -> {
+                        lastVideoFrameAt = lastDataAt
                         // 按编码格式分发：h264 → MediaCodec，jpeg → BitmapFactory 铺满画布
                         // （pan/scale 由 View 变换实现，画布内不叠加）
                         if (codec == "jpeg") {
@@ -319,8 +414,18 @@ class RemoteSessionManager(
             // 状态通知（PC 锁屏/解锁/解锁失败）：不携带分辨率，仅更新提示状态
             if (json.has("status")) {
                 when (json.optString("status")) {
-                    "locked" -> listener?.onPcLockStatus(true)
-                    "unlocked" -> listener?.onPcLockStatus(false)
+                    "locked" -> {
+                        pcLocked = true
+                        listener?.onPcLockStatus(true)
+                    }
+                    "unlocked" -> {
+                        pcLocked = false
+                        // 解锁后画面恢复需要时间，重置视频帧宽限期起点
+                        //（仅清 lastVideoFrameAt 会让看门狗拿旧 connectedAt 立即误判超时）
+                        lastVideoFrameAt = 0L
+                        connectedAt = System.currentTimeMillis()
+                        listener?.onPcLockStatus(false)
+                    }
                     "unlock_failed" -> listener?.onPcUnlockFailed()
                 }
                 logger.info("Control: PC status = ${json.optString("status")}")
@@ -346,6 +451,8 @@ class RemoteSessionManager(
                 // JPEG 不需要预启动解码器（BitmapFactory 直接画）；H.264 需要 MediaCodec
                 decoder.start(surf, w, h)
                 logger.info("Control: resolution=$w x $h, codec=$c, decoder started on existing surface")
+                // 解码器刚启动：PC 端此前的 IDR 已错过（被丢弃），请求立即刷新
+                requestKeyframe()
             } else {
                 logger.info("Control: resolution=$w x $h, codec=$c saved (surface not ready or jpeg)")
             }
@@ -364,6 +471,8 @@ class RemoteSessionManager(
             if (videoWidth > 0 && videoHeight > 0 && codec != "jpeg") {
                 decoder.start(surface, videoWidth, videoHeight)
                 logger.info("Surface ready, H264 decoder started: ${videoWidth}x${videoHeight}")
+                // surface 晚就绪期间的 IDR 已被丢弃，请求 PC 立即刷新关键帧
+                requestKeyframe()
             } else if (codec == "jpeg") {
                 logger.info("Surface ready, jpeg mode (no H264 decoder): ${videoWidth}x${videoHeight}")
             } else {
@@ -415,8 +524,11 @@ class RemoteSessionManager(
     fun disconnect() {
         running = false
         decoder.stop()
-        state = SessionState.DISCONNECTED
-        listener?.onStateChanged(state)
+        // FAILED（含看门狗超时）不降级为 DISCONNECTED：保留错误信息供 UI 展示断开原因
+        if (state != SessionState.FAILED) {
+            state = SessionState.DISCONNECTED
+            listener?.onStateChanged(state)
+        }
         closeSocket()
     }
 

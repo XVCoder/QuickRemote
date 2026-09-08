@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.quickremote.app.data.models.ServerConfig
+import com.quickremote.app.ui.components.LogViewerDialog
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.Border
@@ -160,10 +161,17 @@ fun ServerConfigScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         // 连接状态提示
+        var showLogViewer by remember { mutableStateOf(false) }
         when (connectionState) {
             ConnectionState.CONNECTED -> StatusLine("连接测试成功", Success)
-            ConnectionState.ERROR -> ErrorStatusBlock(lastError)
+            ConnectionState.ERROR -> ErrorStatusBlock(
+                detail = lastError,
+                onViewLogs = { showLogViewer = true }
+            )
             else -> {}
+        }
+        if (showLogViewer) {
+            LogViewerDialog(onDismiss = { showLogViewer = false })
         }
 
         // 测试连接
@@ -233,9 +241,9 @@ private fun StatusLine(text: String, color: androidx.compose.ui.graphics.Color) 
     }
 }
 
-/** 错误状态块：显示"连接失败"标题 + 具体原因（多行可换行）。 */
+/** 错误状态块：显示"连接失败"标题 + 具体原因 + 查看日志入口。 */
 @Composable
-private fun ErrorStatusBlock(detail: String) {
+private fun ErrorStatusBlock(detail: String, onViewLogs: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -259,6 +267,17 @@ private fun ErrorStatusBlock(detail: String) {
                 modifier = Modifier.padding(start = 16.dp)
             )
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "查看日志",
+            style = MaterialTheme.typography.labelMedium,
+            color = Accent,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .padding(start = 16.dp)
+                .clickable(onClick = onViewLogs)
+                .padding(vertical = 2.dp)
+        )
     }
 }
 

@@ -1,0 +1,8 @@
+encoded 27 non-empty frames
+decoder initialized, available=True
+decoded 26/27 frames, first output at input #1
+decoder size: 1280x720
+last frame: 1280x720, 3686400B BGRA
+left  pixel: B=30 G=141 R=200 (expect B<100 R>120)
+right pixel: B=218 G=141 R=29 (expect B>150 R<100)
+content check: PASS

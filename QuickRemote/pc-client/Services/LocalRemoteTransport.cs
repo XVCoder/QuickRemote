@@ -15,6 +15,10 @@ public sealed class LocalRemoteTransport : IRemoteTransport
     private readonly NetworkStream _stream;
     private readonly Thread _readThread;
     private volatile bool _running;
+    // Dispose 引发的 ReadLoop 退出不再触发 Disconnected：会话接管时旧传输被
+    // Cleanup 关闭，其 ReadLoop 迟到触发的事件会把新会话 _running 置 false，
+    // 新会话 130ms 内被误杀（2026-09-07 23:52 LAN 连接秒断根因）
+    private volatile bool _disposed;
     private readonly object _writeLock = new();
 
     /// <inheritdoc/>
@@ -92,7 +96,9 @@ public sealed class LocalRemoteTransport : IRemoteTransport
         {
             _running = false;
             try { _client.Dispose(); } catch { }
-            Disconnected?.Invoke();
+            // Dispose 主动关闭（会话接管/程序退出）不触发断开事件——
+            // 调用方已知晓，迟到事件只会误杀接管的后续会话
+            if (!_disposed) Disconnected?.Invoke();
         }
     }
 
@@ -111,6 +117,7 @@ public sealed class LocalRemoteTransport : IRemoteTransport
     /// <inheritdoc/>
     public void Dispose()
     {
+        _disposed = true;
         _running = false;
         try { _client.Dispose(); } catch { }
     }

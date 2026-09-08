@@ -1,45 +1,49 @@
 {
   "relay-server": {
-    "latest_version": "1.0.5",
-    "changelog": "注册消息与设备列表新增 lan_ip 字段（Android 端用于区分局域网/公网设备）；旧库自动迁移",
+    "latest_version": "1.0.7",
+    "changelog": "新增 PC→PC 远程控制支持：设备注册携带自定义名称（默认自动分配“PC客户端N”）、rename 改名协议、tunnel_open 隧道请求、device_list 全量设备列表广播（含离线设备）",
     "versions": {
+      "1.0.7": {
+        "amd64": "https://qd.solutionx.top/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935",
+        "arm64": "https://qd.solutionx.top/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835"
+      },
+      "1.0.6": {
+        "amd64": "https://qd.solutionx.top/d/p/df79c7e1-5822-40b0-a11c-0719932b2366",
+        "arm64": "https://qd.solutionx.top/d/p/55732f27-b1bb-45dc-9471-479123977a9f"
+      },
       "1.0.5": {
         "amd64": "https://qd.solutionx.top/d/p/398c030e-82f0-4f99-b657-36a8a46e8d80",
         "arm64": "https://qd.solutionx.top/d/p/5ba5dbca-384b-4356-9537-5032d40e8e5e"
-      },
-      "1.0.4": {
-        "amd64": "https://qd.solutionx.top/d/p/05d961f9-5a59-489c-b059-d06047251dc8",
-        "arm64": "https://qd.solutionx.top/d/p/ff5bdda8-ee0b-4fdb-b797-672d1e1e04b8"
       }
     }
   },
   "pc-client": {
-    "latest_version": "1.1.25",
-    "changelog": "锁屏输入代理（向日葵式体验）：PC 锁屏时 Android 端可直接点击画面操作锁屏页（唤出密码框、点输入框、软键盘输入密码、回车解锁）；自动检测 Winlogon 安全桌面并启动 SYSTEM 输入代理，解锁后自动回收；DXGI INVALID_CALL 也按锁屏等待处理（不再断开会话）；一键密码解锁入口保留",
+    "latest_version": "1.1.49",
+    "changelog": "远程设备列表支持本机私有备注（仅本机可见，不影响设备自身名称）与离线设备软删除（仅本机隐藏，设备上线自动恢复）",
     "versions": {
-      "1.1.25": {
-        "zip": "https://qd.solutionx.top/d/p/41a93675-544a-46f2-abd5-820a577b67e6"
+      "1.1.49": {
+        "zip": "https://qd.solutionx.top/d/p/24607c0c-002d-4036-b427-8f23d7fa60a8"
       },
-      "1.1.24": {
-        "zip": "https://qd.solutionx.top/d/p/b3f9b51c-824e-45f3-bc30-26c9a335d215"
+      "1.1.48": {
+        "zip": "https://qd.solutionx.top/d/p/735c3968-df85-4456-80aa-f1bbfd775483"
       },
-      "1.1.23": {
-        "zip": "https://qd.solutionx.top/d/p/3a6b106a-829f-46ae-8f5b-d3fe0c03ca3f"
+      "1.1.47": {
+        "zip": "https://qd.solutionx.top/d/p/a3b981b1-da13-42d7-a6b6-81ffbaf8b989"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.38",
-    "changelog": "锁屏操作体验升级：PC 锁屏时画面可直接点击操作锁屏页（配合 PC 端 v1.1.25 输入代理，如向日葵），提示条保留一键输密码解锁快捷入口",
+    "latest_version": "1.0.68",
+    "changelog": "双指滚动像素级跟手（滑动 1cm = 画面内容位移 1cm）+ 松手惯性滑行（阻尼衰减，触摸即停）",
     "versions": {
-      "1.0.38": {
-        "apk": "https://qd.solutionx.top/d/p/f7f05ea7-c90e-4581-a668-f9b415523aed"
+      "1.0.68": {
+        "apk": "https://qd.solutionx.top/d/p/56f5997d-05c2-4ec5-a414-16a4e0b8304a"
       },
-      "1.0.37": {
-        "apk": "https://qd.solutionx.top/d/p/409a9494-965b-4e54-9a3c-1add5b63e688"
+      "1.0.67": {
+        "apk": "https://qd.solutionx.top/d/p/4e6e392c-9771-4140-9feb-3c453a2a55ff"
       },
-      "1.0.36": {
-        "apk": "https://qd.solutionx.top/d/p/814af064-339d-4f85-be18-9480cccc10b2"
+      "1.0.66": {
+        "apk": "https://qd.solutionx.top/d/p/0ed1db85-9e39-473c-8246-07b5ef07515e"
       }
     }
   }
