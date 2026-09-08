@@ -64,7 +64,7 @@
                 <Setter Property="Margin" Value="2,0,0,8"/>
             </Style>
 
-            <!-- ============ 按钮：胶囊形 ============ -->
+            <!-- ============ 按钮：小圆角 ============ -->
             <Style x:Key="ActionButton" TargetType="Button">
                 <Setter Property="Background" Value="{StaticResource BgCardBrush}"/>
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
@@ -77,7 +77,7 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
                             <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                    CornerRadius="17">
+                                    CornerRadius="6">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
@@ -511,7 +511,7 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="ScrollViewer">
                             <Grid>
-                                <ScrollContentPresenter/>
+                                <ScrollContentPresenter Margin="{TemplateBinding Padding}"/>
                                 <ScrollBar Name="PART_VerticalScrollBar"
                                            HorizontalAlignment="Right"
                                            Value="{TemplateBinding VerticalOffset}"
