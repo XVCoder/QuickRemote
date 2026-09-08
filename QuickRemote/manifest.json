@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.49",
-    "changelog": "远程设备列表支持本机私有备注（仅本机可见，不影响设备自身名称）与离线设备软删除（仅本机隐藏，设备上线自动恢复）",
+    "latest_version": "1.1.50",
+    "changelog": "UI 全面升级为腾讯电脑管家风格：深色近黑底色、无边框圆角卡片、统一按钮/输入框/下拉框/滚动条/开关/右键菜单/托盘菜单样式，标题栏线性图标按钮，修复输入框文字靠右对齐问题",
     "versions": {
+      "1.1.50": {
+        "zip": "https://qd.solutionx.top/d/p/5b04324f-f38c-46db-952f-c40f5a1f38ed"
+      },
       "1.1.49": {
         "zip": "https://qd.solutionx.top/d/p/24607c0c-002d-4036-b427-8f23d7fa60a8"
       },
       "1.1.48": {
         "zip": "https://qd.solutionx.top/d/p/735c3968-df85-4456-80aa-f1bbfd775483"
-      },
-      "1.1.47": {
-        "zip": "https://qd.solutionx.top/d/p/a3b981b1-da13-42d7-a6b6-81ffbaf8b989"
       }
     }
   },
