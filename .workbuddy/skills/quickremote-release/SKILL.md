@@ -1,9 +1,9 @@
-***
+---
 
 name: quickremote-release
-description: QuickRemote 项目一键打包发布：编译 relay-server/pc-client/android-app 三端产物，全部通过 qdrl MCP 上传到 qd.solutionx.top 文件区对应子目录并部署 about 页面，更新 manifest.json 和 CHANGELOG.md，清理旧版本只保留最近3个。Invoke when user asks to build and publish QuickRemote releases, upload new versions, or manage release packages.
-agent\_created: true
---------------------
+description: QuickRemote 项目一键打包发布：编译 relay-server/pc-client/android-app 三端产物，全部通过 qdrl MCP 上传到 qd.solutionx.top 文件区对应子目录并部署 about 页面，更新 manifest.json 和 CHANGELOG.md，清理旧版本只保留最近3个。发布前强制 git commit。Invoke when user asks to build and publish QuickRemote releases, upload new versions, or manage release packages.
+agent_created: true
+---
 
 # QuickRemote Release 打包发布工具
 
@@ -14,6 +14,20 @@ agent\_created: true
 > `release.py` 脚本已失效（连旧 MCP 403），不要再使用。
 
 ## 发布流程（qdrl 单 MCP）
+
+### 0. 强制 Git 提交（发布前置检查，不可跳过）
+
+**每次发布前必须先提交本地代码，未提交禁止进入编译/上传步骤：**
+
+```powershell
+# 在 git 仓库根目录（QuickRemote-about 是独立仓库，如改动也要在其目录提交）
+git status --porcelain
+```
+
+- 输出为空 → 工作区干净，可以继续发布
+- 输出非空 → **必须先 `git add` + `git commit`**（message 带版本号，如 `release: pc-client v1.1.50`），再继续
+- 发布流程中产生的构建产物（ZIP/APK/tar.gz）如已被 .gitignore 排除则不影响检查；若未排除，提交时只提交源码与配置改动，产物不入库
+- **铁律：git commit 是发布的前置条件，任何"先发布后补提交"的操作一律禁止**——保证线上每个版本都能追溯到对应 commit
 
 ### 1. 编译产物（本地）
 
@@ -459,15 +473,16 @@ about 页面是独立项目 `QuickRemote-about/`（托管应用 `app_id=quickrem
 
 ## 注意事项
 
-1. **两个 MCP 勿混用**：三端产物+manifest 走 `quickdeploy`（quickdeploy.solutionx.top），about 页托管走 `qdrl`（qd.solutionx.top）。两者目录 ID 独立，upload URL 域名不同。
-2. **curl.exe vs curl**：PowerShell 中 `curl` 是 `Invoke-WebRequest` 的别名，必须用 `curl.exe` 执行真正的 curl 命令
-3. **命令分隔符**：PowerShell 不支持 `&&`，用 `;` 分隔命令
-4. **PC客户端 ZIP 结构**：必须是扁平结构（无顶层目录），否则自动更新解压后文件路径错误
-5. **manifest.json 和 CHANGELOG.md**：上传到 quickdeploy 的根目录（`5bc66dc8...`），不是子目录
-6. **版本号一致性（易踩坑）**：Android 安装后显示的是 `build.gradle.kts` 的 `versionName`，不是文件名！曾出现 APK 文件名带 1.0.2 但安装显示 0.1.0 的问题。发布前必须核对 `versionName` / manifest.json / 文件名三处一致，并递增 `versionCode`（详见步骤 1 的校验章节）
-7. **relay-server 二进制无扩展名**：上传时 `allowed_extensions` 留空或不传
-8. **上传验证**：APK 上传成功后可再用 `aapt dump badging` 复核线上版本号是否正确
-9. **about 页面同步（易遗漏）**：发布新版本后必须更新 `QuickRemote-about/public/index.html` 的版本号与下载链接，并升级 `quickremote-about` 托管应用（qdrl），否则用户从 about 页面下载到的还是旧版本（详见步骤 4.5）
-10. **about 应用未部署（当前状态）**：qdrl 的 `list_apps` 当前为空，首次发布需用 `deploy_app` 重建 `quickremote-about`
-11. **大文件用 curl 直传**：APK/ZIP 体积大（50MB+），不要用 `upload_file`（base64 内联会超大）；统一走 `create_upload_token` + `curl.exe`。若沙箱拦截 curl 网络访问（如 exit 23），小文件（manifest.json / CHANGELOG.md / install.sh）可改用 `upload_file`，大文件需在非沙箱环境执行 curl 或请求放行网络
+1. **强制 Git 提交（最高优先级）**：发布前必须 `git status --porcelain` 为空（所有源码改动已 commit），否则禁止编译/上传（详见"步骤 0"）
+2. **两个 MCP 勿混用**：三端产物+manifest 走 `quickdeploy`（quickdeploy.solutionx.top），about 页托管走 `qdrl`（qd.solutionx.top）。两者目录 ID 独立，upload URL 域名不同。
+3. **curl.exe vs curl**：PowerShell 中 `curl` 是 `Invoke-WebRequest` 的别名，必须用 `curl.exe` 执行真正的 curl 命令
+4. **命令分隔符**：PowerShell 不支持 `&&`，用 `;` 分隔命令
+5. **PC客户端 ZIP 结构**：必须是扁平结构（无顶层目录），否则自动更新解压后文件路径错误
+6. **manifest.json 和 CHANGELOG.md**：上传到 quickdeploy 的根目录（`5bc66dc8...`），不是子目录
+7. **版本号一致性（易踩坑）**：Android 安装后显示的是 `build.gradle.kts` 的 `versionName`，不是文件名！曾出现 APK 文件名带 1.0.2 但安装显示 0.1.0 的问题。发布前必须核对 `versionName` / manifest.json / 文件名三处一致，并递增 `versionCode`（详见步骤 1 的校验章节）
+8. **relay-server 二进制无扩展名**：上传时 `allowed_extensions` 留空或不传
+9. **上传验证**：APK 上传成功后可再用 `aapt dump badging` 复核线上版本号是否正确
+10. **about 页面同步（易遗漏）**：发布新版本后必须更新 `QuickRemote-about/public/index.html` 的版本号与下载链接，并升级 `quickremote-about` 托管应用（qdrl），否则用户从 about 页面下载到的还是旧版本（详见步骤 4.5）
+11. **about 应用未部署（当前状态）**：qdrl 的 `list_apps` 当前为空，首次发布需用 `deploy_app` 重建 `quickremote-about`
+12. **大文件用 curl 直传**：APK/ZIP 体积大（50MB+），不要用 `upload_file`（base64 内联会超大）；统一走 `create_upload_token` + `curl.exe`。若沙箱拦截 curl 网络访问（如 exit 23），小文件（manifest.json / CHANGELOG.md / install.sh）可改用 `upload_file`，大文件需在非沙箱环境执行 curl 或请求放行网络
 

@@ -41,7 +41,8 @@ public class AppConfig
     [JsonPropertyName("Viewer")]
     public ViewerConfig Viewer { get; set; } = new();
 
-    /// <summary>被远程配置：本机被其他主机远程连接时的默认会话参数。</summary>
+    /// <summary>被控端会话参数默认值（无设置界面：被远程时参数由主控端 configure 帧下发；
+    /// 仅作为旧客户端/未下发 configure 时的兜底默认，保留字段兼容已保存的配置文件）。</summary>
     [JsonPropertyName("Host")]
     public HostConfig Host { get; set; } = new();
 }

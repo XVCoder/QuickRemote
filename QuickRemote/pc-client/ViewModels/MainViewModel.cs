@@ -51,7 +51,8 @@ public sealed class MainViewModel : BaseViewModel
 
         _tunnelManager = new TunnelManager(_logger);
         _remoteSessionManager = new RemoteSessionManager(_logger);
-        // 被远程配置（HostConfig）作为会话参数默认值（帧率/码率/分辨率上限/色深）
+        // 被控端会话参数默认值（HostConfig，无设置界面：被远程时的参数由主控端
+        // configure 帧下发，此处仅作为旧客户端/异常路径的兜底默认）
         _remoteSessionManager.UpdateHostSettings(_configService.Config.Host);
         _relay = new RelayConnection(_tunnelManager, _remoteSessionManager, _logger);
         _updateChecker = new UpdateChecker(App.Version, _logger);
@@ -349,68 +350,6 @@ public sealed class MainViewModel : BaseViewModel
         }
     }
 
-    // ========== 被远程配置（本机被其他主机远程连接时的默认会话参数） ==========
-
-    /// <summary>默认帧率（5-60）。</summary>
-    public int HostFps
-    {
-        get => _configService.Config.Host.Fps;
-        set
-        {
-            var v = Math.Clamp(value, 5, 60);
-            if (_configService.Config.Host.Fps != v)
-            {
-                _configService.Config.Host.Fps = v;
-                OnPropertyChanged();
-            }
-        }
-    }
-
-    /// <summary>基准码率（kbps，200-12000），主控端质量百分比按此基准缩放。</summary>
-    public int HostBitrateKbps
-    {
-        get => _configService.Config.Host.BitrateKbps;
-        set
-        {
-            var v = Math.Clamp(value, 200, 12000);
-            if (_configService.Config.Host.BitrateKbps != v)
-            {
-                _configService.Config.Host.BitrateKbps = v;
-                OnPropertyChanged();
-            }
-        }
-    }
-
-    /// <summary>输出分辨率高度上限（0 = 原始分辨率不缩放；主控 configure 可覆盖会话值）。</summary>
-    public int HostMaxHeight
-    {
-        get => _configService.Config.Host.MaxHeight;
-        set
-        {
-            var v = Math.Max(0, value);
-            if (_configService.Config.Host.MaxHeight != v)
-            {
-                _configService.Config.Host.MaxHeight = v;
-                OnPropertyChanged();
-            }
-        }
-    }
-
-    /// <summary>颜色深度（32 = 真彩色；16 = 高彩色）。</summary>
-    public int HostColorDepth
-    {
-        get => _configService.Config.Host.ColorDepth;
-        set
-        {
-            var v = value == 16 ? 16 : 32;
-            if (_configService.Config.Host.ColorDepth != v)
-            {
-                _configService.Config.Host.ColorDepth = v;
-                OnPropertyChanged();
-            }
-        }
-    }
-
     // ========== 设置页下拉选项（值 + 显示文本） ==========
 
     /// <summary>分辨率高度上限选项（0 = 原始分辨率不缩放）。</summary>
@@ -444,17 +383,6 @@ public sealed class MainViewModel : BaseViewModel
         new Models.OptionItem(30, "30 fps（流畅）"),
         new Models.OptionItem(45, "45 fps"),
         new Models.OptionItem(60, "60 fps（极流畅）"),
-    };
-
-    /// <summary>基准码率选项（被控端配置；主控质量百分比按此基准缩放）。</summary>
-    public IReadOnlyList<Models.OptionItem> BitrateOptions { get; } = new[]
-    {
-        new Models.OptionItem(1000, "1 Mbps（低）"),
-        new Models.OptionItem(2000, "2 Mbps"),
-        new Models.OptionItem(4000, "4 Mbps（推荐）"),
-        new Models.OptionItem(6000, "6 Mbps"),
-        new Models.OptionItem(8000, "8 Mbps"),
-        new Models.OptionItem(12000, "12 Mbps（高）"),
     };
 
     /// <summary>颜色深度选项。</summary>
@@ -540,16 +468,12 @@ public sealed class MainViewModel : BaseViewModel
         OnPropertyChanged(nameof(AutoStart));
         OnPropertyChanged(nameof(CheckUpdateOnStart));
         OnPropertyChanged(nameof(AutoUploadLogs));
-        // 远程/被远程配置（直接读写 Config 对象，重载后通知 UI 刷新）
+        // 远程配置（直接读写 Config 对象，重载后通知 UI 刷新）
         OnPropertyChanged(nameof(ViewerTargetMaxHeight));
         OnPropertyChanged(nameof(ViewerQualityPercent));
         OnPropertyChanged(nameof(ViewerFps));
         OnPropertyChanged(nameof(ViewerColorDepth));
         OnPropertyChanged(nameof(ViewerPreferLan));
-        OnPropertyChanged(nameof(HostFps));
-        OnPropertyChanged(nameof(HostBitrateKbps));
-        OnPropertyChanged(nameof(HostMaxHeight));
-        OnPropertyChanged(nameof(HostColorDepth));
     }
 
     private void StartConnection()
@@ -585,9 +509,6 @@ public sealed class MainViewModel : BaseViewModel
         cfg.CheckUpdateOnStart = CheckUpdateOnStart;
         cfg.AutoUploadLogs = AutoUploadLogs;
         _configService.Save();
-        // 被远程配置即时应用：活跃会话下帧率/码率/分辨率上限/色深立即生效
-        // （无会话时仅更新默认值，下次连接按新参数启动）
-        _remoteSessionManager.UpdateHostSettings(cfg.Host);
         _logger.Info("Settings saved");
 
         // 重启连接以应用新地址

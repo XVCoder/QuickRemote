@@ -38,6 +38,8 @@ public sealed class RemoteSessionManager : IDisposable
     private volatile int _sessionMaxHeight;
     /// <summary>本会话颜色深度（32 / 16：BGRA 通道量化；主控 configure 帧可覆盖，会话结束复位）。</summary>
     private volatile int _sessionColorDepth = 32;
+    /// <summary>局域网直连会话（带宽充裕，码率无省流量必要，见 ComputeBitrateKbps）。</summary>
+    private volatile bool _isLanDirect;
 
     // ============ 分辨率基准（volatile：源=桌面/锁屏代理帧尺寸；输出=编码尺寸） ============
     // 输入归一化（_inputHandler.VideoWidth/Height）与握手帧报的都是输出尺寸；
@@ -246,6 +248,8 @@ public sealed class RemoteSessionManager : IDisposable
     {
         try
         {
+            // 连接模式标记（码率策略用：LAN 直连带宽充裕，见 ComputeBitrateKbps）
+            _isLanDirect = modeText == "局域网直连";
             // 断开事件带传输身份校验：会话接管时旧传输被 Cleanup 关闭，其 ReadLoop
             // 仍可能迟到触发 Disconnected（事件在旧线程 finally 里）——若不校验身份，
             // 会把新会话的 _running 误置 false，新会话秒断（2026-09-07 23:52 LAN
@@ -891,7 +895,7 @@ public sealed class RemoteSessionManager : IDisposable
         _outHeight = height;
         _inputHandler.VideoWidth = width;
         _inputHandler.VideoHeight = height;
-        var bitrate = Math.Max(200, _baseBitrateKbps * _qualityPercent / 100);
+        var bitrate = ComputeBitrateKbps(_qualityPercent);
         try
         {
             var h264 = new H264Encoder();
@@ -913,6 +917,20 @@ public sealed class RemoteSessionManager : IDisposable
 
     // ============ 帧预处理：缩放 + 色深量化（v1.1.48 参数化配置） ============
     // 全部仅在 EncodeLoop 线程调用（_scaleBuffer/权重表为编码线程独占，无需加锁）
+
+    /// <summary>
+    /// 会话码率（kbps）= 基准码率 × 质量百分比。
+    /// 局域网直连 ×4（上限 50Mbps）：基准 4Mbps 即便 100% 质量对 2560x1440 也明显不足
+    /// （v1.1.50 前 LAN 高配置仍模糊的根因）；LAN 带宽充裕无省流量必要。
+    /// 公网中继保持原值（VPS 带宽有限，高码率会拥塞丢帧）。
+    /// </summary>
+    private int ComputeBitrateKbps(int percent)
+    {
+        var bitrate = Math.Max(200, _baseBitrateKbps * percent / 100);
+        if (_isLanDirect)
+            bitrate = Math.Min(50000, bitrate * 4);
+        return bitrate;
+    }
 
     /// <summary>
     /// 计算输出尺寸：会话分辨率上限约束源帧（等比缩放），宽高偶数化
@@ -1371,7 +1389,7 @@ public sealed class RemoteSessionManager : IDisposable
         }
         var width = _outWidth > 0 ? _outWidth : (_inputHandler.VideoWidth > 0 ? _inputHandler.VideoWidth : (_capture?.Width ?? 1920));
         var height = _outHeight > 0 ? _outHeight : (_inputHandler.VideoHeight > 0 ? _inputHandler.VideoHeight : (_capture?.Height ?? 1080));
-        var newBitrate = Math.Max(200, _baseBitrateKbps * percent / 100);
+        var newBitrate = ComputeBitrateKbps(percent);
 
         lock (_encoderLock)
         {
