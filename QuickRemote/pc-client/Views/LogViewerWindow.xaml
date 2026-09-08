@@ -63,7 +63,7 @@
                     <Button Content="清空日志" Click="BtnClear_Click"
                             Style="{StaticResource TitleIconButton}"
                             Foreground="{StaticResource DangerBrush}"
-                            Width="Auto" Padding="10,0" FontSize="12" Margin="0,4,0,0"/>
+                            Width="Auto" Padding="10,0" FontSize="12" Margin="0,0,10,0"/>
                     <Button Content="打开日志目录" Click="BtnOpenFolder_Click"
                             Style="{StaticResource TitleIconButton}"
                             Width="Auto" Padding="10,0" FontSize="12"/>
