@@ -1,34 +1,35 @@
 <Window x:Class="QuickRemote.PCClient.Views.UpdateProgressWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="正在更新" Height="180" Width="400"
-        Background="{StaticResource BgSecondaryBrush}"
+        Title="正在更新" Height="170" Width="400"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        ShowInTaskbar="False">
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+        ShowInTaskbar="False"
+        FontFamily="{StaticResource UiFont}">
+    <Border Background="{StaticResource BgSecondaryBrush}"
+            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            CornerRadius="14"
+            MouseLeftButtonDown="Window_MouseLeftButtonDown">
+        <Grid Margin="24,20,24,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" x:Name="TitleText"
-                   FontSize="14" FontWeight="SemiBold"
-                   Foreground="{StaticResource TextPrimaryBrush}"
-                   FontFamily="{StaticResource UiFont}"
-                   Margin="0,0,0,12"/>
+            <TextBlock Grid.Row="0" x:Name="TitleText"
+                       FontSize="14" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextPrimaryBrush}"
+                       Margin="0,0,0,14"/>
 
-        <ProgressBar Grid.Row="1" x:Name="ProgressBar"
-                     Height="6" Minimum="0" Maximum="100"
-                     Foreground="#FFB74D"
-                     Background="{StaticResource BgCardBrush}"
-                     BorderThickness="0"
-                     Margin="0,0,0,8"/>
+            <ProgressBar Grid.Row="1" x:Name="ProgressBar"
+                         Height="6" Minimum="0" Maximum="100"
+                         Margin="0,0,0,10"/>
 
-        <TextBlock Grid.Row="2" x:Name="StatusText"
-                   FontSize="12"
-                   Foreground="{StaticResource TextMutedBrush}"
-                   FontFamily="{StaticResource UiFont}"/>
-    </Grid>
+            <TextBlock Grid.Row="2" x:Name="StatusText"
+                       FontSize="12"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+        </Grid>
+    </Border>
 </Window>

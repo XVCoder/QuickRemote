@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using QuickRemote.PCClient.Services;
 
@@ -18,6 +19,13 @@ public partial class ChangelogWindow : Window
     {
         InitializeComponent();
     }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 1) DragMove();
+    }
+
+    private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
 
     /// <summary>显示更新记录窗口（单例）。</summary>
     public static void Show(string changelogUrl, Logger logger)

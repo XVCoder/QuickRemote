@@ -13,245 +13,6 @@
         FontFamily="{StaticResource UiFont}">
 
     <Window.Resources>
-        <!-- 圆角窗口边框 -->
-        <Border x:Key="WindowShell" CornerRadius="12"/>
-
-        <!-- 开关切换按钮模板 -->
-        <Style x:Key="ToggleSwitch" TargetType="ToggleButton">
-            <Setter Property="Width" Value="36"/>
-            <Setter Property="Height" Value="20"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="track" CornerRadius="10"
-                                Background="{StaticResource BorderLightBrush}"
-                                BorderThickness="0">
-                            <Border x:Name="thumb" Width="16" Height="16"
-                                    CornerRadius="8"
-                                    Background="White"
-                                    HorizontalAlignment="Left"
-                                    Margin="2,0,0,0"
-                                    RenderTransformOrigin="0.5,0.5">
-                                <Border.RenderTransform>
-                                    <TranslateTransform x:Name="thumbTransform" X="0"/>
-                                </Border.RenderTransform>
-                            </Border>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="track" Property="Background" Value="{StaticResource AccentBrush}"/>
-                                <Trigger.EnterActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="thumbTransform"
-                                                             Storyboard.TargetProperty="X"
-                                                             To="16" Duration="0:0:0.15"/>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </Trigger.EnterActions>
-                                <Trigger.ExitActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="thumbTransform"
-                                                             Storyboard.TargetProperty="X"
-                                                             To="0" Duration="0:0:0.15"/>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </Trigger.ExitActions>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- 普通按钮 -->
-        <Style x:Key="ActionButton" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource BgCardBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="14,8"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="Medium"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource BgHoverBrush}"/>
-                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- 主按钮（强调） -->
-        <Style x:Key="PrimaryActionButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- 标题栏圆形按钮 -->
-        <Style x:Key="TitleCircleButton" TargetType="Button">
-            <Setter Property="Width" Value="12"/>
-            <Setter Property="Height" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" CornerRadius="6" Background="{TemplateBinding Background}"/>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Opacity" Value="0.8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- 设置项输入框 -->
-        <Style x:Key="SettingInput" TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource BgPrimaryBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="8,5"/>
-            <Setter Property="Width" Value="220"/>
-            <Setter Property="HorizontalAlignment" Value="Right"/>
-            <Setter Property="TextAlignment" Value="Right"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="4">
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
-                                          HorizontalAlignment="Right"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- 设置项下拉框（深色） -->
-        <Style x:Key="SettingCombo" TargetType="ComboBox">
-            <Setter Property="Background" Value="{StaticResource BgPrimaryBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Width" Value="220"/>
-            <Setter Property="HorizontalAlignment" Value="Right"/>
-            <Setter Property="MaxDropDownHeight" Value="240"/>
-            <Setter Property="ItemContainerStyle">
-                <Setter.Value>
-                    <Style TargetType="ComboBoxItem">
-                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-                        <Setter Property="Padding" Value="8,5"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ComboBoxItem">
-                                    <Border x:Name="bd" Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="3">
-                                        <ContentPresenter/>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBrush}"/>
-                                            <Setter TargetName="bd" Property="Opacity" Value="0.25"/>
-                                        </Trigger>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBrush}"/>
-                                            <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBox">
-                        <Grid>
-                            <ToggleButton Focusable="False" ClickMode="Press" Foreground="White"
-                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border x:Name="bd" Background="{StaticResource BgPrimaryBrush}"
-                                                BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1"
-                                                CornerRadius="4">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <ContentPresenter Grid.Column="0"
-                                                                  Content="{TemplateBinding Content}"
-                                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
-                                                                  Margin="8,5,4,5"
-                                                                  HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                                                <Path Grid.Column="1" Data="M 0 0 L 4 4 L 8 0"
-                                                      Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
-                                                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                                <!-- 选中项文本（经 ContentPresenter 转发到 ToggleButton 内容区） -->
-                                <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
-                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
-                            </ToggleButton>
-                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
-                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
-                                   StaysOpen="False">
-                                <Border Background="{StaticResource BgPrimaryBrush}"
-                                        BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1"
-                                        CornerRadius="4" Margin="0,2,0,0" MinWidth="{TemplateBinding ActualWidth}">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsPresenter Margin="2"/>
-                                    </ScrollViewer>
-                                </Border>
-                            </Popup>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- 状态点脉冲动画 -->
         <Storyboard x:Key="PulseStoryboard" AutoReverse="True" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetName="StatusDot"
@@ -273,29 +34,36 @@
             </Grid.RowDefinitions>
 
             <!-- ============ 标题栏 ============ -->
-            <Border Grid.Row="0" Background="{StaticResource BgPrimaryBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+            <Border Grid.Row="0" Background="Transparent"
                     CornerRadius="12,12,0,0"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid Height="38" Margin="16,0,12,0">
+                <Grid Height="44" Margin="18,0,8,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" VerticalAlignment="Center"
-                               FontSize="13" FontWeight="Medium"
-                               Foreground="{StaticResource TextSecondaryBrush}">
-                        <Run Text="QuickRemote" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold"/>
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}">
+                        <Run Text="QuickRemote" Foreground="{StaticResource AccentBrush}"/>
                         <Run Text=" PC"/>
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="BtnPin" Content="置顶" Click="BtnPin_Click"
-                                Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
-                                BorderThickness="0" Cursor="Hand" FontSize="11" Padding="6,3" Margin="0,0,10,0"/>
-                        <Button x:Name="BtnMinimize" Style="{StaticResource TitleCircleButton}"
-                                Background="#F59E0B" Margin="0,0,8,0" Click="BtnMinimize_Click"/>
-                        <Button x:Name="BtnClose" Style="{StaticResource TitleCircleButton}"
-                                Background="#EF4444" Click="BtnClose_Click"/>
+                                Style="{StaticResource TitleIconButton}"
+                                Width="Auto" Padding="8,0" FontSize="11" Margin="0,0,4,0"/>
+                        <Button x:Name="BtnMinimize" Style="{StaticResource TitleIconButton}"
+                                Margin="0,0,4,0" Click="BtnMinimize_Click">
+                            <Path Data="M2,6 L10,6" Width="12" Height="12"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
+                        <Button x:Name="BtnClose" Style="{StaticResource TitleCloseButton}"
+                                Click="BtnClose_Click">
+                            <Path Data="M3,3 L9,9 M9,3 L3,9" Width="12" Height="12"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -306,9 +74,7 @@
                 <StackPanel>
 
                     <!-- 服务器状态卡片 -->
-                    <Border Background="{StaticResource BgCardBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,16">
+                    <Border Style="{StaticResource CardBorder}" Padding="18" Margin="0,0,0,16">
                         <StackPanel>
                             <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
@@ -420,9 +186,7 @@
                     <ItemsControl ItemsSource="{Binding Sessions}" Margin="0,0,0,4">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type models:SessionInfo}">
-                                <Border Background="{StaticResource BgCardBrush}"
-                                        BorderBrush="{StaticResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="8"
+                                <Border Style="{StaticResource CardBorder}"
                                         Padding="14,12" Margin="0,0,0,8">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -475,15 +239,11 @@
                     </Border>
 
                     <!-- 远程设备（PC→PC 远程控制） -->
-                    <TextBlock Text="远程设备" FontSize="11" FontWeight="Medium"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               Margin="2,16,0,8"/>
+                    <TextBlock Text="远程设备" Style="{StaticResource SectionHeader}" Margin="2,16,0,8"/>
                     <ItemsControl ItemsSource="{Binding RemoteDevices}" Margin="0,0,0,4">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type models:RemoteDeviceInfo}">
-                                <Border Background="{StaticResource BgCardBrush}"
-                                        BorderBrush="{StaticResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="8"
+                                <Border Style="{StaticResource CardBorder}"
                                         Padding="14,10" Margin="0,0,0,8">
                                     <Grid Cursor="Hand">
                                         <Grid.InputBindings>
@@ -497,8 +257,8 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                <Border Background="#1E3A5F" CornerRadius="4"
-                                                        Width="16" Height="16" Margin="0,0,8,0"
+                                                <Border Background="#2A3A50" CornerRadius="6"
+                                                        Width="18" Height="18" Margin="0,0,8,0"
                                                         VerticalAlignment="Center">
                                                     <TextBlock Text="🖥" FontSize="10"
                                                                HorizontalAlignment="Center"
@@ -559,22 +319,19 @@
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <Button Content="&#x270E;" FontSize="13"
-                                                    Padding="8,4" Margin="10,0,0,0"
-                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                    Foreground="{StaticResource TextMutedBrush}"
+                                                    Style="{StaticResource ListIconButton}"
+                                                    Margin="10,0,0,0"
                                                     ToolTip="设置备注（仅本机可见，不影响设备名称）"
                                                     Command="{Binding DataContext.SetDeviceRemarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"/>
                                             <!-- 软删除：仅离线设备可见，上线自动恢复 -->
                                             <Button Content="&#x2715;" FontSize="12"
-                                                    Padding="8,4" Margin="2,0,0,0"
-                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                    Foreground="{StaticResource TextMutedBrush}"
+                                                    Margin="2,0,0,0"
                                                     ToolTip="从列表移除（仅本机隐藏；设备上线后自动恢复）"
                                                     Command="{Binding DataContext.RemoveDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}">
                                                 <Button.Style>
-                                                    <Style TargetType="Button">
+                                                    <Style TargetType="Button" BasedOn="{StaticResource ListIconButton}">
                                                         <Setter Property="Visibility" Value="Visible"/>
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsOnline}" Value="True">
@@ -599,12 +356,8 @@
                     </Border>
 
                     <!-- 基本配置 -->
-                    <TextBlock Text="基本配置" FontSize="11" FontWeight="Medium"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               Margin="2,16,0,8"/>
-                    <Border Background="{StaticResource BgCardBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,16">
+                    <TextBlock Text="基本配置" Style="{StaticResource SectionHeader}"/>
+                    <Border Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,16">
                         <StackPanel>
                             <Grid Margin="0,6">
                                 <Grid.ColumnDefinitions>
@@ -676,12 +429,8 @@
                     </Border>
 
                     <!-- 远程配置（本机远程其他主机时的参数） -->
-                    <TextBlock Text="远程配置（本机远程其他主机时）" FontSize="11" FontWeight="Medium"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               Margin="2,0,0,8"/>
-                    <Border Background="{StaticResource BgCardBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,16">
+                    <TextBlock Text="远程配置（本机远程其他主机时）" Style="{StaticResource SectionHeader}"/>
+                    <Border Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,16">
                         <StackPanel>
                             <Grid Margin="0,6">
                                 <Grid.ColumnDefinitions>
@@ -757,9 +506,8 @@
             </ScrollViewer>
 
             <!-- ============ 底部按钮栏 ============ -->
-            <Border Grid.Row="2" Background="{StaticResource BgPrimaryBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
-                    CornerRadius="0,0,12,12" Padding="20,16">
+            <Border Grid.Row="2" Background="Transparent"
+                    CornerRadius="0,0,12,12" Padding="20,8,20,16">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>

@@ -75,15 +75,20 @@ public partial class LogViewerWindow : Window
 
     private void BtnRefresh_Click(object sender, RoutedEventArgs e) => LoadLogs();
 
+    private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 1) DragMove();
+    }
+
+    private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
+
     private void BtnClear_Click(object sender, RoutedEventArgs e)
     {
-        var result = MessageBox.Show(
-            this,
+        var ok = DialogWindow.Confirm(
             "确定清空全部日志文件吗？此操作不可恢复。",
             "清空日志",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
-        if (result != MessageBoxResult.OK) return;
+            DialogWindow.DialogType.Warning);
+        if (!ok) return;
 
         Logger.ClearLogs();
         LoadLogs();

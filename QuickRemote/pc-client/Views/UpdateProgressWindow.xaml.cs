@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace QuickRemote.PCClient.Views;
 
@@ -12,6 +13,11 @@ public partial class UpdateProgressWindow : Window
         InitializeComponent();
         TitleText.Text = $"正在更新到 v{targetVersion}";
         StatusText.Text = "准备下载...";
+    }
+
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 1) DragMove();
     }
 
     /// <summary>更新进度。percent 为 -1 时显示不确定模式。</summary>

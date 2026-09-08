@@ -42,6 +42,14 @@ public sealed class TrayService : IDisposable
             ShowImageMargin = true,
             Font = new Font("Segoe UI", 9f)
         };
+        // 打开时把菜单裁剪为圆角（腾讯管家风格）
+        _menu.Opened += (_, _) =>
+        {
+            if (_menu.Width > 0 && _menu.Height > 0)
+            {
+                _menu.Region = new Region(CreateRoundedPath(new Rectangle(0, 0, _menu.Width, _menu.Height), 8));
+            }
+        };
         var showItem = new Forms.ToolStripMenuItem("显示主窗口")
         {
             Image = CreateWindowIcon()
@@ -163,30 +171,43 @@ public sealed class TrayService : IDisposable
         catch { }
     }
 
-    /// <summary>深色主题配色表（与主界面 BgCard/Border/Accent 一致）。</summary>
-    private sealed class DarkColorTable : Forms.ProfessionalColorTable
+    /// <summary>创建圆角矩形路径（供菜单 Region 裁剪与圆角绘制）。</summary>
+    internal static GraphicsPath CreateRoundedPath(Rectangle bounds, int radius)
     {
-        public override Color ToolStripDropDownBackground => Color.FromArgb(0x1C, 0x20, 0x30);
-        public override Color ImageMarginGradientBegin => Color.FromArgb(0x1C, 0x20, 0x30);
-        public override Color ImageMarginGradientMiddle => Color.FromArgb(0x1C, 0x20, 0x30);
-        public override Color ImageMarginGradientEnd => Color.FromArgb(0x1C, 0x20, 0x30);
-        public override Color MenuBorder => Color.FromArgb(0x2A, 0x2F, 0x3E);
-        public override Color MenuItemBorder => Color.FromArgb(0x3B, 0x82, 0xF6);
-        public override Color MenuItemSelected => Color.FromArgb(0x23, 0x28, 0x38);
-        public override Color MenuItemSelectedGradientBegin => Color.FromArgb(0x23, 0x28, 0x38);
-        public override Color MenuItemSelectedGradientEnd => Color.FromArgb(0x23, 0x28, 0x38);
-        public override Color SeparatorDark => Color.FromArgb(0x2A, 0x2F, 0x3E);
-        public override Color SeparatorLight => Color.FromArgb(0x2A, 0x2F, 0x3E);
+        var path = new GraphicsPath();
+        var d = radius * 2;
+        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
+        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
+        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
-    /// <summary>深色主题菜单渲染器：深色背景、浅色文字、选中高亮 + 左侧主题色条。</summary>
+    /// <summary>深色主题配色表（与 App.xaml 色板一致：卡片底 #25262C、边框 #3A3C45、强调蓝 #3D8BFF）。</summary>
+    private sealed class DarkColorTable : Forms.ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground => Color.FromArgb(0x25, 0x26, 0x2C);
+        public override Color ImageMarginGradientBegin => Color.FromArgb(0x25, 0x26, 0x2C);
+        public override Color ImageMarginGradientMiddle => Color.FromArgb(0x25, 0x26, 0x2C);
+        public override Color ImageMarginGradientEnd => Color.FromArgb(0x25, 0x26, 0x2C);
+        public override Color MenuBorder => Color.FromArgb(0x3A, 0x3C, 0x45);
+        public override Color MenuItemBorder => Color.FromArgb(0x3D, 0x8B, 0xFF);
+        public override Color MenuItemSelected => Color.FromArgb(0x31, 0x33, 0x3B);
+        public override Color MenuItemSelectedGradientBegin => Color.FromArgb(0x31, 0x33, 0x3B);
+        public override Color MenuItemSelectedGradientEnd => Color.FromArgb(0x31, 0x33, 0x3B);
+        public override Color SeparatorDark => Color.FromArgb(0x3A, 0x3C, 0x45);
+        public override Color SeparatorLight => Color.FromArgb(0x3A, 0x3C, 0x45);
+    }
+
+    /// <summary>深色主题菜单渲染器：深色背景、浅色文字、圆角高亮选中项。</summary>
     private sealed class DarkMenuRenderer : Forms.ToolStripProfessionalRenderer
     {
         public DarkMenuRenderer() : base(new DarkColorTable()) { }
 
         protected override void OnRenderItemText(Forms.ToolStripItemTextRenderEventArgs e)
         {
-            e.TextColor = e.Item.Selected ? Color.White : Color.FromArgb(0xE4, 0xE6, 0xEB);
+            e.TextColor = e.Item.Selected ? Color.White : Color.FromArgb(0xF2, 0xF3, 0xF5);
             base.OnRenderItemText(e);
         }
 
@@ -194,11 +215,12 @@ public sealed class TrayService : IDisposable
         {
             if (e.Item.Selected)
             {
-                var rc = new Rectangle(0, 0, e.Item.Width, e.Item.Height);
-                using var brush = new SolidBrush(Color.FromArgb(0x23, 0x28, 0x38));
-                e.Graphics.FillRectangle(brush, rc);
-                using var accent = new SolidBrush(Color.FromArgb(0x3B, 0x82, 0xF6));
-                e.Graphics.FillRectangle(accent, 0, 1, 3, rc.Height - 2);
+                // 整块圆角高亮（腾讯管家风格），左右留 4px 边距
+                var rc = new Rectangle(4, 1, e.Item.Width - 8, e.Item.Height - 2);
+                using var path = CreateRoundedPath(rc, 5);
+                using var brush = new SolidBrush(Color.FromArgb(0x31, 0x33, 0x3B));
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.FillPath(brush, path);
             }
             else
             {
@@ -208,24 +230,13 @@ public sealed class TrayService : IDisposable
 
         protected override void OnRenderSeparator(Forms.ToolStripSeparatorRenderEventArgs e)
         {
-            using var pen = new Pen(Color.FromArgb(0x2A, 0x2F, 0x3E));
-            e.Graphics.DrawLine(pen, 30, e.Item.Height / 2, e.Item.Width - 10, e.Item.Height / 2);
+            using var pen = new Pen(Color.FromArgb(0x3A, 0x3C, 0x45));
+            e.Graphics.DrawLine(pen, 34, e.Item.Height / 2, e.Item.Width - 12, e.Item.Height / 2);
         }
 
         protected override void OnRenderToolStripBorder(Forms.ToolStripRenderEventArgs e)
         {
-            if (e.ToolStrip is Forms.ContextMenuStrip)
-            {
-                using var pen = new Pen(Color.FromArgb(0x2A, 0x2F, 0x3E));
-                var rc = e.AffectedBounds;
-                rc.Width -= 1;
-                rc.Height -= 1;
-                e.Graphics.DrawRectangle(pen, rc);
-            }
-            else
-            {
-                base.OnRenderToolStripBorder(e);
-            }
+            // 菜单整体已由圆角 Region 裁剪，不再绘制直角边框
         }
     }
 }

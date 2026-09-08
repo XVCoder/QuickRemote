@@ -8,7 +8,7 @@
         FontFamily="{StaticResource UiFont}">
     <Border Background="{StaticResource BgSecondaryBrush}"
             BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-            CornerRadius="12">
+            CornerRadius="14">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -17,11 +17,9 @@
             </Grid.RowDefinitions>
 
             <!-- 标题栏 -->
-            <Border Grid.Row="0" Background="{StaticResource BgPrimaryBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
-                    CornerRadius="12,12,0,0"
+            <Border Grid.Row="0" Background="Transparent"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid Height="42" Margin="18,0,10,0">
+                <Grid Height="46" Margin="20,0,8,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -30,43 +28,42 @@
                                FontSize="13" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}"
                                VerticalAlignment="Center"/>
-                    <Button Grid.Column="1" Content="&#x2715;"
-                            Click="BtnClose_Click" Cursor="Hand"
-                            Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
-                            BorderThickness="0" FontSize="13" Padding="6,2"/>
+                    <Button Grid.Column="1" Click="BtnClose_Click"
+                            Style="{StaticResource TitleCloseButton}">
+                        <Path Data="M3,3 L9,9 M9,3 L3,9" Width="12" Height="12"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Button>
                 </Grid>
             </Border>
 
             <!-- 内容 -->
-            <StackPanel Grid.Row="1" Margin="20,18,20,8">
+            <StackPanel Grid.Row="1" Margin="22,12,22,8">
                 <TextBlock x:Name="MessageText" Text=""
                            FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"
-                           TextWrapping="Wrap" Margin="0,0,0,10"/>
-                <TextBox x:Name="InputBox" FontSize="13" Padding="8,6"
-                         Background="{StaticResource BgPrimaryBrush}"
-                         Foreground="{StaticResource TextPrimaryBrush}"
-                         CaretBrush="{StaticResource TextPrimaryBrush}"
-                         BorderBrush="{StaticResource BorderLightBrush}"
-                         BorderThickness="1"
-                         KeyDown="InputBox_KeyDown"/>
+                           TextWrapping="Wrap" Margin="0,0,0,12"/>
+                <TextBox x:Name="InputBox" FontSize="13"
+                         KeyDown="InputBox_KeyDown">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource SettingInput}">
+                            <Setter Property="Width" Value="NaN"/>
+                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                            <Setter Property="TextAlignment" Value="Left"/>
+                            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
             </StackPanel>
 
             <!-- 按钮 -->
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
-                        Margin="20,12,20,18">
-                <Button Content="取消" MinWidth="84"
-                        Click="BtnCancel_Click" Cursor="Hand"
-                        Margin="0,0,10,0"
-                        Background="{StaticResource BgCardBrush}"
-                        Foreground="{StaticResource TextPrimaryBrush}"
-                        BorderBrush="{StaticResource BorderLightBrush}"
-                        BorderThickness="1" Padding="16,7" FontSize="12" FontWeight="Medium"/>
-                <Button x:Name="BtnOk" Content="确定" MinWidth="84"
-                        Click="BtnOk_Click" Cursor="Hand"
-                        Background="{StaticResource AccentBrush}"
-                        Foreground="White"
-                        BorderBrush="{StaticResource AccentBrush}"
-                        BorderThickness="1" Padding="16,7" FontSize="12" FontWeight="Medium"/>
+                        Margin="20,14,20,20">
+                <Button Content="取消" MinWidth="88"
+                        Click="BtnCancel_Click" Margin="0,0,10,0"
+                        Style="{StaticResource ActionButton}"/>
+                <Button x:Name="BtnOk" Content="确定" MinWidth="88"
+                        Click="BtnOk_Click"
+                        Style="{StaticResource PrimaryActionButton}"/>
             </StackPanel>
         </Grid>
     </Border>
