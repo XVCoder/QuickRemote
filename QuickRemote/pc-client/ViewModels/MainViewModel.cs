@@ -41,6 +41,7 @@ public sealed class MainViewModel : BaseViewModel
     private bool _checkUpdateOnStart;
     private bool _autoUploadLogs;
     private string _accessCodeInput = string.Empty;
+    private bool _accessCodeEnabled;
     private bool _lockOnDisconnect = true;
 
     // 更新
@@ -280,12 +281,27 @@ public sealed class MainViewModel : BaseViewModel
 
     // ========== 被远程安全（本机被其他设备连接时） ==========
 
-    /// <summary>访问验证码（被控端）：非空时其他设备连接本机需先验证；空 = 不验证。</summary>
+    /// <summary>访问验证码（被控端）：开启验证保护时主控端连接本机需先验证。</summary>
     public string AccessCodeInput
     {
         get => _accessCodeInput;
         // 仅保留数字（≤6 位）：UI 输入框有 PreviewTextInput 过滤，这里兜底粘贴路径
         set => SetField(ref _accessCodeInput, new string((value ?? "").Where(char.IsDigit).Take(6).ToArray()));
+    }
+
+    /// <summary>访问验证码开关（被控端）：false = 不启用验证保护（即使已设置验证码也不验证）。
+    /// 开启时必须设置 6 位验证码才能保存设置。</summary>
+    public bool AccessCodeEnabled
+    {
+        get => _accessCodeEnabled;
+        set
+        {
+            if (SetField(ref _accessCodeEnabled, value))
+            {
+                _configService.Config.AccessCodeEnabled = value;
+                _remoteSessionManager.AccessCodeEnabled = value; // 新连接立即生效
+            }
+        }
     }
 
     /// <summary>连接断开时自动锁屏（被控端）。</summary>
@@ -502,15 +518,18 @@ public sealed class MainViewModel : BaseViewModel
         _checkUpdateOnStart = cfg.CheckUpdateOnStart;
         _autoUploadLogs = cfg.AutoUploadLogs;
         _accessCodeInput = cfg.AccessCode;
+        _accessCodeEnabled = cfg.AccessCodeEnabled;
         _lockOnDisconnect = cfg.LockOnDisconnect;
         // 同步被控端安全参数到会话管理器（新连接立即生效）
         _remoteSessionManager.AccessCode = cfg.AccessCode;
+        _remoteSessionManager.AccessCodeEnabled = cfg.AccessCodeEnabled;
         _remoteSessionManager.LockOnDisconnect = cfg.LockOnDisconnect;
         ServerAddressDisplay = cfg.Server.Address;
         OnPropertyChanged(nameof(AutoStart));
         OnPropertyChanged(nameof(CheckUpdateOnStart));
         OnPropertyChanged(nameof(AutoUploadLogs));
         OnPropertyChanged(nameof(AccessCodeInput));
+        OnPropertyChanged(nameof(AccessCodeEnabled));
         OnPropertyChanged(nameof(LockOnDisconnect));
         // 远程配置（直接读写 Config 对象，重载后通知 UI 刷新）
         OnPropertyChanged(nameof(ViewerTargetMaxHeight));
@@ -554,8 +573,18 @@ public sealed class MainViewModel : BaseViewModel
         cfg.AutoUploadLogs = AutoUploadLogs;
 
         // 被远程安全：验证码 + 断开锁屏（即时同步到会话管理器，新连接生效）
-        cfg.AccessCode = (AccessCodeInput ?? string.Empty).Trim();
+        var accessCode = (AccessCodeInput ?? string.Empty).Trim();
+        if (AccessCodeEnabled && accessCode.Length == 0)
+        {
+            Views.DialogWindow.Show(
+                "开启访问验证码保护时必须设置 6 位数字验证码，请先填写验证码（可点击「随机」生成）。",
+                "无法保存", Views.DialogWindow.DialogType.Warning);
+            return;
+        }
+        cfg.AccessCode = accessCode;
         _remoteSessionManager.AccessCode = cfg.AccessCode;
+        cfg.AccessCodeEnabled = AccessCodeEnabled;
+        _remoteSessionManager.AccessCodeEnabled = AccessCodeEnabled;
         cfg.LockOnDisconnect = LockOnDisconnect;
         _remoteSessionManager.LockOnDisconnect = LockOnDisconnect;
 

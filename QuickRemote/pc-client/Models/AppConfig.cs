@@ -29,9 +29,14 @@ public class AppConfig
     [JsonPropertyName("DeviceName")]
     public string DeviceName { get; set; } = string.Empty;
 
-    /// <summary>远程访问验证码（被控端）：非空时主控端连接本机需输入验证码，验证通过才建立会话；空 = 不验证。</summary>
+    /// <summary>远程访问验证码（被控端）：开启验证保护时主控端连接本机需输入验证码，验证通过才建立会话。</summary>
     [JsonPropertyName("AccessCode")]
     public string AccessCode { get; set; } = string.Empty;
+
+    /// <summary>访问验证码开关（被控端）：false = 不启用验证保护（即使 AccessCode 非空也不验证）。
+    /// 开启时必须设置 6 位验证码才能保存设置。</summary>
+    [JsonPropertyName("AccessCodeEnabled")]
+    public bool AccessCodeEnabled { get; set; }
 
     /// <summary>连接断开时自动锁屏（被控端）：远程会话结束后调用 LockWorkStation 锁定桌面。</summary>
     [JsonPropertyName("LockOnDisconnect")]

@@ -175,7 +175,7 @@ public partial class ChangelogWindow : Window
             // 列表项 - 或 *
             else if (line.StartsWith("- ") || line.StartsWith("* "))
             {
-                var text = line[2..].Trim();
+                var text = BreakLongText(line[2..].Trim());
                 var p = new Paragraph
                 {
                     Margin = new Thickness(16, 2, 0, 2)
@@ -198,7 +198,7 @@ public partial class ChangelogWindow : Window
             // 普通段落
             else
             {
-                var p = new Paragraph(new Run(line))
+                var p = new Paragraph(new Run(BreakLongText(line)))
                 {
                     Margin = new Thickness(0, 2, 0, 2)
                 };
@@ -207,6 +207,24 @@ public partial class ChangelogWindow : Window
         }
 
         return doc;
+    }
+
+    /// <summary>
+    /// 长串断行处理：无空格断行点的长文本（URL、超长英文词等）会把 FlowDocument
+    /// 的最小宽度撑大，导致窗口缩放时内容宽度固定不跟随。每 24 字符插入零宽空格
+    /// （U+200B）提供断行机会；内容在窗口内重排，缩放跟随窗口宽度。
+    /// </summary>
+    private static string BreakLongText(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= 24) return text;
+        var sb = new System.Text.StringBuilder(text.Length + text.Length / 24);
+        int count = 0;
+        foreach (var ch in text)
+        {
+            sb.Append(ch);
+            if (++count % 24 == 0 && count < text.Length) sb.Append('\u200B');
+        }
+        return sb.ToString();
     }
 
     protected override void OnClosed(EventArgs e)

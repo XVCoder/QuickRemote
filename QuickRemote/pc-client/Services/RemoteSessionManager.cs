@@ -139,6 +139,9 @@ public sealed class RemoteSessionManager : IDisposable
     /// 由 UI 线程在设置加载/保存时更新，会话线程 volatile 读取。空 = 不验证。</summary>
     public volatile string AccessCode = string.Empty;
 
+    /// <summary>访问验证码开关：false = 不启用验证保护（即使 AccessCode 非空也不验证）。</summary>
+    public volatile bool AccessCodeEnabled;
+
     /// <summary>连接断开时自动锁屏（被控端）：会话曾建立且非新连接接管时调用 LockWorkStation。</summary>
     public volatile bool LockOnDisconnect = true;
 
@@ -289,11 +292,12 @@ public sealed class RemoteSessionManager : IDisposable
             };
             _logger.Info("Remote transport connected");
 
-            // 1.5 访问验证门（v1.1.54）：配置了验证码时先不发画面，等主控端提交验证码。
-            // 验证通过前不初始化捕获/编码（BeginSessionCore 延迟执行），15s 超时断开。
-            // _running 提前置 true：验证等待期也是会话生命周期一部分，新连接可据此接管。
+            // 1.5 访问验证门（v1.1.54）：启用验证保护且配置了验证码时先不发画面，
+            // 等主控端提交验证码。验证通过前不初始化捕获/编码（BeginSessionCore 延迟执行），
+            // 60s 超时断开。_running 提前置 true：验证等待期也是会话生命周期一部分，
+            // 新连接可据此接管。
             var accessCode = AccessCode;
-            if (!string.IsNullOrEmpty(accessCode))
+            if (AccessCodeEnabled && !string.IsNullOrEmpty(accessCode))
             {
                 _running = true;
                 _pendingModeText = modeText;

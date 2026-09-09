@@ -42,6 +42,7 @@
                                           Background="{StaticResource BgCardBrush}"
                                           BorderThickness="0"
                                           VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
                                           IsToolBarVisible="False"
                                           Padding="18,14"
                                           Visibility="Collapsed">

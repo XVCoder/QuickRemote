@@ -59,15 +59,29 @@
 
             <!-- 底部 -->
             <Border Grid.Row="2" Background="Transparent" Padding="20,0,20,14">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="清空日志" Click="BtnClear_Click"
-                            Style="{StaticResource TitleIconButton}"
-                            Foreground="{StaticResource DangerBrush}"
-                            Width="Auto" Padding="10,0" FontSize="12" Margin="0,0,10,0"/>
-                    <Button Content="打开日志目录" Click="BtnOpenFolder_Click"
-                            Style="{StaticResource TitleIconButton}"
-                            Width="Auto" Padding="10,0" FontSize="12"/>
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="实时刷新" FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   ToolTip="开启后每 2 秒自动刷新日志内容；上翻阅读时保持当前位置，在底部时自动跟随最新日志"/>
+                        <ToggleButton x:Name="AutoRefreshToggle" Style="{StaticResource ToggleSwitch}"
+                                      Checked="AutoRefreshToggle_Changed" Unchecked="AutoRefreshToggle_Changed"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="清空日志" Click="BtnClear_Click"
+                                Style="{StaticResource TitleIconButton}"
+                                Foreground="{StaticResource DangerBrush}"
+                                Width="Auto" Padding="10,0" FontSize="12" Margin="0,0,10,0"/>
+                        <Button Content="打开日志目录" Click="BtnOpenFolder_Click"
+                                Style="{StaticResource TitleIconButton}"
+                                Width="Auto" Padding="10,0" FontSize="12"/>
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
     </Border>

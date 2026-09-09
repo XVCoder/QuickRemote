@@ -1,12 +1,14 @@
 using System.IO;
 using System.Text;
 using System.Windows;
+using System.Windows.Threading;
 using QuickRemote.PCClient.Services;
 
 namespace QuickRemote.PCClient.Views;
 
 /// <summary>
 /// 日志查看窗口：在程序内直接弹窗展示日志内容，代替跳转到保存目录。
+/// 支持实时刷新（每 2 秒）：在底部时自动跟随最新日志，上翻阅读时保持当前位置。
 /// </summary>
 public partial class LogViewerWindow : Window
 {
@@ -15,9 +17,13 @@ public partial class LogViewerWindow : Window
     /// <summary>单文件读取上限，避免超长日志撑爆内存。</summary>
     private const int MaxBytesPerFile = 512 * 1024;
 
+    /// <summary>实时刷新定时器（2 秒；开关开启时启动）。</summary>
+    private readonly DispatcherTimer _autoRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+
     public LogViewerWindow()
     {
         InitializeComponent();
+        _autoRefreshTimer.Tick += (_, _) => RefreshPreservePosition();
     }
 
     /// <summary>显示日志查看窗口（单例，重复点击聚焦并刷新）。</summary>
@@ -38,9 +44,13 @@ public partial class LogViewerWindow : Window
         });
     }
 
-    /// <summary>读取并展示日志内容（按文件名升序，新的文件排在后）。</summary>
+    /// <summary>读取并展示日志内容（按文件名升序，新的文件排在后）。
+    /// 手动刷新或位于底部时滚到最新，上翻阅读时保持原滚动位置。</summary>
     private void LoadLogs()
     {
+        var wasAtBottom = LogTextBox.VerticalOffset + LogTextBox.ViewportHeight >= LogTextBox.ExtentHeight - 8;
+        var preserveOffset = LogTextBox.VerticalOffset;
+
         var files = Logger.GetLogFiles();
         if (files.Count == 0)
         {
@@ -69,8 +79,34 @@ public partial class LogViewerWindow : Window
         }
 
         LogTextBox.Text = sb.ToString();
-        LogTextBox.CaretIndex = LogTextBox.Text.Length;
-        LogTextBox.ScrollToEnd();
+
+        if (wasAtBottom)
+        {
+            LogTextBox.CaretIndex = LogTextBox.Text.Length;
+            LogTextBox.ScrollToEnd();
+        }
+        else
+        {
+            // 保持阅读位置（内容顶部变化时偏移可能越界，钳制回合法范围）
+            LogTextBox.ScrollToVerticalOffset(Math.Min(preserveOffset, LogTextBox.ExtentHeight));
+        }
+    }
+
+    /// <summary>实时刷新 tick：保留滚动位置的增量刷新。</summary>
+    private void RefreshPreservePosition() => LoadLogs();
+
+    /// <summary>实时刷新开关切换：开启立即刷新一次并启动定时器，关闭停止。</summary>
+    private void AutoRefreshToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (AutoRefreshToggle.IsChecked == true)
+        {
+            RefreshPreservePosition();
+            _autoRefreshTimer.Start();
+        }
+        else
+        {
+            _autoRefreshTimer.Stop();
+        }
     }
 
     private void BtnRefresh_Click(object sender, RoutedEventArgs e) => LoadLogs();
@@ -116,6 +152,7 @@ public partial class LogViewerWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _autoRefreshTimer.Stop();
         _instance = null;
         base.OnClosed(e);
     }
