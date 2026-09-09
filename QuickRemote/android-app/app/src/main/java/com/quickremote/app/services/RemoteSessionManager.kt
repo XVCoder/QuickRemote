@@ -129,6 +129,15 @@ class RemoteSessionManager(
 
         /** 远程解锁失败通知（如 PC 端未以管理员身份运行）。 */
         fun onPcUnlockFailed() {}
+
+        /** 被控端要求访问验证码（UI 弹输入框，经 sendAuthCode 提交）。 */
+        fun onAuthRequired() {}
+
+        /** 验证码错误（UI 可重新输入；被控端累计 3 次失败或超时会断开）。 */
+        fun onAuthFailed() {}
+
+        /** 验证码通过（被控端开始建立会话，UI 关闭验证输入框）。 */
+        fun onAuthOk() {}
     }
 
     var listener: Listener? = null
@@ -316,6 +325,32 @@ class RemoteSessionManager(
     }
 
     /**
+     * 提交访问验证码：{action:"auth", code:"..."}。
+     * 被控端开启验证保护时须先通过验证（auth_required 通知），否则不推流、超时断开。
+     */
+    fun sendAuthCode(code: String) {
+        if (code.isEmpty()) return
+        val out = output ?: run {
+            logger.warn("sendAuthCode: no output stream (not connected?)")
+            return
+        }
+        val json = JSONObject().put("action", "auth").put("code", code).toString()
+        val data = json.toByteArray(Charsets.UTF_8)
+        inputExecutor.execute {
+            try {
+                synchronized(out) {
+                    out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_CONTROL, data.size))
+                    out.write(data)
+                    out.flush()
+                }
+                logger.info("Auth code sent")
+            } catch (e: Exception) {
+                logger.warn("Auth code send failed: ${e.javaClass.name}: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * 局域网直连：直连 PC 的 LAN_PORT，发送 TYPE_AUTH 认证帧。
      * 成功进入 receiveLoop 并返回 true；失败清理并返回 false（由上层回退中继）。
      */
@@ -410,6 +445,26 @@ class RemoteSessionManager(
     private fun handleControl(data: ByteArray) {
         try {
             val json = JSONObject(String(data, Charsets.UTF_8))
+
+            // 访问验证码交互（被控端 v1.1.54+ 开启验证保护时）：auth_required 要求输入 /
+            // auth_failed 错误重试 / auth_ok 通过开始推流
+            if (json.has("action")) {
+                when (json.optString("action")) {
+                    "auth_required" -> {
+                        logger.info("Control: auth required by host")
+                        listener?.onAuthRequired()
+                    }
+                    "auth_failed" -> {
+                        logger.warn("Control: auth rejected by host")
+                        listener?.onAuthFailed()
+                    }
+                    "auth_ok" -> {
+                        logger.info("Control: auth accepted by host")
+                        listener?.onAuthOk()
+                    }
+                }
+                return
+            }
 
             // 状态通知（PC 锁屏/解锁/解锁失败）：不携带分辨率，仅更新提示状态
             if (json.has("status")) {

@@ -302,7 +302,8 @@ public sealed class RemoteSessionManager : IDisposable
                 {
                     _awaitingAuth = true;
                     _authFailCount = 0;
-                    _authTimer = new System.Threading.Timer(AuthTimeoutCallback, null, 15000, Timeout.Infinite);
+                    // 60s 超时（人工输入 6 位码需要时间；旧客户端无交互则超时断开）
+                    _authTimer = new System.Threading.Timer(AuthTimeoutCallback, null, 60000, Timeout.Infinite);
                 }
                 _logger.Info("Access code required, waiting for auth");
                 SendActionControl("auth_required");
@@ -654,6 +655,7 @@ public sealed class RemoteSessionManager : IDisposable
                 _authTimer?.Dispose();
                 _authTimer = null;
                 _logger.Info("Access code verified");
+                SendActionControl("auth_ok"); // 通知主控端验证通过（v1.1.55+，旧版忽略未知 action）
                 // 锁外无法调用（已持锁）：BeginSessionCore 内部无 _authLock 依赖，锁内调用安全
                 BeginSessionCore(SessionId, _pendingModeText, _pendingClientIp);
                 return;
@@ -671,6 +673,8 @@ public sealed class RemoteSessionManager : IDisposable
             else
             {
                 SendActionControl("auth_failed"); // 通知主控端重试
+                // 重试期间重置超时计时（给人工输入留足时间）
+                _authTimer?.Change(60000, Timeout.Infinite);
             }
         }
         if (_authFailCount >= 3)

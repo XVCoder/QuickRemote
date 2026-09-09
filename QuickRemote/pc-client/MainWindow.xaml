@@ -510,13 +510,20 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="访问验证码" FontSize="12"
+                                <TextBlock Grid.Column="0" Text="访问验证码（6 位数字）" FontSize="12"
                                            Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
                                            ToolTip="设置后其他设备连接本机需输入该验证码，验证通过才能远程；留空 = 不验证"/>
-                                <TextBox Grid.Column="1" Style="{StaticResource SettingInput}"
+                                <TextBox Grid.Column="1" x:Name="AccessCodeBox" Style="{StaticResource SettingInput}"
+                                         Width="110" MaxLength="6"
+                                         PreviewTextInput="AccessCodeBox_PreviewTextInput"
                                          Text="{Binding AccessCodeInput, UpdateSourceTrigger=PropertyChanged}"
                                          ToolTip="设置后其他设备连接本机需输入该验证码，验证通过才能远程；留空 = 不验证"/>
+                                <Button Grid.Column="2" Content="随机" Style="{StaticResource TitleIconButton}"
+                                        Command="{Binding GenerateAccessCodeCommand}"
+                                        Margin="6,0,0,0" FontSize="12" Padding="10,4"
+                                        ToolTip="随机生成 6 位数字验证码"/>
                             </Grid>
                             <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
                             <Grid Margin="0,6">

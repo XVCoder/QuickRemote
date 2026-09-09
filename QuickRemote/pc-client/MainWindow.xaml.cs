@@ -48,6 +48,12 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>验证码输入框仅允许数字（6 位验证码）。</summary>
+    private void AccessCodeBox_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
+    {
+        e.Handled = !e.Text.All(char.IsDigit);
+    }
+
     /// <summary>最小化按钮。</summary>
     private void BtnMinimize_Click(object sender, RoutedEventArgs e)
     {

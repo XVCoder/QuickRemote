@@ -69,6 +69,14 @@ class SessionViewModel(
     private val _pcUnlockError = MutableStateFlow<String?>(null)
     val pcUnlockError: StateFlow<String?> = _pcUnlockError.asStateFlow()
 
+    /** 被控端要求访问验证码（弹输入框；验证通过或断开后清除）。 */
+    private val _authRequired = MutableStateFlow(false)
+    val authRequired: StateFlow<Boolean> = _authRequired.asStateFlow()
+
+    /** 验证码错误提示（null 表示无错误）。 */
+    private val _authError = MutableStateFlow<String?>(null)
+    val authError: StateFlow<String?> = _authError.asStateFlow()
+
     /** 画面外空白区触摸板开关（设置页可改，默认启用）。 */
     val blankTouchpad: StateFlow<Boolean> = settingsStore.appSettings
         .map { it.blankTouchpad }
@@ -87,6 +95,8 @@ class SessionViewModel(
             if (state == RemoteSessionManager.SessionState.DISCONNECTED ||
                 state == RemoteSessionManager.SessionState.IDLE) {
                 _tunnel.value = null
+                _authRequired.value = false
+                _authError.value = null
             } else {
                 _tunnel.value = sessionManager.tunnel
             }
@@ -95,6 +105,9 @@ class SessionViewModel(
         override fun onVideoFrame(w: Int, h: Int) {
             _videoWidth.value = w
             _videoHeight.value = h
+            // 分辨率控制帧到达 = 被控端已开始推流（验证通过），兜底关闭验证框
+            // （覆盖被控端为 v1.1.54、不发 auth_ok 的场景）
+            _authRequired.value = false
         }
 
         override fun onPcLockStatus(locked: Boolean) {
@@ -105,6 +118,20 @@ class SessionViewModel(
         override fun onPcUnlockFailed() {
             _pcUnlockError.value = "解锁失败：PC 端需要以管理员身份运行"
         }
+
+        override fun onAuthRequired() {
+            _authRequired.value = true
+            _authError.value = null
+        }
+
+        override fun onAuthFailed() {
+            _authError.value = "验证码错误，请重新输入"
+        }
+
+        override fun onAuthOk() {
+            _authRequired.value = false
+            _authError.value = null
+        }
     }
 
     init {
@@ -114,6 +141,12 @@ class SessionViewModel(
     /** 发送远程解锁请求（PC 锁屏时输入 Windows 登录密码解锁）。 */
     fun sendUnlock(password: String) {
         sessionManager.sendUnlockRequest(password)
+    }
+
+    /** 提交访问验证码（被控端要求验证时）。 */
+    fun sendAuthCode(code: String) {
+        _authError.value = null
+        sessionManager.sendAuthCode(code)
     }
 
     /** 开始一个截屏远程会话（不需要凭据）。幂等：已在连接中/已连接时直接返回，避免重复建连。 */
@@ -127,6 +160,8 @@ class SessionViewModel(
         _state.value = RemoteSessionManager.SessionState.CONNECTING
         _errorMessage.value = ""
         _pcLocked.value = false
+        _authRequired.value = false
+        _authError.value = null
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 val config = settingsStore.serverConfig.first()

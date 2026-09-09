@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
@@ -71,6 +72,7 @@ public sealed class MainViewModel : BaseViewModel
         ConnectDeviceCommand = new RelayCommand(ConnectDevice);
         SetDeviceRemarkCommand = new RelayCommand(SetDeviceRemark);
         RemoveDeviceCommand = new RelayCommand(RemoveDevice);
+        GenerateAccessCodeCommand = new RelayCommand(GenerateAccessCode);
 
         // 订阅事件
         _relay.PropertyChanged += OnRelayPropertyChanged;
@@ -282,7 +284,8 @@ public sealed class MainViewModel : BaseViewModel
     public string AccessCodeInput
     {
         get => _accessCodeInput;
-        set => SetField(ref _accessCodeInput, value);
+        // 仅保留数字（≤6 位）：UI 输入框有 PreviewTextInput 过滤，这里兜底粘贴路径
+        set => SetField(ref _accessCodeInput, new string((value ?? "").Where(char.IsDigit).Take(6).ToArray()));
     }
 
     /// <summary>连接断开时自动锁屏（被控端）。</summary>
@@ -449,6 +452,15 @@ public sealed class MainViewModel : BaseViewModel
 
     /// <summary>软删除离线设备（参数：RemoteDeviceInfo；设备再次上线自动恢复）。</summary>
     public ICommand RemoveDeviceCommand { get; }
+
+    /// <summary>随机生成 6 位数字访问验证码。</summary>
+    public ICommand GenerateAccessCodeCommand { get; }
+
+    private void GenerateAccessCode()
+    {
+        var rng = System.Random.Shared;
+        AccessCodeInput = string.Concat(Enumerable.Range(0, 6).Select(_ => rng.Next(10)));
+    }
 
     // ========== 系统托盘 ==========
 

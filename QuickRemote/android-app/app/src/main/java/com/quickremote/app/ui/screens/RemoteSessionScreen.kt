@@ -72,6 +72,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.app.Activity
@@ -133,6 +135,8 @@ fun RemoteSessionScreen(
     val connectionMode by viewModel.connectionMode.collectAsState()
     val pcLocked by viewModel.pcLocked.collectAsState()
     val pcUnlockError by viewModel.pcUnlockError.collectAsState()
+    val authRequired by viewModel.authRequired.collectAsState()
+    val authError by viewModel.authError.collectAsState()
     val blankTouchpad by viewModel.blankTouchpad.collectAsState()
     val touchpadCfg by viewModel.touchpadConfig.collectAsState()
 
@@ -696,6 +700,16 @@ fun RemoteSessionScreen(
                         onDismiss = { showUnlockDialog = false }
                     )
                 }
+            }
+
+            // 访问验证码：被控端开启验证保护时，先输入验证码验证通过才开始推流。
+            // 取消 = 主动断开；错误可重试（被控端累计 3 次失败/超时会断开连接）。
+            if (authRequired && state == RemoteSessionManager.SessionState.CONNECTED) {
+                AuthCodeDialog(
+                    error = authError,
+                    onConfirm = { code -> viewModel.sendAuthCode(code) },
+                    onCancel = { viewModel.disconnect() }
+                )
             }
 
             // 隐藏键盘输入框：捕获软键盘文本（InputConnection 方案，正确处理中文输入法）与物理键盘按键
@@ -1550,6 +1564,59 @@ private fun UnlockDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
+                Text("取消", color = TextSecondary)
+            }
+        },
+        containerColor = BgCard
+    )
+}
+
+/** 访问验证码对话框：被控端开启验证保护时输入 6 位数字验证码，验证通过才建立远程会话。 */
+@Composable
+private fun AuthCodeDialog(
+    error: String?,
+    onConfirm: (String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var code by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = {
+            Text("访问验证", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        },
+        text = {
+            Column {
+                Text(
+                    "对方开启了访问验证码保护，输入 6 位数字验证码后开始远程。" +
+                        "连续 3 次错误或长时间未验证将断开连接。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                if (error != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(error, style = MaterialTheme.typography.labelSmall, color = Warning)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    placeholder = { Text("6 位数字验证码", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (code.length == 6) onConfirm(code) },
+                enabled = code.length == 6
+            ) {
+                Text("验证", color = if (code.length == 6) Accent else TextSecondary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) {
                 Text("取消", color = TextSecondary)
             }
         },
