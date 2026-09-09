@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.57",
-    "changelog": "被控端会话列表正确显示主控端设备来源：PC 主控连接时显示其设备名（设置页配置名或本机名），不再一律显示「Android 客户端」；Android/旧版 PC 连接显示方式不变",
+    "latest_version": "1.1.58",
+    "changelog": "修复安卓端经公网远程 PC 时画面变慢/黑屏：回退 v1.1.56 引入的 H.264 编码器低延迟模式（该模式下关键帧强制失效、IDR 被切多切片导致公网拥塞，安卓请求刷新画面无响应），恢复 v1.1.54 稳定编码行为",
     "versions": {
+      "1.1.58": {
+        "zip": "https://qd.solutionx.top/d/p/527d68ad-f67a-401a-85c0-af173499eac3"
+      },
       "1.1.57": {
         "zip": "https://qd.solutionx.top/d/p/a4bca6ac-c5c1-4cb6-aaa5-8bc4a00d7078"
       },
       "1.1.56": {
         "zip": "https://qd.solutionx.top/d/p/87823457-860a-4b23-b046-71ddce49b65b"
-      },
-      "1.1.55": {
-        "zip": "https://qd.solutionx.top/d/p/1f556353-5fb7-4e18-a65b-f1cdd7c804c9"
       }
     }
   },
