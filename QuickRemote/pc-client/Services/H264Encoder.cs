@@ -96,12 +96,13 @@ public sealed class H264Encoder : IFrameEncoder
                     var gopKey = MFInterop.CODECAPI_AVEncMPVGOPSize;
                     encAttrs.SetUINT32(ref gopKey, (uint)Math.Max(1, fps * 3));
 
-                    // 低延迟模式（v1.1.56）：MS 编码器默认 lookahead 深度实测 ~14 帧，
-                    // 30fps 下画面恒定延迟 ~470ms——远程桌面流必须"编码即输出"。
-                    // 开启后输出立即返回（1 帧内），FastFill 首帧也不再需要连投 16 帧。
-                    // 与解码端 H264Decoder 低延迟修复同款 attribute store 方式。
-                    var llKey = MFInterop.CODECAPI_AVLowLatencyMode;
-                    encAttrs.SetUINT32(ref llKey, 1);
+                    // 低延迟模式（v1.1.56 曾开启，v1.1.58 回退）：
+                    // LL 模式下 CODECAPI_AVEncVideoForceKeyFrame 动态属性失效（实测设置后
+                    // 输出仍为 P 帧 NAL=1 无 IDR），且编码器 lookahead 降至 1 帧后 FastFill
+                    // 连投不再攒出 IDR——Android 请求 keyframe 永远无法刷新画面（公网黑屏
+                    // 无法自愈），同时 IDR 帧被切成 13+ slice 体积暴增（317-423KB/15帧）导致
+                    // 公网 1200kbps 拥塞丢帧。回退后恢复 lookahead~14 帧 + ForceKeyFrame 有效，
+                    // FastFill 连投 16 帧必然输出 IDR（v1.1.54 已验证正常）。
                 }
             }
             catch { /* GOP/低延迟设置失败不影响编码，保持默认 */ }

@@ -16,6 +16,9 @@ public sealed class H264Encoder : IFrameEncoder
     /// <inheritdoc/>
     public string CodecName => "h264";
 
+    /// <summary>低延迟模式开关（A/B 对比测试用）。true = pc-client v1.1.56+ 行为；false = v1.1.54 行为。</summary>
+    public static bool LowLatency;
+
     private IMFTransform? _encoder;
     private IMFMediaType? _inputType;
     private bool _initialized;
@@ -95,9 +98,15 @@ public sealed class H264Encoder : IFrameEncoder
                 {
                     var gopKey = MFInterop.CODECAPI_AVEncMPVGOPSize;
                     encAttrs.SetUINT32(ref gopKey, (uint)Math.Max(1, fps * 3));
+                    // 低延迟模式 A/B 开关（对比测试用；pc-client v1.1.56 起固定开启）
+                    if (LowLatency)
+                    {
+                        var llKey = MFInterop.CODECAPI_AVLowLatencyMode;
+                        encAttrs.SetUINT32(ref llKey, 1);
+                    }
                 }
             }
-            catch { /* GOP 设置失败不影响编码，保持默认 */ }
+            catch { /* GOP/低延迟设置失败不影响编码，保持默认 */ }
 
             // 2. 先设置输出媒体类型（H.264）—— MS 编码器 MFT 要求输出类型必须先于输入类型
             var outputType = CreateMediaType();

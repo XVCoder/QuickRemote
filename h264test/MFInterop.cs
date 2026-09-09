@@ -36,6 +36,8 @@ internal static class MFInterop
     public static readonly Guid CODECAPI_AVEncMPVGOPSize = new("95f31b26-95a4-41aa-9303-246a7fc7e0c8");
     /// <summary>强制下一帧为关键帧（运行时动态设置，触发立即 IDR 刷新）。</summary>
     public static readonly Guid CODECAPI_AVEncVideoForceKeyFrame = new("159c60be-33d5-46f0-8d1d-0972d1c142a9");
+    /// <summary>低延迟模式（codecapi.h CODECAPI_AVLowLatencyMode，pc-client v1.1.56 启用）。</summary>
+    public static readonly Guid CODECAPI_AVLowLatencyMode = new("9c27891a-ed7a-40e1-88e8-b22727a024ee");
 
     public const int MF_VERSION = 0x20070; // MF_API_VERSION (2.7)
 
