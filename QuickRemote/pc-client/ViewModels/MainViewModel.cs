@@ -822,7 +822,7 @@ public sealed class MainViewModel : BaseViewModel
         Views.LogViewerWindow.ShowWindow();
     }
 
-    /// <summary>导出当前配置为 JSON：优先复制到剪贴板，剪贴板被占用时回退到导出文件。</summary>
+    /// <summary>导出当前配置为 JSON：优先复制到剪贴板，剪贴板被占用时弹出另存为导出文件。</summary>
     private void ExportConfig()
     {
         string json;
@@ -837,7 +837,7 @@ public sealed class MainViewModel : BaseViewModel
             return;
         }
 
-        // 优先复制到剪贴板（带重试）
+        // 优先复制到剪贴板（带短重试）
         try
         {
             SetClipboardWithRetry(json);
@@ -847,24 +847,38 @@ public sealed class MainViewModel : BaseViewModel
         }
         catch (Exception clipEx)
         {
-            // 剪贴板被持续占用（远程控制/剪贴板工具），回退到导出文件
-            _logger.Warn($"Clipboard unavailable, exporting to file: {clipEx.Message}");
+            // 剪贴板被占用（远程控制/剪贴板工具），改走另存为导出文件
+            _logger.Warn($"Clipboard unavailable, falling back to save dialog: {clipEx.Message}");
         }
 
-        // 回退：写入程序目录的配置文件
+        // 回退：弹出另存为对话框，让用户选择导出位置
         try
         {
-            var exportPath = System.IO.Path.Combine(AppContext.BaseDirectory, "config-export.json");
-            System.IO.File.WriteAllText(exportPath, json);
-            _logger.Info($"Config exported to file: {exportPath}");
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "导出配置",
+                Filter = "JSON 文件 (*.json)|*.json",
+                FileName = $"QuickRemote-配置-{DateTime.Now:yyyyMMdd-HHmmss}.json",
+                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                AddExtension = true,
+                DefaultExt = "json",
+                OverwritePrompt = true
+            };
+            if (dlg.ShowDialog(Application.Current.MainWindow) != true)
+            {
+                _logger.Info("Export config cancelled by user");
+                return;
+            }
+            System.IO.File.WriteAllText(dlg.FileName, json);
+            _logger.Info($"Config exported to file: {dlg.FileName}");
             Views.DialogWindow.Show(
-                $"剪贴板被其他程序持续占用（远程控制工具/剪贴板管理器），无法复制。\n\n配置已导出到文件：\n{exportPath}\n\n可直接打开该文件复制内容。",
+                $"剪贴板被其他程序占用（远程控制工具/剪贴板管理器），已改为导出到文件：\n\n{dlg.FileName}\n\n可打开该文件查看或复制内容。",
                 "导出配置", Views.DialogWindow.DialogType.Warning);
         }
         catch (Exception fileEx)
         {
-            _logger.Error("Export config to file also failed", fileEx);
-            Views.DialogWindow.Show($"导出配置失败：剪贴板被占用且写入文件也失败。\n\n{fileEx.Message}", "错误", Views.DialogWindow.DialogType.Error);
+            _logger.Error("Export config to file failed", fileEx);
+            Views.DialogWindow.Show($"导出配置失败：{fileEx.Message}", "错误", Views.DialogWindow.DialogType.Error);
         }
     }
 
@@ -874,7 +888,7 @@ public sealed class MainViewModel : BaseViewModel
     /// </summary>
     private static void SetClipboardWithRetry(string text)
     {
-        const int maxRetries = 10;
+        const int maxRetries = 5;
         for (int i = 0; i < maxRetries; i++)
         {
             try
