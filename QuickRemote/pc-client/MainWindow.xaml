@@ -502,6 +502,37 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- 被远程安全（本机被其他设备连接时） -->
+                    <TextBlock Text="被远程安全（本机被其他设备连接时）" Style="{StaticResource SectionHeader}"/>
+                    <Border Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,16">
+                        <StackPanel>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="访问验证码" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="设置后其他设备连接本机需输入该验证码，验证通过才能远程；留空 = 不验证"/>
+                                <TextBox Grid.Column="1" Style="{StaticResource SettingInput}"
+                                         Text="{Binding AccessCodeInput, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="设置后其他设备连接本机需输入该验证码，验证通过才能远程；留空 = 不验证"/>
+                            </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="断开时自动锁屏" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="远程连接断开时自动锁定本机桌面（LockWorkStation），保护未锁屏离开时的隐私"/>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding LockOnDisconnect, Mode=TwoWay}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
 

@@ -133,6 +133,33 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>会话 ID。</summary>
     public string SessionId { get; private set; } = "";
 
+    // ============ 被控端访问安全（v1.1.54：连接验证码 + 断开自动锁屏） ============
+
+    /// <summary>访问验证码（被控端）：非空时主控端连接需先通过验证（auth 帧）才建立会话。
+    /// 由 UI 线程在设置加载/保存时更新，会话线程 volatile 读取。空 = 不验证。</summary>
+    public volatile string AccessCode = string.Empty;
+
+    /// <summary>连接断开时自动锁屏（被控端）：会话曾建立且非新连接接管时调用 LockWorkStation。</summary>
+    public volatile bool LockOnDisconnect = true;
+
+    /// <summary>等待主控端验证码验证中（StartWithTransportAsync 设置，HandleAuthRequest/超时复位）。</summary>
+    private volatile bool _awaitingAuth;
+
+    /// <summary>验证失败次数（同一连接内累计，3 次后断开）。</summary>
+    private int _authFailCount;
+
+    /// <summary>验证超时定时器（15s 内未收到正确验证码则断开连接）。</summary>
+    private System.Threading.Timer? _authTimer;
+
+    /// <summary>验证状态转换锁（ReadLoop 的 auth 帧与超时定时器回调互斥）。</summary>
+    private readonly object _authLock = new();
+
+    /// <summary>验证通过后启动会话核心所需的连接模式描述（验证门暂存）。</summary>
+    private string _pendingModeText = string.Empty;
+
+    /// <summary>验证通过后启动会话核心所需的客户端 IP（验证门暂存）。</summary>
+    private string _pendingClientIp = string.Empty;
+
     /// <summary>会话建立时触发（UI 会话列表新增）。</summary>
     public event Action<SessionInfo>? SessionStarted;
 
@@ -177,7 +204,7 @@ public sealed class RemoteSessionManager : IDisposable
         if (_running)
         {
             _logger.Warn($"Session takeover: new session {sessionId} replaces active session {SessionId}");
-            Cleanup();
+            Cleanup(isTakeover: true); // 接管不触发断开锁屏
         }
 
         SessionId = sessionId;
@@ -262,6 +289,45 @@ public sealed class RemoteSessionManager : IDisposable
             };
             _logger.Info("Remote transport connected");
 
+            // 1.5 访问验证门（v1.1.54）：配置了验证码时先不发画面，等主控端提交验证码。
+            // 验证通过前不初始化捕获/编码（BeginSessionCore 延迟执行），15s 超时断开。
+            // _running 提前置 true：验证等待期也是会话生命周期一部分，新连接可据此接管。
+            var accessCode = AccessCode;
+            if (!string.IsNullOrEmpty(accessCode))
+            {
+                _running = true;
+                _pendingModeText = modeText;
+                _pendingClientIp = clientIp;
+                lock (_authLock)
+                {
+                    _awaitingAuth = true;
+                    _authFailCount = 0;
+                    _authTimer = new System.Threading.Timer(AuthTimeoutCallback, null, 15000, Timeout.Infinite);
+                }
+                _logger.Info("Access code required, waiting for auth");
+                SendActionControl("auth_required");
+                return true;
+            }
+
+            return BeginSessionCore(sessionId, modeText, clientIp);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Remote session start failed: {ex.Message}", ex);
+            Cleanup();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 会话核心启动（原 StartWithTransportAsync 主体）：初始化捕获/编码器、启动捕获
+    /// /编码/发送线程并发布 SessionInfo。无验证码时由 StartWithTransportAsync 直接
+    /// 调用；有验证码时延迟到 HandleAuthRequest 验证通过后在 ReadLoop 线程调用。
+    /// </summary>
+    private bool BeginSessionCore(string sessionId, string modeText, string clientIp)
+    {
+        try
+        {
             // 2. 初始化屏幕捕获
             // PC 锁屏时 DXGI DuplicateOutput 被拒绝（E_ACCESSDENIED）：不阻塞等待，
             // 直接带着空捕获进入 CaptureLoop（每秒重建检测解锁），并立即启动锁屏
@@ -529,6 +595,10 @@ public sealed class RemoteSessionManager : IDisposable
     private static extern void mouse_event(uint dwFlags, int dx, int dy,
         uint dwData, IntPtr dwExtraInfo);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool LockWorkStation();
+
     /// <summary>发送握手控制帧（分辨率/帧率/编码器信息给 Android 端）。</summary>
     private void SendHandshakeControl(string encoderName)
     {
@@ -554,6 +624,74 @@ public sealed class RemoteSessionManager : IDisposable
             _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, json);
         }
         catch { }
+    }
+
+    /// <summary>发送 action 控制帧（auth_required / auth_failed）。</summary>
+    private void SendActionControl(string action)
+    {
+        try
+        {
+            _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL,
+                Encoding.UTF8.GetBytes($"{{\"action\":\"{action}\"}}"));
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// 处理主控端验证码提交（ReadLoop 线程）。验证通过则同步启动会话核心
+    /// （阻塞 ReadLoop 数百 ms 无碍：验证通过前不会有视频/输入帧）；
+    /// 失败累计 3 次断开连接（期间主控端可重试）。
+    /// </summary>
+    private void HandleAuthRequest(string code)
+    {
+        lock (_authLock)
+        {
+            if (!_awaitingAuth) return; // 已超时/已断开/已通过
+
+            if (code == AccessCode)
+            {
+                _awaitingAuth = false;
+                _authTimer?.Dispose();
+                _authTimer = null;
+                _logger.Info("Access code verified");
+                // 锁外无法调用（已持锁）：BeginSessionCore 内部无 _authLock 依赖，锁内调用安全
+                BeginSessionCore(SessionId, _pendingModeText, _pendingClientIp);
+                return;
+            }
+
+            _authFailCount++;
+            _logger.Warn($"Access code rejected (attempt {_authFailCount}/3)");
+            if (_authFailCount >= 3)
+            {
+                _awaitingAuth = false;
+                _authTimer?.Dispose();
+                _authTimer = null;
+                SendActionControl("auth_failed"); // 尽力通知（随后即断开）
+            }
+            else
+            {
+                SendActionControl("auth_failed"); // 通知主控端重试
+            }
+        }
+        if (_authFailCount >= 3)
+        {
+            _logger.Warn("Too many auth failures, closing session");
+            Cleanup(); // _sessionInfo 为 null → 不触发断开锁屏
+        }
+    }
+
+    /// <summary>验证超时（15s 未收到正确验证码）：断开连接。兼容不支持验证码的旧客户端。</summary>
+    private void AuthTimeoutCallback(object? state)
+    {
+        lock (_authLock)
+        {
+            if (!_awaitingAuth) return;
+            _awaitingAuth = false;
+            _authTimer?.Dispose();
+            _authTimer = null;
+        }
+        _logger.Warn("Access code timeout, closing session");
+        Cleanup();
     }
 
     /// <summary>
@@ -1355,6 +1493,12 @@ public sealed class RemoteSessionManager : IDisposable
                 _logger.Info("Keyframe request received");
                 _pendingKeyframe = true;
             }
+            else if (action == "auth" &&
+                     root.TryGetProperty("code", out var codeProp))
+            {
+                // 主控端提交访问验证码（v1.1.54）：验证通过后建立会话
+                HandleAuthRequest(codeProp.GetString() ?? "");
+            }
             else if (action == "unlock" &&
                      root.TryGetProperty("password", out var pwProp))
             {
@@ -1431,10 +1575,43 @@ public sealed class RemoteSessionManager : IDisposable
             _logger.Info("Remote transport disconnected");
             _running = false;
         }
+        // 验证等待期断开：取消超时定时器（连接已不存在，无需再等）
+        lock (_authLock)
+        {
+            _awaitingAuth = false;
+            _authTimer?.Dispose();
+            _authTimer = null;
+        }
     }
 
-    private void Cleanup()
+    /// <summary>
+    /// 停止并清理会话。isTakeover=true 表示被新连接接管（不触发断开锁屏）。
+    /// </summary>
+    private void Cleanup(bool isTakeover = false)
     {
+        // 断开自动锁屏（v1.1.54）：会话曾真实建立（_sessionInfo 非空 = 验证通过并推流过）
+        // 且非新连接接管时，锁定本机桌面保护隐私。接管场景新连接即将继续控制，不能锁。
+        if (!isTakeover && LockOnDisconnect && _sessionInfo != null)
+        {
+            try
+            {
+                if (LockWorkStation())
+                    _logger.Info("Workstation locked on disconnect");
+                else
+                    _logger.Warn($"LockWorkStation failed: win32 error {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"LockWorkStation error: {ex.Message}");
+            }
+        }
+        // 验证状态复位（超时/断开路径兜底；Monitor 可重入，HandleAuthRequest 持锁路径安全）
+        lock (_authLock)
+        {
+            _awaitingAuth = false;
+            _authTimer?.Dispose();
+            _authTimer = null;
+        }
         // 会话代数先行递增（2026-09-07 LAN 接管竞态根因）：Cleanup 不等待捕获/
         // 发送线程退出，旧线程稍后在自己的退出路径比对"代数==当前"决定是否补一次
         // Cleanup——而新会话的代数递增发生在捕获初始化之后（StartWithTransportAsync），

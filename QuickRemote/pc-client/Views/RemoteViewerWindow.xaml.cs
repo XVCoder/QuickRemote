@@ -60,6 +60,8 @@ public partial class RemoteViewerWindow : Window
         client.FrameDecoded += OnFrameDecoded;
         client.StatusMessage += msg => OnStatusMessage(client, msg);
         client.Disconnected += reason => OnDisconnected(client, reason);
+        client.AuthRequired += () => OnAuthRequired(client);
+        client.AuthFailed += () => OnAuthFailed(client);
 
         ShowStatus($"已连接（{client.ModeText}），等待画面...", string.Empty, showRetry: false);
         Focus(); // 连接后聚焦，键盘立即可用
@@ -89,6 +91,46 @@ public partial class RemoteViewerWindow : Window
             if (_windowClosed || !ReferenceEquals(_client, client)) return;
             ShowStatus("连接已断开", reason, showRetry: true);
         });
+    }
+
+    // ============ 访问验证码（v1.1.54：被控端配置验证码时连接需先验证） ============
+
+    /// <summary>弹窗收集验证码并提交（isRetry 时提示上次输入错误）。取消则断开连接。</summary>
+    private void PromptAuthCode(RemoteViewerClient client, bool isRetry)
+    {
+        if (_windowClosed || !ReferenceEquals(_client, client)) return;
+
+        ShowStatus(isRetry ? "验证码错误，请重新输入" : "等待验证码验证...", string.Empty, showRetry: false);
+        var code = InputDialogWindow.Show(
+            "访问验证",
+            isRetry
+                ? $"「{_device.DisplayName}」要求访问验证码，上次输入错误（3 次失败将断开）："
+                : $"「{_device.DisplayName}」要求输入访问验证码：",
+            "", 32);
+        if (_windowClosed || !ReferenceEquals(_client, client)) return;
+
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            // 取消输入：主动断开
+            CloseClient();
+            ShowStatus("已取消验证", "用户取消了验证码输入", showRetry: true);
+            return;
+        }
+        client.SendAuthCode(code);
+    }
+
+    private void OnAuthRequired(RemoteViewerClient client)
+    {
+        if (_windowClosed || !ReferenceEquals(_client, client)) return;
+        // 接收线程回调 → 调度 UI；InputDialogWindow.Show 内部在 UI 线程直接模态执行，
+        // 不阻塞接收线程（弹窗期间心跳/断开事件仍能到达）
+        Dispatcher.InvokeAsync(() => PromptAuthCode(client, isRetry: false));
+    }
+
+    private void OnAuthFailed(RemoteViewerClient client)
+    {
+        if (_windowClosed || !ReferenceEquals(_client, client)) return;
+        Dispatcher.InvokeAsync(() => PromptAuthCode(client, isRetry: true));
     }
 
     // ============ 画面渲染 ============

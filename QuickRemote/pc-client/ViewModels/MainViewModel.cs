@@ -39,6 +39,8 @@ public sealed class MainViewModel : BaseViewModel
     private bool _autoStart;
     private bool _checkUpdateOnStart;
     private bool _autoUploadLogs;
+    private string _accessCodeInput = string.Empty;
+    private bool _lockOnDisconnect = true;
 
     // 更新
     private bool _isUpdateAvailable;
@@ -274,6 +276,29 @@ public sealed class MainViewModel : BaseViewModel
         }
     }
 
+    // ========== 被远程安全（本机被其他设备连接时） ==========
+
+    /// <summary>访问验证码（被控端）：非空时其他设备连接本机需先验证；空 = 不验证。</summary>
+    public string AccessCodeInput
+    {
+        get => _accessCodeInput;
+        set => SetField(ref _accessCodeInput, value);
+    }
+
+    /// <summary>连接断开时自动锁屏（被控端）。</summary>
+    public bool LockOnDisconnect
+    {
+        get => _lockOnDisconnect;
+        set
+        {
+            if (SetField(ref _lockOnDisconnect, value))
+            {
+                _configService.Config.LockOnDisconnect = value;
+                _remoteSessionManager.LockOnDisconnect = value; // 活跃会话即时生效
+            }
+        }
+    }
+
     // ========== 远程配置（本机作为主控端远程其他主机时的参数） ==========
 
     /// <summary>目标分辨率高度上限（0 = 原始分辨率不缩放；连接后经 configure 帧下发）。</summary>
@@ -464,10 +489,17 @@ public sealed class MainViewModel : BaseViewModel
         _autoStart = cfg.AutoStart;
         _checkUpdateOnStart = cfg.CheckUpdateOnStart;
         _autoUploadLogs = cfg.AutoUploadLogs;
+        _accessCodeInput = cfg.AccessCode;
+        _lockOnDisconnect = cfg.LockOnDisconnect;
+        // 同步被控端安全参数到会话管理器（新连接立即生效）
+        _remoteSessionManager.AccessCode = cfg.AccessCode;
+        _remoteSessionManager.LockOnDisconnect = cfg.LockOnDisconnect;
         ServerAddressDisplay = cfg.Server.Address;
         OnPropertyChanged(nameof(AutoStart));
         OnPropertyChanged(nameof(CheckUpdateOnStart));
         OnPropertyChanged(nameof(AutoUploadLogs));
+        OnPropertyChanged(nameof(AccessCodeInput));
+        OnPropertyChanged(nameof(LockOnDisconnect));
         // 远程配置（直接读写 Config 对象，重载后通知 UI 刷新）
         OnPropertyChanged(nameof(ViewerTargetMaxHeight));
         OnPropertyChanged(nameof(ViewerQualityPercent));
@@ -508,6 +540,13 @@ public sealed class MainViewModel : BaseViewModel
         cfg.AutoStart = AutoStart;
         cfg.CheckUpdateOnStart = CheckUpdateOnStart;
         cfg.AutoUploadLogs = AutoUploadLogs;
+
+        // 被远程安全：验证码 + 断开锁屏（即时同步到会话管理器，新连接生效）
+        cfg.AccessCode = (AccessCodeInput ?? string.Empty).Trim();
+        _remoteSessionManager.AccessCode = cfg.AccessCode;
+        cfg.LockOnDisconnect = LockOnDisconnect;
+        _remoteSessionManager.LockOnDisconnect = LockOnDisconnect;
+
         _configService.Save();
         _logger.Info("Settings saved");
 

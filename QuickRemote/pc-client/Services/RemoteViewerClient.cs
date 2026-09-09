@@ -60,6 +60,12 @@ public sealed class RemoteViewerClient : IDisposable
     /// <summary>状态消息（连接过程/锁屏/等待画面等，UI 展示）。</summary>
     public event Action<string>? StatusMessage;
 
+    /// <summary>被控端要求输入访问验证码（UI 弹出输入框后经 SendAuthCode 提交）。</summary>
+    public event Action? AuthRequired;
+
+    /// <summary>验证码被拒绝（UI 提示后可重新输入；被控端累计 3 次失败将断开连接）。</summary>
+    public event Action? AuthFailed;
+
     /// <summary>连接已断开（参数为原因描述）。</summary>
     public event Action<string>? Disconnected;
 
@@ -146,6 +152,24 @@ public sealed class RemoteViewerClient : IDisposable
         catch (Exception ex)
         {
             _logger.Warn($"Viewer configure send failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 提交访问验证码（AuthRequired 事件后 UI 收集用户输入调用；UI 线程安全）。
+    /// 验证结果经 AuthFailed 事件或握手帧返回。
+    /// </summary>
+    public void SendAuthCode(string code)
+    {
+        try
+        {
+            var json = $"{{\"action\":\"auth\",\"code\":{JsonSerializer.Serialize(code)}}}";
+            _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, Encoding.UTF8.GetBytes(json));
+            _logger.Info("Auth code submitted");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Auth code send failed: {ex.Message}");
         }
     }
 
