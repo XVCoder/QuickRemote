@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.52",
-    "changelog": "修复日志查看弹窗底部两按钮垂直错位问题",
+    "latest_version": "1.1.53",
+    "changelog": "远程控制窗口鼠标光标由十字准星改为标准箭头（本地箭头位置即被控端光标位置）",
     "versions": {
+      "1.1.53": {
+        "zip": "https://qd.solutionx.top/d/p/a4590bff-44e4-4dd5-9fc5-6925465ee228"
+      },
       "1.1.52": {
         "zip": "https://qd.solutionx.top/d/p/c28ddd0a-60a6-4c29-91d5-51d01badecbc"
       },
       "1.1.51": {
         "zip": "https://qd.solutionx.top/d/p/ca33e13f-1a1b-4680-8988-fb49382801e9"
-      },
-      "1.1.50": {
-        "zip": "https://qd.solutionx.top/d/p/5b04324f-f38c-46db-952f-c40f5a1f38ed"
       }
     }
   },
