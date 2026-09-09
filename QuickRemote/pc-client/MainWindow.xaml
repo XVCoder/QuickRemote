@@ -49,6 +49,18 @@
                         <Run Text=" PC"/>
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="BtnSettings" Click="BtnSettings_Click" ToolTip="设置"
+                                Style="{StaticResource TitleIconButton}"
+                                Margin="0,0,4,0">
+                            <Grid Width="12" Height="12">
+                                <Ellipse Width="4.6" Height="4.6"
+                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                         StrokeThickness="1.3"/>
+                                <Path Data="M6,0.3 L6,1.9 M6,10.1 L6,11.7 M0.3,6 L1.9,6 M10.1,6 L11.7,6 M1.9,1.9 L3,3 M9,9 L10.1,10.1 M10.1,1.9 L9,3 M3,9 L1.9,10.1"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Grid>
+                        </Button>
                         <Button x:Name="BtnPin" Click="BtnPin_Click" ToolTip="置顶"
                                 Style="{StaticResource TitleIconButton}"
                                 Margin="0,0,4,0">
@@ -360,191 +372,6 @@
                                    HorizontalAlignment="Center" TextAlignment="Center"/>
                     </Border>
 
-                    <!-- 基本配置 -->
-                    <TextBlock Text="基本配置" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,16">
-                        <StackPanel>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="服务器地址" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Style="{StaticResource SettingInput}"
-                                         Text="{Binding ServerAddressInput, UpdateSourceTrigger=PropertyChanged}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="预共享密钥" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Style="{StaticResource SettingInput}"
-                                         Text="{Binding PreSharedKeyInput, UpdateSourceTrigger=PropertyChanged}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="设备名称" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Style="{StaticResource SettingInput}"
-                                         Text="{Binding DeviceNameInput, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="留空则由服务器自动分配默认名称"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="开机自启动" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                              IsChecked="{Binding AutoStart, Mode=TwoWay}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="启动时检查更新" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                              IsChecked="{Binding CheckUpdateOnStart, Mode=TwoWay}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="自动上传错误日志" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                              IsChecked="{Binding AutoUploadLogs, Mode=TwoWay}"/>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 远程配置（本机远程其他主机时的参数） -->
-                    <TextBlock Text="远程配置（本机远程其他主机时）" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,16">
-                        <StackPanel>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="图像质量" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           ToolTip="按百分比缩放被控端编码码率：低质量省流量，高质量画质清晰"/>
-                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
-                                          ItemsSource="{Binding QualityOptions}"
-                                          SelectedValuePath="Value"
-                                          SelectedValue="{Binding ViewerQualityPercent, Mode=TwoWay}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="目标帧率" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           ToolTip="请求被控端按该帧率推送画面（5-60 fps）"/>
-                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
-                                          ItemsSource="{Binding FpsOptions}"
-                                          SelectedValuePath="Value"
-                                          SelectedValue="{Binding ViewerFps, Mode=TwoWay}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="颜色深度" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           ToolTip="16 位高彩色会量化画面色彩以提升压缩率"/>
-                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
-                                          ItemsSource="{Binding ColorDepthOptions}"
-                                          SelectedValuePath="Value"
-                                          SelectedValue="{Binding ViewerColorDepth, Mode=TwoWay}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="局域网直连优先" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           ToolTip="同网段时优先直连（低延迟）；关闭后强制走公网中继"/>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                              IsChecked="{Binding ViewerPreferLan, Mode=TwoWay}"/>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 被远程安全（本机被其他设备连接时） -->
-                    <TextBlock Text="被远程安全（本机被其他设备连接时）" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,16">
-                        <StackPanel>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="访问验证码" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           ToolTip="开启后其他设备连接本机需输入 6 位数字验证码，验证通过才能远程；开启时必须设置验证码才能保存设置"/>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                              IsChecked="{Binding AccessCodeEnabled, Mode=TwoWay}"/>
-                            </Grid>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="验证码（6 位数字）" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           IsEnabled="{Binding AccessCodeEnabled}"
-                                           ToolTip="设置后其他设备连接本机需输入该验证码，验证通过才能远程"/>
-                                <TextBox Grid.Column="1" x:Name="AccessCodeBox" Style="{StaticResource SettingInput}"
-                                         Width="110" MaxLength="6"
-                                         IsEnabled="{Binding AccessCodeEnabled}"
-                                         PreviewTextInput="AccessCodeBox_PreviewTextInput"
-                                         Text="{Binding AccessCodeInput, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="设置后其他设备连接本机需输入该验证码，验证通过才能远程"/>
-                                <Button Grid.Column="2" Content="随机" Style="{StaticResource TitleIconButton}"
-                                        Command="{Binding GenerateAccessCodeCommand}"
-                                        IsEnabled="{Binding AccessCodeEnabled}"
-                                        Margin="6,0,0,0" FontSize="12" Padding="10,4"
-                                        ToolTip="随机生成 6 位数字验证码"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="断开时自动锁屏" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           ToolTip="远程连接断开时自动锁定本机桌面（LockWorkStation），保护未锁屏离开时的隐私"/>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                              IsChecked="{Binding LockOnDisconnect, Mode=TwoWay}"/>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
                 </StackPanel>
             </ScrollViewer>
 
@@ -556,16 +383,13 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Button Grid.Column="0" Content="更新记录" Style="{StaticResource ActionButton}"
                             Padding="14,12" Margin="0,0,4,0" Command="{Binding ShowChangelogCommand}"/>
                     <Button Grid.Column="1" Content="导出配置" Style="{StaticResource ActionButton}"
                             Padding="14,12" Margin="4,0,4,0" Command="{Binding ExportConfigCommand}"/>
                     <Button Grid.Column="2" Content="检查更新" Style="{StaticResource ActionButton}"
-                            Padding="14,12" Margin="4,0,4,0" Command="{Binding CheckUpdateCommand}"/>
-                    <Button Grid.Column="3" Content="{Binding SaveSettingsText}" Style="{StaticResource PrimaryActionButton}"
-                            Padding="14,12" Margin="4,0,0,0" Command="{Binding SaveSettingsCommand}"/>
+                            Padding="14,12" Margin="4,0,0,0" Command="{Binding CheckUpdateCommand}"/>
                 </Grid>
             </Border>
         </Grid>

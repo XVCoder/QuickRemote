@@ -48,10 +48,18 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>验证码输入框仅允许数字（6 位验证码）。</summary>
-    private void AccessCodeBox_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
+    /// <summary>设置按钮（齿轮图标）：打开设置中心弹窗（基本/远程/安全配置）。</summary>
+    private void BtnSettings_Click(object sender, RoutedEventArgs e)
     {
-        e.Handled = !e.Text.All(char.IsDigit);
+        try
+        {
+            var win = new Views.SettingsWindow { Owner = this, DataContext = _viewModel };
+            win.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            App.Logger.Error("Open settings window failed", ex);
+        }
     }
 
     /// <summary>最小化按钮。</summary>
