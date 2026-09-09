@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.55",
-    "changelog": "访问验证码升级为 6 位数字：设置页输入框限制 6 位数字并新增「随机」按钮一键生成；验证超时延长至 60 秒，重试时重置计时；验证通过即时通知主控端收起输入框",
+    "latest_version": "1.1.56",
+    "changelog": "远程画面延迟与连接速度大幅优化：编码器开启低延迟模式（首帧输出由 14 帧缩短到 1 帧，端到端延迟降至 100ms 内）；连接后首画面最快 1 秒内出现；局域网直连失效时不再白等超时直接走中继；修复 PC 主控端连接开启验证码的设备时不弹验证框的问题",
     "versions": {
+      "1.1.56": {
+        "zip": "https://qd.solutionx.top/d/p/87823457-860a-4b23-b046-71ddce49b65b"
+      },
       "1.1.55": {
         "zip": "https://qd.solutionx.top/d/p/1f556353-5fb7-4e18-a65b-f1cdd7c804c9"
       },
       "1.1.54": {
         "zip": "https://qd.solutionx.top/d/p/3579fa93-e09b-4ab8-9176-a1cfd8931d31"
-      },
-      "1.1.53": {
-        "zip": "https://qd.solutionx.top/d/p/a4590bff-44e4-4dd5-9fc5-6925465ee228"
       }
     }
   },
