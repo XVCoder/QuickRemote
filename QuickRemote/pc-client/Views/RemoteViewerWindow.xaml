@@ -17,7 +17,7 @@
           MouseMove="Grid_MouseMove"
           MouseDown="Grid_MouseDown"
           MouseUp="Grid_MouseUp"
-          Cursor="Cross">
+          Cursor="Arrow">
 
         <!-- 远程画面（Stretch=Uniform 居中，坐标转换按内容矩形换算） -->
         <Image x:Name="VideoImage" Stretch="Uniform"
