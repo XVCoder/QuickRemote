@@ -153,7 +153,7 @@ public sealed class RemoteViewerClient : IDisposable
     }
 
     /// <summary>
-    /// 下发主控端远程配置（分辨率上限/质量/帧率/色深）。
+    /// 下发主控端远程配置（质量/帧率/色深；分辨率上限固定为原始分辨率 0 = 不缩放）。
     /// 时机：收到被控端首次握手后（会话已完全就绪，参数不会被会话启动复位覆盖）；
     /// 被控端 v1.1.48+ 解析 configure 帧应用；旧版被控端忽略未知 action，无兼容风险。
     /// </summary>
@@ -161,13 +161,13 @@ public sealed class RemoteViewerClient : IDisposable
     {
         try
         {
-            var json = $"{{\"action\":\"configure\",\"maxHeight\":{Math.Max(0, cfg.TargetMaxHeight)}," +
+            var json = $"{{\"action\":\"configure\",\"maxHeight\":0," +
                        $"\"percent\":{Math.Clamp(cfg.QualityPercent, 20, 100)}," +
                        $"\"fps\":{Math.Clamp(cfg.Fps, 5, 60)}," +
                        $"\"colorDepth\":{(cfg.ColorDepth == 16 ? 16 : 32)}," +
                        $"\"deviceName\":{JsonSerializer.Serialize(LocalDeviceName)}}}";
             _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, Encoding.UTF8.GetBytes(json));
-            _logger.Info($"Viewer configure sent: maxHeight={cfg.TargetMaxHeight}, quality={cfg.QualityPercent}%, fps={cfg.Fps}, colorDepth={cfg.ColorDepth}");
+            _logger.Info($"Viewer configure sent: quality={cfg.QualityPercent}%, fps={cfg.Fps}, colorDepth={cfg.ColorDepth}");
         }
         catch (Exception ex)
         {

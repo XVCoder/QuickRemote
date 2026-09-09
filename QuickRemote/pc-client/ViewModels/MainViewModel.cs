@@ -44,6 +44,9 @@ public sealed class MainViewModel : BaseViewModel
     private bool _accessCodeEnabled;
     private bool _lockOnDisconnect = true;
 
+    // 配置有未保存的修改时为 true：保存设置按钮显示「* 保存设置」
+    private bool _isConfigDirty;
+
     // 更新
     private bool _isUpdateAvailable;
     private string _latestVersion = string.Empty;
@@ -227,23 +230,51 @@ public sealed class MainViewModel : BaseViewModel
 
     // ========== 设置属性 ==========
 
+    /// <summary>保存设置按钮文字：有未保存修改时显示「* 保存设置」，保存后恢复「保存设置」。</summary>
+    public string SaveSettingsText => _isConfigDirty ? "* 保存设置" : "保存设置";
+
+    /// <summary>标记配置已被修改（未保存）：保存按钮加「*」前缀提示。</summary>
+    private void MarkDirty()
+    {
+        if (_isConfigDirty) return;
+        _isConfigDirty = true;
+        OnPropertyChanged(nameof(SaveSettingsText));
+    }
+
+    /// <summary>清除未保存标记（保存成功后调用）。</summary>
+    private void ClearDirty()
+    {
+        if (!_isConfigDirty) return;
+        _isConfigDirty = false;
+        OnPropertyChanged(nameof(SaveSettingsText));
+    }
+
     public string ServerAddressInput
     {
         get => _serverAddressInput;
-        set => SetField(ref _serverAddressInput, value);
+        set
+        {
+            if (SetField(ref _serverAddressInput, value)) MarkDirty();
+        }
     }
 
     public string PreSharedKeyInput
     {
         get => _preSharedKeyInput;
-        set => SetField(ref _preSharedKeyInput, value);
+        set
+        {
+            if (SetField(ref _preSharedKeyInput, value)) MarkDirty();
+        }
     }
 
     /// <summary>本机设备名称（空 = 服务器分配默认名"PC客户端N"）。</summary>
     public string DeviceNameInput
     {
         get => _deviceNameInput;
-        set => SetField(ref _deviceNameInput, value);
+        set
+        {
+            if (SetField(ref _deviceNameInput, value)) MarkDirty();
+        }
     }
 
     public bool AutoStart
@@ -255,6 +286,7 @@ public sealed class MainViewModel : BaseViewModel
             {
                 AutoStartHelper.Apply(value);
                 _configService.Config.AutoStart = value;
+                MarkDirty();
             }
         }
     }
@@ -265,7 +297,10 @@ public sealed class MainViewModel : BaseViewModel
         set
         {
             if (SetField(ref _checkUpdateOnStart, value))
+            {
                 _configService.Config.CheckUpdateOnStart = value;
+                MarkDirty();
+            }
         }
     }
 
@@ -275,7 +310,10 @@ public sealed class MainViewModel : BaseViewModel
         set
         {
             if (SetField(ref _autoUploadLogs, value))
+            {
                 _configService.Config.AutoUploadLogs = value;
+                MarkDirty();
+            }
         }
     }
 
@@ -286,7 +324,11 @@ public sealed class MainViewModel : BaseViewModel
     {
         get => _accessCodeInput;
         // 仅保留数字（≤6 位）：UI 输入框有 PreviewTextInput 过滤，这里兜底粘贴路径
-        set => SetField(ref _accessCodeInput, new string((value ?? "").Where(char.IsDigit).Take(6).ToArray()));
+        set
+        {
+            if (SetField(ref _accessCodeInput, new string((value ?? "").Where(char.IsDigit).Take(6).ToArray())))
+                MarkDirty();
+        }
     }
 
     /// <summary>访问验证码开关（被控端）：false = 不启用验证保护（即使已设置验证码也不验证）。
@@ -300,6 +342,7 @@ public sealed class MainViewModel : BaseViewModel
             {
                 _configService.Config.AccessCodeEnabled = value;
                 _remoteSessionManager.AccessCodeEnabled = value; // 新连接立即生效
+                MarkDirty();
             }
         }
     }
@@ -314,26 +357,12 @@ public sealed class MainViewModel : BaseViewModel
             {
                 _configService.Config.LockOnDisconnect = value;
                 _remoteSessionManager.LockOnDisconnect = value; // 活跃会话即时生效
+                MarkDirty();
             }
         }
     }
 
     // ========== 远程配置（本机作为主控端远程其他主机时的参数） ==========
-
-    /// <summary>目标分辨率高度上限（0 = 原始分辨率不缩放；连接后经 configure 帧下发）。</summary>
-    public int ViewerTargetMaxHeight
-    {
-        get => _configService.Config.Viewer.TargetMaxHeight;
-        set
-        {
-            var v = Math.Max(0, value);
-            if (_configService.Config.Viewer.TargetMaxHeight != v)
-            {
-                _configService.Config.Viewer.TargetMaxHeight = v;
-                OnPropertyChanged();
-            }
-        }
-    }
 
     /// <summary>图像质量百分比（20-100，映射被控端编码码率缩放）。</summary>
     public int ViewerQualityPercent
@@ -346,6 +375,7 @@ public sealed class MainViewModel : BaseViewModel
             {
                 _configService.Config.Viewer.QualityPercent = v;
                 OnPropertyChanged();
+                MarkDirty();
             }
         }
     }
@@ -361,6 +391,7 @@ public sealed class MainViewModel : BaseViewModel
             {
                 _configService.Config.Viewer.Fps = v;
                 OnPropertyChanged();
+                MarkDirty();
             }
         }
     }
@@ -376,6 +407,7 @@ public sealed class MainViewModel : BaseViewModel
             {
                 _configService.Config.Viewer.ColorDepth = v;
                 OnPropertyChanged();
+                MarkDirty();
             }
         }
     }
@@ -390,21 +422,12 @@ public sealed class MainViewModel : BaseViewModel
             {
                 _configService.Config.Viewer.PreferLan = value;
                 OnPropertyChanged();
+                MarkDirty();
             }
         }
     }
 
     // ========== 设置页下拉选项（值 + 显示文本） ==========
-
-    /// <summary>分辨率高度上限选项（0 = 原始分辨率不缩放）。</summary>
-    public IReadOnlyList<Models.OptionItem> MaxHeightOptions { get; } = new[]
-    {
-        new Models.OptionItem(0, "原始分辨率"),
-        new Models.OptionItem(720, "720P 及以下"),
-        new Models.OptionItem(1080, "1080P 及以下"),
-        new Models.OptionItem(1440, "1440P 及以下"),
-        new Models.OptionItem(2160, "2160P（4K）及以下"),
-    };
 
     /// <summary>图像质量百分比选项。</summary>
     public IReadOnlyList<Models.OptionItem> QualityOptions { get; } = new[]
@@ -532,7 +555,6 @@ public sealed class MainViewModel : BaseViewModel
         OnPropertyChanged(nameof(AccessCodeEnabled));
         OnPropertyChanged(nameof(LockOnDisconnect));
         // 远程配置（直接读写 Config 对象，重载后通知 UI 刷新）
-        OnPropertyChanged(nameof(ViewerTargetMaxHeight));
         OnPropertyChanged(nameof(ViewerQualityPercent));
         OnPropertyChanged(nameof(ViewerFps));
         OnPropertyChanged(nameof(ViewerColorDepth));
@@ -590,6 +612,7 @@ public sealed class MainViewModel : BaseViewModel
 
         _configService.Save();
         _logger.Info("Settings saved");
+        ClearDirty();
 
         // 重启连接以应用新地址
         StartConnection();

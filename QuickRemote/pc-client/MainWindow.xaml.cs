@@ -60,15 +60,14 @@ public partial class MainWindow : Window
         WindowState = WindowState.Minimized;
     }
 
-    /// <summary>置顶按钮：切换窗口是否始终置顶。</summary>
+    /// <summary>置顶按钮（图钉图标）：切换窗口是否始终置顶，置顶时图标高亮为强调色。</summary>
     private void BtnPin_Click(object sender, RoutedEventArgs e)
     {
         _isPinned = !_isPinned;
         Topmost = _isPinned;
-        BtnPin.Content = _isPinned ? "已置顶" : "置顶";
         BtnPin.Foreground = _isPinned
             ? (Brush)FindResource("AccentBrush")
-            : (Brush)FindResource("TextMutedBrush");
+            : (Brush)FindResource("TextSecondaryBrush");
     }
 
     /// <summary>关闭按钮：隐藏到托盘而非退出。</summary>

@@ -49,9 +49,14 @@
                         <Run Text=" PC"/>
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="BtnPin" Content="置顶" Click="BtnPin_Click"
+                        <Button x:Name="BtnPin" Click="BtnPin_Click" ToolTip="置顶"
                                 Style="{StaticResource TitleIconButton}"
-                                Width="Auto" Padding="8,0" FontSize="11" Margin="0,0,4,0"/>
+                                Margin="0,0,4,0">
+                            <Path Data="M3.6,1.2 L8.4,1.2 L8.4,3.2 L7,4.4 L7,9 L6,10.8 L5,9 L5,4.4 L3.6,3.2 Z"
+                                  Width="12" Height="12"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                        </Button>
                         <Button x:Name="BtnMinimize" Style="{StaticResource TitleIconButton}"
                                 Margin="0,0,4,0" Click="BtnMinimize_Click">
                             <Path Data="M2,6 L10,6" Width="12" Height="12"
@@ -437,20 +442,6 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="目标分辨率上限" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
-                                           ToolTip="远程画面超过该高度时自动等比缩小以节省流量；原始分辨率 = 不缩放"/>
-                                <ComboBox Grid.Column="1" Style="{StaticResource SettingCombo}"
-                                          ItemsSource="{Binding MaxHeightOptions}"
-                                          SelectedValuePath="Value"
-                                          SelectedValue="{Binding ViewerTargetMaxHeight, Mode=TwoWay}"/>
-                            </Grid>
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
-                            <Grid Margin="0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="图像质量" FontSize="12"
                                            Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
                                            ToolTip="按百分比缩放被控端编码码率：低质量省流量，高质量画质清晰"/>
@@ -573,7 +564,7 @@
                             Padding="14,12" Margin="4,0,4,0" Command="{Binding ExportConfigCommand}"/>
                     <Button Grid.Column="2" Content="检查更新" Style="{StaticResource ActionButton}"
                             Padding="14,12" Margin="4,0,4,0" Command="{Binding CheckUpdateCommand}"/>
-                    <Button Grid.Column="3" Content="保存设置" Style="{StaticResource PrimaryActionButton}"
+                    <Button Grid.Column="3" Content="{Binding SaveSettingsText}" Style="{StaticResource PrimaryActionButton}"
                             Padding="14,12" Margin="4,0,0,0" Command="{Binding SaveSettingsCommand}"/>
                 </Grid>
             </Border>

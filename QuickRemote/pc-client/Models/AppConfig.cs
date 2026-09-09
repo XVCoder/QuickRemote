@@ -60,13 +60,10 @@ public class AppConfig
     public HostConfig Host { get; set; } = new();
 }
 
-/// <summary>远程配置（主控端：本机远程其他主机时生效）。</summary>
+/// <summary>远程配置（主控端：本机远程其他主机时生效）。
+/// 目标分辨率上限固定为原始分辨率（0 = 不缩放），无该配置项。</summary>
 public class ViewerConfig
 {
-    /// <summary>目标分辨率高度上限（0 = 原始分辨率不缩放；720/1080/1440/2160 = 等比缩放上限）。</summary>
-    [JsonPropertyName("TargetMaxHeight")]
-    public int TargetMaxHeight { get; set; }
-
     /// <summary>图像质量百分比（20-100），映射被控端码率缩放。</summary>
     [JsonPropertyName("QualityPercent")]
     public int QualityPercent { get; set; } = 100;
