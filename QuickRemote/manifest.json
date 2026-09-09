@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.59",
-    "changelog": "设置页体验优化：配置有未保存修改时保存按钮显示「* 保存设置」；移除目标分辨率上限配置（固定原始分辨率不缩放）；标题栏置顶按钮改为图钉图标",
+    "latest_version": "1.1.60",
+    "changelog": "新增设置中心：标题栏齿轮按钮打开设置弹窗（左侧导航+右侧内容），基本配置/远程配置/被远程安全三项配置从主界面迁入，主界面更简洁",
     "versions": {
+      "1.1.60": {
+        "zip": "https://qd.solutionx.top/d/p/75c803f7-c2c6-47ec-9cbd-da66852c876f"
+      },
       "1.1.59": {
         "zip": "https://qd.solutionx.top/d/p/79e436fc-5694-4d91-8ed5-cf7841bd4a45"
       },
       "1.1.58": {
         "zip": "https://qd.solutionx.top/d/p/527d68ad-f67a-401a-85c0-af173499eac3"
-      },
-      "1.1.57": {
-        "zip": "https://qd.solutionx.top/d/p/a4bca6ac-c5c1-4cb6-aaa5-8bc4a00d7078"
       }
     }
   },
