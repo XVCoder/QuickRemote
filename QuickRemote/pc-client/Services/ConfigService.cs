@@ -129,10 +129,4 @@ public sealed class ConfigService
             // 保存失败忽略，避免崩溃
         }
     }
-
-    /// <summary>导出当前配置为 JSON 字符串（用于复制到剪贴板迁移）。</summary>
-    public string ExportJson()
-    {
-        return JsonSerializer.Serialize(Config, JsonOptions);
-    }
 }

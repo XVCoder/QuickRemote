@@ -381,13 +381,10 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Button Grid.Column="0" Content="更新记录" Style="{StaticResource ActionButton}"
                             Padding="14,12" Margin="0,0,4,0" Command="{Binding ShowChangelogCommand}"/>
-                    <Button Grid.Column="1" Content="导出配置" Style="{StaticResource ActionButton}"
-                            Padding="14,12" Margin="4,0,4,0" Command="{Binding ExportConfigCommand}"/>
-                    <Button Grid.Column="2" Content="检查更新" Style="{StaticResource ActionButton}"
+                    <Button Grid.Column="1" Content="检查更新" Style="{StaticResource ActionButton}"
                             Padding="14,12" Margin="4,0,0,0" Command="{Binding CheckUpdateCommand}"/>
                 </Grid>
             </Border>

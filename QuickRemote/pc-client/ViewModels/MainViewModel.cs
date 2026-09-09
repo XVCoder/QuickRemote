@@ -71,7 +71,6 @@ public sealed class MainViewModel : BaseViewModel
         SaveSettingsCommand = new RelayCommand(SaveSettings);
         CheckUpdateCommand = new RelayCommand(async () => await CheckUpdateAsync());
         ShowChangelogCommand = new RelayCommand(ShowChangelog);
-        ExportConfigCommand = new RelayCommand(ExportConfig);
         ViewLogsCommand = new RelayCommand(ViewLogs);
         ConnectDeviceCommand = new RelayCommand(ConnectDevice);
         SetDeviceRemarkCommand = new RelayCommand(SetDeviceRemark);
@@ -480,7 +479,6 @@ public sealed class MainViewModel : BaseViewModel
     public ICommand SaveSettingsCommand { get; }
     public ICommand CheckUpdateCommand { get; }
     public ICommand ShowChangelogCommand { get; }
-    public ICommand ExportConfigCommand { get; }
     public ICommand ViewLogsCommand { get; }
 
     /// <summary>点击远程设备 → 打开远程查看窗口（参数：RemoteDeviceInfo）。</summary>
@@ -820,90 +818,6 @@ public sealed class MainViewModel : BaseViewModel
     private void ViewLogs()
     {
         Views.LogViewerWindow.ShowWindow();
-    }
-
-    /// <summary>导出当前配置为 JSON：优先复制到剪贴板，剪贴板被占用时弹出另存为导出文件。</summary>
-    private void ExportConfig()
-    {
-        string json;
-        try
-        {
-            json = _configService.ExportJson();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Export config failed", ex);
-            Views.DialogWindow.Show($"导出配置失败：{ex.Message}", "错误", Views.DialogWindow.DialogType.Error);
-            return;
-        }
-
-        // 优先复制到剪贴板（带短重试）
-        try
-        {
-            SetClipboardWithRetry(json);
-            _logger.Info("Config exported to clipboard");
-            Views.DialogWindow.Show("当前配置已复制到剪贴板，可直接粘贴到其他机器或分享。", "导出配置", Views.DialogWindow.DialogType.Success);
-            return;
-        }
-        catch (Exception clipEx)
-        {
-            // 剪贴板被占用（远程控制/剪贴板工具），改走另存为导出文件
-            _logger.Warn($"Clipboard unavailable, falling back to save dialog: {clipEx.Message}");
-        }
-
-        // 回退：弹出另存为对话框，让用户选择导出位置
-        try
-        {
-            var dlg = new Microsoft.Win32.SaveFileDialog
-            {
-                Title = "导出配置",
-                Filter = "JSON 文件 (*.json)|*.json",
-                FileName = $"QuickRemote-配置-{DateTime.Now:yyyyMMdd-HHmmss}.json",
-                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                AddExtension = true,
-                DefaultExt = "json",
-                OverwritePrompt = true
-            };
-            if (dlg.ShowDialog(Application.Current.MainWindow) != true)
-            {
-                _logger.Info("Export config cancelled by user");
-                return;
-            }
-            System.IO.File.WriteAllText(dlg.FileName, json);
-            _logger.Info($"Config exported to file: {dlg.FileName}");
-            Views.DialogWindow.Show(
-                $"剪贴板被其他程序占用（远程控制工具/剪贴板管理器），已改为导出到文件：\n\n{dlg.FileName}\n\n可打开该文件查看或复制内容。",
-                "导出配置", Views.DialogWindow.DialogType.Warning);
-        }
-        catch (Exception fileEx)
-        {
-            _logger.Error("Export config to file failed", fileEx);
-            Views.DialogWindow.Show($"导出配置失败：{fileEx.Message}", "错误", Views.DialogWindow.DialogType.Error);
-        }
-    }
-
-    /// <summary>
-    /// 写入剪贴板，带重试。剪贴板是独占资源，常被远程控制/剪贴板工具短暂占用，
-    /// OpenClipboard 失败（CLIPBRD_E_CANT_OPEN）多为临时现象，重试几次即可。
-    /// </summary>
-    private static void SetClipboardWithRetry(string text)
-    {
-        const int maxRetries = 5;
-        for (int i = 0; i < maxRetries; i++)
-        {
-            try
-            {
-                System.Windows.Clipboard.SetText(text);
-                return;
-            }
-            catch (System.Runtime.InteropServices.COMException ex)
-                when (ex.HResult == unchecked((int)0x800401D0)) // CLIPBRD_E_CANT_OPEN
-            {
-                if (i == maxRetries - 1) throw;
-                // 递增延迟，给占用剪贴板的进程时间释放
-                System.Threading.Thread.Sleep(50 + i * 20);
-            }
-        }
     }
 
     private void OnSessionStarted(SessionInfo info)
