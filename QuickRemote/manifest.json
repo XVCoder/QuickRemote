@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.60",
-    "changelog": "新增设置中心：标题栏齿轮按钮打开设置弹窗（左侧导航+右侧内容），基本配置/远程配置/被远程安全三项配置从主界面迁入，主界面更简洁",
+    "latest_version": "1.1.61",
+    "changelog": "标题栏置顶按钮图标改为实心图钉形状（参考 SVG 优化），置顶高亮交互不变",
     "versions": {
+      "1.1.61": {
+        "zip": "https://qd.solutionx.top/d/p/a077549f-38e2-4b7f-b896-1dfb2673b480"
+      },
       "1.1.60": {
         "zip": "https://qd.solutionx.top/d/p/75c803f7-c2c6-47ec-9cbd-da66852c876f"
       },
       "1.1.59": {
         "zip": "https://qd.solutionx.top/d/p/79e436fc-5694-4d91-8ed5-cf7841bd4a45"
-      },
-      "1.1.58": {
-        "zip": "https://qd.solutionx.top/d/p/527d68ad-f67a-401a-85c0-af173499eac3"
       }
     }
   },
