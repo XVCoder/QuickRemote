@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.54",
-    "changelog": "新增远程访问验证码与断开自动锁屏：被控端可在设置页配置访问验证码（非空时连接需验证通过才建立会话，3次失败或15秒超时断开）；远程会话断开时被控端自动锁定桌面（可在设置页关闭）",
+    "latest_version": "1.1.55",
+    "changelog": "访问验证码升级为 6 位数字：设置页输入框限制 6 位数字并新增「随机」按钮一键生成；验证超时延长至 60 秒，重试时重置计时；验证通过即时通知主控端收起输入框",
     "versions": {
+      "1.1.55": {
+        "zip": "https://qd.solutionx.top/d/p/1f556353-5fb7-4e18-a65b-f1cdd7c804c9"
+      },
       "1.1.54": {
         "zip": "https://qd.solutionx.top/d/p/3579fa93-e09b-4ab8-9176-a1cfd8931d31"
       },
       "1.1.53": {
         "zip": "https://qd.solutionx.top/d/p/a4590bff-44e4-4dd5-9fc5-6925465ee228"
-      },
-      "1.1.52": {
-        "zip": "https://qd.solutionx.top/d/p/c28ddd0a-60a6-4c29-91d5-51d01badecbc"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.68",
-    "changelog": "双指滚动像素级跟手（滑动 1cm = 画面内容位移 1cm）+ 松手惯性滑行（阻尼衰减，触摸即停）",
+    "latest_version": "1.0.69",
+    "changelog": "连接验证码支持：连接开启了「访问验证码」保护的 PC 时自动弹验证码输入框（6 位数字），验证通过才开始远程；错误可重试，取消则断开",
     "versions": {
+      "1.0.69": {
+        "apk": "https://qd.solutionx.top/d/p/148880c9-510e-4fdf-b0da-3b00491c2cd3"
+      },
       "1.0.68": {
         "apk": "https://qd.solutionx.top/d/p/56f5997d-05c2-4ec5-a414-16a4e0b8304a"
       },
       "1.0.67": {
         "apk": "https://qd.solutionx.top/d/p/4e6e392c-9771-4140-9feb-3c453a2a55ff"
-      },
-      "1.0.66": {
-        "apk": "https://qd.solutionx.top/d/p/0ed1db85-9e39-473c-8246-07b5ef07515e"
       }
     }
   }
