@@ -89,8 +89,12 @@ public sealed class RemoteViewerClient : IDisposable
         RemoteDeviceInfo device, RelayConnection relay, string serverAddress,
         string preSharedKey, ViewerConfig viewerConfig, Logger logger)
     {
-        // 1. 局域网直连（有 LanIp 且配置允许时尝试，1.5s 超时快速失败）
-        if (viewerConfig.PreferLan && !string.IsNullOrEmpty(device.LanIp))
+        // 1. 局域网直连（有 LanIp 且配置允许时尝试，1.5s 超时快速失败）。
+        // 失败缓存（v1.1.56）：LanIp 失效（跨网段/设备换了网络）时每次连接都要白等
+        // 1.5s 超时才回退中继——表现为"连接很慢"。缓存 5 分钟，键含 LanIp，
+        // 设备换了网段上报新 LanIp 后自动重新尝试。
+        if (viewerConfig.PreferLan && !string.IsNullOrEmpty(device.LanIp) &&
+            !IsLanRecentlyFailed(device.DeviceId, device.LanIp))
         {
             try
             {
@@ -102,6 +106,7 @@ public sealed class RemoteViewerClient : IDisposable
             catch (Exception ex)
             {
                 logger.Info($"LAN direct to {device.LanIp} failed ({ex.Message}), falling back to relay");
+                MarkLanFailed(device.DeviceId, device.LanIp);
             }
         }
 
@@ -112,6 +117,16 @@ public sealed class RemoteViewerClient : IDisposable
             sessionId);
         return Start(device, logger, relayTransport, "公网中继", sessionId, viewerConfig);
     }
+
+    /// <summary>LAN 直连失败缓存（deviceId+lanIp → 失败时间）。5 分钟内跳过 LAN 直接走中继。</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _lanFailCache = new();
+
+    private static bool IsLanRecentlyFailed(string deviceId, string lanIp) =>
+        _lanFailCache.TryGetValue($"{deviceId}|{lanIp}", out var t) &&
+        (DateTime.UtcNow - t).TotalMinutes < 5;
+
+    private static void MarkLanFailed(string deviceId, string lanIp) =>
+        _lanFailCache[$"{deviceId}|{lanIp}"] = DateTime.UtcNow;
 
     private static RemoteViewerClient Start(RemoteDeviceInfo device, Logger logger,
         ViewerTransport transport, string modeText, string sessionId, ViewerConfig viewerConfig)
@@ -282,6 +297,26 @@ public sealed class RemoteViewerClient : IDisposable
                 // 解码器就绪前请求 IDR：若中途加入（重连/丢包）错过首关键帧，
                 // 无周期 GOP 将永久黑屏，秒级补救（对端 3s GOP 兜底仍在）
                 SendKeyframeRequest();
+            }
+            else if (root.TryGetProperty("action", out var actionProp))
+            {
+                // 被控端验证码交互（v1.1.54）：auth_required 要求输入 / auth_failed 拒绝重试
+                var action = actionProp.GetString();
+                if (action == "auth_required")
+                {
+                    _logger.Info("Auth required by host");
+                    AuthRequired?.Invoke();
+                }
+                else if (action == "auth_failed")
+                {
+                    _logger.Warn("Auth rejected by host");
+                    AuthFailed?.Invoke();
+                }
+                else if (action == "auth_ok")
+                {
+                    _logger.Info("Auth accepted by host");
+                    StatusMessage?.Invoke("验证通过，等待画面...");
+                }
             }
             else if (root.TryGetProperty("status", out var statusProp))
             {

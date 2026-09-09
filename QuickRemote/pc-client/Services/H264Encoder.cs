@@ -95,9 +95,16 @@ public sealed class H264Encoder : IFrameEncoder
                 {
                     var gopKey = MFInterop.CODECAPI_AVEncMPVGOPSize;
                     encAttrs.SetUINT32(ref gopKey, (uint)Math.Max(1, fps * 3));
+
+                    // 低延迟模式（v1.1.56）：MS 编码器默认 lookahead 深度实测 ~14 帧，
+                    // 30fps 下画面恒定延迟 ~470ms——远程桌面流必须"编码即输出"。
+                    // 开启后输出立即返回（1 帧内），FastFill 首帧也不再需要连投 16 帧。
+                    // 与解码端 H264Decoder 低延迟修复同款 attribute store 方式。
+                    var llKey = MFInterop.CODECAPI_AVLowLatencyMode;
+                    encAttrs.SetUINT32(ref llKey, 1);
                 }
             }
-            catch { /* GOP 设置失败不影响编码，保持默认 */ }
+            catch { /* GOP/低延迟设置失败不影响编码，保持默认 */ }
 
             // 2. 先设置输出媒体类型（H.264）—— MS 编码器 MFT 要求输出类型必须先于输入类型
             var outputType = CreateMediaType();

@@ -508,12 +508,13 @@ public sealed class RemoteSessionManager : IDisposable
                             EnqueueFrame(_lastDeliveredFrame);
                         }
                     }
-                    else if ((DateTime.UtcNow - sessionStart).TotalMilliseconds >= 800)
+                    else if ((DateTime.UtcNow - sessionStart).TotalMilliseconds >= 250)
                     {
                         // 从未取到帧（连接后桌面零更新，duplication 无基准帧可 Acquire）：
                         // 鼠标微移 1 像素强制桌面产生更新事件，下轮 Acquire 即可成功。
-                        // 节流 2 秒；双方向各移一次保证光标贴边时至少一个方向有效。
-                        if ((DateTime.UtcNow - lastNudge).TotalMilliseconds >= 2000)
+                        // 节流 800ms；双方向各移一次保证光标贴边时至少一个方向有效。
+                        //（v1.1.56：250ms/800ms——原 800ms/2s 首画面最坏要等 ~2.8s）
+                        if ((DateTime.UtcNow - lastNudge).TotalMilliseconds >= 800)
                         {
                             lastNudge = DateTime.UtcNow;
                             NudgeMouse();
