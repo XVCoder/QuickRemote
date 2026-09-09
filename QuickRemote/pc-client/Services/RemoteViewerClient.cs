@@ -37,6 +37,10 @@ public sealed class RemoteViewerClient : IDisposable
     private DateTime _lastHeartbeat = DateTime.UtcNow;
     /// <summary>主控端远程配置（握手后下发给被控端）。</summary>
     private ViewerConfig _viewerConfig = new();
+    /// <summary>本机设备名（随 configure 帧带给被控端，被控端会话列表据此区分 PC/Android 来源，
+    /// 而非一律显示"Android 客户端"）。由 MainViewModel 在启动远程连接前设置。</summary>
+    public static string LocalDeviceName = "PC 客户端";
+
     /// <summary>configure 已下发标志（仅首次握手后发送一次，避免与被控端重建握手的循环）。</summary>
     private bool _configureSent;
 
@@ -160,7 +164,8 @@ public sealed class RemoteViewerClient : IDisposable
             var json = $"{{\"action\":\"configure\",\"maxHeight\":{Math.Max(0, cfg.TargetMaxHeight)}," +
                        $"\"percent\":{Math.Clamp(cfg.QualityPercent, 20, 100)}," +
                        $"\"fps\":{Math.Clamp(cfg.Fps, 5, 60)}," +
-                       $"\"colorDepth\":{(cfg.ColorDepth == 16 ? 16 : 32)}}}";
+                       $"\"colorDepth\":{(cfg.ColorDepth == 16 ? 16 : 32)}," +
+                       $"\"deviceName\":{JsonSerializer.Serialize(LocalDeviceName)}}}";
             _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, Encoding.UTF8.GetBytes(json));
             _logger.Info($"Viewer configure sent: maxHeight={cfg.TargetMaxHeight}, quality={cfg.QualityPercent}%, fps={cfg.Fps}, colorDepth={cfg.ColorDepth}");
         }

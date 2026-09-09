@@ -89,6 +89,10 @@ public sealed class RemoteSessionManager : IDisposable
     /** 当前会话信息（启动成功后创建，UI 会话列表展示用）。 */
     private SessionInfo? _sessionInfo;
 
+    /// <summary>主控端设备名（configure 帧携带的 deviceName；空 = 未收到，兼容 Android/旧版 PC）。
+    /// 会话启动时复位，configure 帧到达后更新并实时反映到 _sessionInfo.DeviceName。</summary>
+    private volatile string _peerDeviceName = string.Empty;
+
     /// <summary>编码器重建与编码的互斥锁（压缩率调整时避免竞态）。</summary>
     private readonly object _encoderLock = new();
 
@@ -391,6 +395,7 @@ public sealed class RemoteSessionManager : IDisposable
             _baseBitrateKbps = _hostBitrateKbps;
             _sessionMaxHeight = _hostMaxHeight;
             _sessionColorDepth = _hostColorDepth;
+            _peerDeviceName = string.Empty; // 主控端设备名：configure 帧到达后填充，会话不跨会话残留
             _outWidth = 0; // 强制编码器首帧重建（读取最新尺寸/色深）
             // 会话代数递增：旧会话线程（若 Join 超时未退出）据此识别自己已过期
             var gen = Interlocked.Increment(ref _sessionGeneration);
@@ -402,11 +407,13 @@ public sealed class RemoteSessionManager : IDisposable
             _sendThread = new Thread(() => SendLoop(gen)) { IsBackground = true };
             _sendThread.Start();
 
-            // 6. 会话建立：通知 UI（会话列表展示）
+            // 6. 会话建立：通知 UI（会话列表展示）。
+            // 设备名优先取 configure 帧携带的 deviceName（PC 主控 v1.1.57+ 会下发，
+            // 会话列表据此区分 PC/Android 来源）；未收到（Android/旧版 PC）时保持默认。
             _sessionInfo = new SessionInfo
             {
                 SessionId = sessionId,
-                DeviceName = "Android 客户端",
+                DeviceName = string.IsNullOrWhiteSpace(_peerDeviceName) ? "Android 客户端" : _peerDeviceName,
                 ClientIp = clientIp,
                 ModeText = modeText,
                 StartTime = DateTime.Now,
@@ -1483,6 +1490,15 @@ public sealed class RemoteSessionManager : IDisposable
                           fp.ValueKind == System.Text.Json.JsonValueKind.Number ? fp.GetInt32() : _fps;
                 var colorDepth = root.TryGetProperty("colorDepth", out var cd) &&
                                  cd.ValueKind == System.Text.Json.JsonValueKind.Number ? cd.GetInt32() : _sessionColorDepth;
+                // 主控端设备名（PC 主控 v1.1.57+ 随 configure 下发；缺省 = Android/旧版 PC，保持默认）
+                if (root.TryGetProperty("deviceName", out var dn) &&
+                    dn.ValueKind == System.Text.Json.JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(dn.GetString()))
+                {
+                    _peerDeviceName = dn.GetString()!;
+                    // 会话已建立（configure 帧在握手后到达）：实时更新 UI 会话列表展示
+                    if (_sessionInfo != null) _sessionInfo.DeviceName = _peerDeviceName;
+                }
 
                 _sessionMaxHeight = Math.Max(0, maxHeight);
                 _sessionColorDepth = colorDepth == 16 ? 16 : 32;
@@ -1492,7 +1508,7 @@ public sealed class RemoteSessionManager : IDisposable
                 // 置 _outWidth=0 下一帧触发帧驱动重建（配置了 pendingQuality 的场景由 defer 兜底）
                 _outWidth = 0;
                 _pendingQualityPercent = 0; // 帧驱动重建按最新 _qualityPercent，无需重复重建
-                _logger.Info($"Configure request: maxHeight={_sessionMaxHeight}, quality={_qualityPercent}%, fps={_fps}, colorDepth={_sessionColorDepth}");
+                _logger.Info($"Configure request: maxHeight={_sessionMaxHeight}, quality={_qualityPercent}%, fps={_fps}, colorDepth={_sessionColorDepth}, deviceName={_peerDeviceName}");
             }
             else if (action == "keyframe")
             {

@@ -12,12 +12,17 @@ public class SessionInfo : INotifyPropertyChanged
     private long _bytesReceived;
     private DateTime _startTime;
     private bool _isActive;
+    private string _deviceName = string.Empty;
 
     /// <summary>会话 ID（来自服务器的 tunnel_request）</summary>
     public string SessionId { get; set; } = string.Empty;
 
-    /// <summary>客户端设备名（来自控制消息或隧道对端）</summary>
-    public string DeviceName { get; set; } = string.Empty;
+    /// <summary>客户端设备名（来自控制消息或隧道对端；configure 帧携带的 deviceName 到达时可实时更新展示）。</summary>
+    public string DeviceName
+    {
+        get => _deviceName;
+        set { if (_deviceName != value) { _deviceName = value; OnPropertyChanged(); } }
+    }
 
     /// <summary>客户端 IP（隧道对端地址，可为空）</summary>
     public string ClientIp { get; set; } = string.Empty;

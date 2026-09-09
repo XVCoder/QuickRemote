@@ -672,6 +672,11 @@ public sealed class MainViewModel : BaseViewModel
 
         var preSharedKey = _configService.Config.Server.PreSharedKey;
         var serverAddress = ServerAddressDisplay;
+        // 本机设备名随 configure 帧带给被控端：被控端会话列表据此显示主控来源（PC/Android），
+        // 而非一律显示"Android 客户端"。优先用设置页配置名，未配置时回退本机主机名。
+        Services.RemoteViewerClient.LocalDeviceName = string.IsNullOrWhiteSpace(_configService.Config.DeviceName)
+            ? SystemInfo.Hostname
+            : _configService.Config.DeviceName.Trim();
         var win = new Views.RemoteViewerWindow(device, () =>
             // 执行时读取最新远程配置（含未保存的修改，连接即生效）
             Services.RemoteViewerClient.ConnectAsync(device, _relay, serverAddress, preSharedKey,
