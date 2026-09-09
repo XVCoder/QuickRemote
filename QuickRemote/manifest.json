@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.56",
-    "changelog": "远程画面延迟与连接速度大幅优化：编码器开启低延迟模式（首帧输出由 14 帧缩短到 1 帧，端到端延迟降至 100ms 内）；连接后首画面最快 1 秒内出现；局域网直连失效时不再白等超时直接走中继；修复 PC 主控端连接开启验证码的设备时不弹验证框的问题",
+    "latest_version": "1.1.57",
+    "changelog": "被控端会话列表正确显示主控端设备来源：PC 主控连接时显示其设备名（设置页配置名或本机名），不再一律显示「Android 客户端」；Android/旧版 PC 连接显示方式不变",
     "versions": {
+      "1.1.57": {
+        "zip": "https://qd.solutionx.top/d/p/a4bca6ac-c5c1-4cb6-aaa5-8bc4a00d7078"
+      },
       "1.1.56": {
         "zip": "https://qd.solutionx.top/d/p/87823457-860a-4b23-b046-71ddce49b65b"
       },
       "1.1.55": {
         "zip": "https://qd.solutionx.top/d/p/1f556353-5fb7-4e18-a65b-f1cdd7c804c9"
-      },
-      "1.1.54": {
-        "zip": "https://qd.solutionx.top/d/p/3579fa93-e09b-4ab8-9176-a1cfd8931d31"
       }
     }
   },
