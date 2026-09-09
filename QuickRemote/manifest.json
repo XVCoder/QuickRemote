@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.61",
-    "changelog": "标题栏置顶按钮图标改为实心图钉形状（参考 SVG 优化），置顶高亮交互不变",
+    "latest_version": "1.1.62",
+    "changelog": "移除「导出配置」功能（按钮/命令/剪贴板回退逻辑），底部按钮栏简化为更新记录与检查更新",
     "versions": {
+      "1.1.62": {
+        "zip": "https://qd.solutionx.top/d/p/26d374b6-6d79-4b9c-980e-ef16947de471"
+      },
       "1.1.61": {
         "zip": "https://qd.solutionx.top/d/p/a077549f-38e2-4b7f-b896-1dfb2673b480"
       },
       "1.1.60": {
         "zip": "https://qd.solutionx.top/d/p/75c803f7-c2c6-47ec-9cbd-da66852c876f"
-      },
-      "1.1.59": {
-        "zip": "https://qd.solutionx.top/d/p/79e436fc-5694-4d91-8ed5-cf7841bd4a45"
       }
     }
   },
