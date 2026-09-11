@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.63",
-    "changelog": "剪贴板双向同步（纯文本，可在设置中心关闭）；设置中心新增手机配对二维码；配合 Android v1.0.70 使用",
+    "latest_version": "1.1.64",
+    "changelog": "断开延迟锁屏：连接意外断开后等待 30 秒，期间手机自动重连成功则取消锁屏，重连不再面对锁屏画面；修复局域网接管误锁屏；配合 Android v1.0.72+",
     "versions": {
+      "1.1.64": {
+        "zip": "https://qd.solutionx.top/d/p/d071d861-df1b-40c0-a9c7-c351f7c0a470"
+      },
       "1.1.63": {
         "zip": "https://qd.solutionx.top/d/p/b0ac4dd3-c7ec-438f-9033-e7c8e14ac2a6"
       },
       "1.1.62": {
         "zip": "https://qd.solutionx.top/d/p/26d374b6-6d79-4b9c-980e-ef16947de471"
-      },
-      "1.1.61": {
-        "zip": "https://qd.solutionx.top/d/p/a077549f-38e2-4b7f-b896-1dfb2673b480"
       }
     }
   },
