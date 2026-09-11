@@ -26,20 +26,11 @@
 
     <!-- 设置 -->
     <string name="settings_server">服务器</string>
-    <string name="settings_display">显示</string>
-    <string name="settings_resolution">显示分辨率</string>
-    <string name="settings_color_depth">颜色深度</string>
-    <string name="settings_audio">音频重定向</string>
     <string name="settings_about">关于</string>
     <string name="settings_check_update">检查更新</string>
     <string name="settings_changelog">更新记录</string>
     <string name="settings_upload_logs">上传日志</string>
     <string name="settings_version">版本</string>
-
-    <!-- 分辨率选项 -->
-    <string name="resolution_auto">自适应</string>
-    <string name="resolution_original">原分辨率</string>
-    <string name="resolution_custom">指定分辨率</string>
 
     <!-- 状态 -->
     <string name="status_connected">已连接</string>

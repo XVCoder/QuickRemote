@@ -89,6 +89,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import com.quickremote.app.data.models.Device
+import com.quickremote.app.data.models.QUALITY_PRESETS
 import com.quickremote.app.services.KeyMapper
 import com.quickremote.app.services.ReconnectPolicy
 import com.quickremote.app.services.RemoteFrameProtocol
@@ -1551,16 +1552,7 @@ private fun sendGestureKeys(viewModel: SessionViewModel, gesture: TouchpadGestur
     }
 }
 
-/** 画质档位。percent 与 PC 端码率缩放比例语义一致，label 仅用于展示。 */
-private data class QualityPreset(val percent: Int, val label: String)
-
-/** 会话内画质快捷面板的 4 档预设。 */
-private val QUALITY_PRESETS = listOf(
-    QualityPreset(40, "流畅"),
-    QualityPreset(60, "标准"),
-    QualityPreset(80, "高清"),
-    QualityPreset(100, "原画")
-)
+/** 画质档位定义与会话内/设置页共用的 4 档预设见 `data/models/Models.kt`（QUALITY_PRESETS）。 */
 
 /**
  * 会话底部工具栏按钮。

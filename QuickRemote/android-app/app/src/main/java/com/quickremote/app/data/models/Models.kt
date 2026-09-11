@@ -104,12 +104,8 @@ data class ChangelogEntry(
 // App 设置
 @Serializable
 data class AppSettings(
-    val resolutionMode: ResolutionMode = ResolutionMode.AUTO,
-    val customWidth: Int = 1920,
-    val customHeight: Int = 1080,
-    val colorDepth: Int = 32,
     val autoUpdate: Boolean = true,
-    /** 图像质量百分比（20-100），压缩率设置。 */
+    /** 图像质量百分比，取值恒为画质档位之一（40/60/80/100）。 */
     val qualityPercent: Int = 80,
     /** 画面外空白区触摸板（单指滑动移光标/轻点左键/双指右键与滚动），默认启用。 */
     val blankTouchpad: Boolean = true,
@@ -123,4 +119,17 @@ data class AppSettings(
     val touchpadFourFinger: Boolean = true
 )
 
-enum class ResolutionMode { AUTO, ORIGINAL, CUSTOM }
+/** 画质档位。percent 与 PC 端码率缩放比例语义一致，label 仅用于展示。 */
+data class QualityPreset(val percent: Int, val label: String)
+
+/** 画质 4 档预设：设置页与会话内快捷面板共用同一份，保证两处配置语义拉齐。 */
+val QUALITY_PRESETS = listOf(
+    QualityPreset(40, "流畅"),
+    QualityPreset(60, "标准"),
+    QualityPreset(80, "高清"),
+    QualityPreset(100, "原画")
+)
+
+/** 把任意历史百分比值吸附到最近的画质档位（旧版设置页滑块可设 20-100 任意值）。 */
+fun snapToQualityPreset(percent: Int): Int =
+    QUALITY_PRESETS.minByOrNull { kotlin.math.abs(it.percent - percent) }?.percent ?: percent

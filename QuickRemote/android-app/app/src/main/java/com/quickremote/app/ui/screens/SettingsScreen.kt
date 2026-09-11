@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -64,7 +63,7 @@ import androidx.core.content.FileProvider
 import com.quickremote.app.BuildConfig
 import com.quickremote.app.data.PairingPayload
 import com.quickremote.app.data.models.AppSettings
-import com.quickremote.app.data.models.ResolutionMode
+import com.quickremote.app.data.models.QUALITY_PRESETS
 import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
@@ -87,7 +86,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 设置页：服务器地址、显示分辨率、颜色深度、音频重定向、版本检查、更新记录、日志上传、关于。
+ * 设置页：服务器地址、画质与触控、版本检查、更新记录、日志上传、关于。
  */
 @Composable
 fun SettingsScreen(
@@ -242,86 +241,23 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 显示
-            SectionTitle("显示")
+            // 画面与触控
+            SectionTitle("画面与触控")
             SettingCard {
-                Text("显示分辨率", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text("画质", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                 Spacer(modifier = Modifier.height(8.dp))
-                ResolutionMode.entries.forEach { mode ->
-                    RadioRow(
-                        label = when (mode) {
-                            ResolutionMode.AUTO -> "自适应"
-                            ResolutionMode.ORIGINAL -> "原分辨率"
-                            ResolutionMode.CUSTOM -> "指定分辨率"
-                        },
-                        selected = settings.resolutionMode == mode,
-                        onClick = { settings = settings.copy(resolutionMode = mode) }
-                    )
-                }
-                if (settings.resolutionMode == ResolutionMode.CUSTOM) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        NumberField(
-                            value = settings.customWidth,
-                            onValueChange = { settings = settings.copy(customWidth = it) },
-                            label = "宽",
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text("×", color = TextMuted)
-                        NumberField(
-                            value = settings.customHeight,
-                            onValueChange = { settings = settings.copy(customHeight = it) },
-                            label = "高",
-                            modifier = Modifier.weight(1f)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QUALITY_PRESETS.forEach { preset ->
+                        Chip(
+                            label = preset.label,
+                            selected = settings.qualityPercent == preset.percent,
+                            onClick = { settings = settings.copy(qualityPercent = preset.percent) }
                         )
                     }
                 }
-
-                Divider()
-                Text("颜色深度", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip(
-                        label = "16 bit",
-                        selected = settings.colorDepth == 16,
-                        onClick = { settings = settings.copy(colorDepth = 16) }
-                    )
-                    Chip(
-                        label = "32 bit",
-                        selected = settings.colorDepth == 32,
-                        onClick = { settings = settings.copy(colorDepth = 32) }
-                    )
-                }
-
-                Divider()
-                Text("图像质量（压缩率）", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("更低带宽", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                    Text(
-                        "${settings.qualityPercent}%",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text("更高画质", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                }
-                Slider(
-                    value = settings.qualityPercent.toFloat(),
-                    onValueChange = { settings = settings.copy(qualityPercent = it.toInt()) },
-                    valueRange = 20f..100f,
-                    steps = 15
-                )
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "公网连接建议降低（20-60%），局域网可保持 80-100%",
+                    "与远程会话内工具栏「画质」共用同一配置；公网建议流畅/标准，局域网可选高清/原画",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -902,27 +838,6 @@ private fun Divider() {
 }
 
 @Composable
-private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(16.dp)
-                .clip(CircleShape)
-                .background(if (selected) Accent else androidx.compose.ui.graphics.Color.Transparent)
-                .border(1.dp, if (selected) Accent else BorderLight, CircleShape)
-        )
-        Spacer(modifier = Modifier.size(10.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-    }
-}
-
-@Composable
 private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
@@ -955,28 +870,6 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
             )
         )
     }
-}
-
-@Composable
-private fun NumberField(
-    value: Int,
-    onValueChange: (Int) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier
-) {
-    var text by remember(value) { mutableStateOf(value.toString()) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = {
-            text = it.filter { c -> c.isDigit() }
-            text.toIntOrNull()?.let(onValueChange)
-        },
-        singleLine = true,
-        label = { Text(label) },
-        modifier = modifier,
-        shape = RoundedCornerShape(4.dp),
-        textStyle = MaterialTheme.typography.bodyMedium
-    )
 }
 
 /**

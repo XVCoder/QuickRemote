@@ -9,8 +9,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.quickremote.app.data.models.AppSettings
-import com.quickremote.app.data.models.ResolutionMode
 import com.quickremote.app.data.models.ServerConfig
+import com.quickremote.app.data.models.snapToQualityPreset
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -30,10 +30,6 @@ class SettingsStore(private val context: Context) {
     }
 
     private object SettingsKeys {
-        val RESOLUTION_MODE = stringPreferencesKey("resolution_mode")
-        val CUSTOM_WIDTH = intPreferencesKey("custom_width")
-        val CUSTOM_HEIGHT = intPreferencesKey("custom_height")
-        val COLOR_DEPTH = intPreferencesKey("color_depth")
         val AUTO_UPDATE = booleanPreferencesKey("auto_update")
         val MANIFEST_URL = stringPreferencesKey("manifest_url")
         val QUALITY_PERCENT = intPreferencesKey("quality_percent")
@@ -57,14 +53,9 @@ class SettingsStore(private val context: Context) {
 
     val appSettings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
-            resolutionMode = runCatching {
-                ResolutionMode.valueOf(prefs[SettingsKeys.RESOLUTION_MODE] ?: ResolutionMode.AUTO.name)
-            }.getOrDefault(ResolutionMode.AUTO),
-            customWidth = prefs[SettingsKeys.CUSTOM_WIDTH] ?: 1920,
-            customHeight = prefs[SettingsKeys.CUSTOM_HEIGHT] ?: 1080,
-            colorDepth = prefs[SettingsKeys.COLOR_DEPTH] ?: 32,
             autoUpdate = prefs[SettingsKeys.AUTO_UPDATE] ?: true,
-            qualityPercent = prefs[SettingsKeys.QUALITY_PERCENT] ?: 80,
+            // 旧版滑块可存 20-100 任意值，读取时吸附到最近档位（40/60/80/100）
+            qualityPercent = snapToQualityPreset(prefs[SettingsKeys.QUALITY_PERCENT] ?: 80),
             blankTouchpad = prefs[SettingsKeys.BLANK_TOUCHPAD] ?: true,
             touchpadSpeed = (prefs[SettingsKeys.TOUCHPAD_SPEED] ?: 100).coerceIn(50, 300),
             touchpadDoubleTapDrag = prefs[SettingsKeys.TOUCHPAD_DOUBLE_TAP_DRAG] ?: true,
@@ -106,12 +97,8 @@ class SettingsStore(private val context: Context) {
 
     suspend fun saveAppSettings(settings: AppSettings) {
         context.dataStore.edit { prefs ->
-            prefs[SettingsKeys.RESOLUTION_MODE] = settings.resolutionMode.name
-            prefs[SettingsKeys.CUSTOM_WIDTH] = settings.customWidth
-            prefs[SettingsKeys.CUSTOM_HEIGHT] = settings.customHeight
-            prefs[SettingsKeys.COLOR_DEPTH] = settings.colorDepth
             prefs[SettingsKeys.AUTO_UPDATE] = settings.autoUpdate
-            prefs[SettingsKeys.QUALITY_PERCENT] = settings.qualityPercent
+            prefs[SettingsKeys.QUALITY_PERCENT] = snapToQualityPreset(settings.qualityPercent)
             prefs[SettingsKeys.BLANK_TOUCHPAD] = settings.blankTouchpad
             prefs[SettingsKeys.TOUCHPAD_SPEED] = settings.touchpadSpeed.coerceIn(50, 300)
             prefs[SettingsKeys.TOUCHPAD_DOUBLE_TAP_DRAG] = settings.touchpadDoubleTapDrag
