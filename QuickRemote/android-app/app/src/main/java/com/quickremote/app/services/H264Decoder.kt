@@ -12,13 +12,19 @@ import java.nio.ByteBuffer
  */
 class H264Decoder(private val logger: Logger = Logger()) {
 
+    // start/stop 由 UI 线程调用（Surface 生命周期），decode 由收流线程调用。
+    // 两者会并发：不加锁时 stop() 里的 release() 可能发生在 decode() 使用中的实例上，
+    // 导致 IllegalStateException 甚至 native 崩溃。全部公开方法加锁 + volatile 保证可见性。
+    @Volatile
     private var decoder: MediaCodec? = null
     private var bufferInfo: MediaCodec.BufferInfo = MediaCodec.BufferInfo()
 
     /** 解码器是否已启动。 */
+    @get:Synchronized
     val isRunning: Boolean get() = decoder != null
 
     /** 使用 PC 端上报的分辨率启动解码器。 */
+    @Synchronized
     fun start(surface: Surface, width: Int, height: Int) {
         stop()
         try {
@@ -145,6 +151,7 @@ class H264Decoder(private val logger: Logger = Logger()) {
     }
 
     /** 停止解码器并释放资源。 */
+    @Synchronized
     fun stop() {
         try {
             decoder?.stop()

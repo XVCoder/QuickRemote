@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,7 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
@@ -49,6 +51,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,7 +117,22 @@ import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+
+/**
+ * 布局避让用的 IME insets —— 取**目标值**（imeAnimationTarget）而非动画值。
+ *
+ * 为什么不能直接写 `WindowInsets.ime`：键盘动画期间动画值每帧都在变，每变一次就要
+ * 重新布局一次；而本页的布局尺寸直接决定 RemoteDisplayView 的 requiredSize
+ * （即 SurfaceView 尺寸重分配），于是弹收键盘时每帧都要重排大半个屏幕，
+ * 表现就是「切键盘很卡」。目标值只在起止各变一次，重排从 ~60 次降到 1 次。
+ *
+ * API < 30 没有 IME 动画信息，imeAnimationTarget 与 ime 等价，行为不变。
+ */
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun imeLayoutInsets(): WindowInsets = WindowInsets.imeAnimationTarget
 
 /**
  * 远程桌面会话页（截屏方案）。
@@ -242,11 +261,23 @@ fun RemoteSessionScreen(
     var showQualityPanel by remember { mutableStateOf(false) }
     val qualityPercent by viewModel.qualityPercent.collectAsState()
 
-    // 同步真实 IME 可见状态（用户按系统返回键收起键盘时修正，避免按钮高亮失真）
-    val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
-    LaunchedEffect(imeBottomPx, isKeyboardVisible) {
-        val actuallyVisible = imeBottomPx > 0
-        if (actuallyVisible != isKeyboardVisible) viewModel.setKeyboardVisible(actuallyVisible)
+    // 同步真实 IME 可见状态（用户按系统返回键收起键盘时修正，避免按钮高亮失真）。
+    //
+    // ⚠️ 性能关键：**绝不能**在组合里直接读 WindowInsets.ime。键盘动画期间 insets
+    // 每帧都在变，组合读取会让整个会话屏（Scaffold / 底部栏 / SurfaceView / 悬浮球 /
+    // 手势层）每帧重组一次 —— 这是键盘弹起/收起卡顿的根因之一。
+    // 这里改成 snapshotFlow 订阅，并把结果去重成布尔值：重组次数从 ~60 次降到 0 次。
+    val imeInsets = WindowInsets.ime
+    val imeDensity = LocalDensity.current
+    LaunchedEffect(imeInsets, imeDensity) {
+        snapshotFlow { imeInsets.getBottom(imeDensity) > 0 }
+            .distinctUntilChanged()
+            .collect { visible ->
+                // 读 StateFlow 的当前值而非组合捕获值，避免 effect 未重启时的旧值比较
+                if (viewModel.isKeyboardVisible.value != visible) {
+                    viewModel.setKeyboardVisible(visible)
+                }
+            }
     }
 
     /** 发送键盘事件帧：[vkCode 2B][down 1B]。 */
@@ -404,8 +435,10 @@ fun RemoteSessionScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
-                        // union 取最大值：无键盘时避让导航栏，键盘弹出时避让 IME（工具栏浮在键盘上方）
-                        .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+                        // union 取最大值：无键盘时避让导航栏，键盘弹出时避让 IME（工具栏浮在键盘上方）。
+                        // 用 imeLayoutInsets()（目标值）而非 WindowInsets.ime：动画值会让本行
+                        // 每帧改一次高度，连带 Scaffold 内容区每帧重排（详见 imeLayoutInsets 注释）
+                        .windowInsetsPadding(WindowInsets.navigationBars.union(imeLayoutInsets()))
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
@@ -434,12 +467,23 @@ fun RemoteSessionScreen(
                         active = showQualityPanel,
                         onClick = { showQualityPanel = !showQualityPanel }
                     )
-                    ToolBarButton(
-                        icon = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                        label = "全屏",
-                        active = false,
-                        onClick = { viewModel.toggleFullscreen() }
-                    )
+                    // 键盘弹起时右端按钮让位给「回车」：此刻用户正在输入，一个紧贴键盘、
+                    // 触手可及的 Enter 比「切换全屏」有用得多（收起键盘后全屏按钮自动回来）
+                    if (isKeyboardVisible) {
+                        ToolBarButton(
+                            icon = Icons.AutoMirrored.Filled.KeyboardReturn,
+                            label = "回车",
+                            active = false,
+                            onClick = { sendKeyCombo(0x0D) }
+                        )
+                    } else {
+                        ToolBarButton(
+                            icon = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                            label = "全屏",
+                            active = false,
+                            onClick = { viewModel.toggleFullscreen() }
+                        )
+                    }
                 }
             }
         }
@@ -450,8 +494,9 @@ fun RemoteSessionScreen(
                 .background(Color.Black)
                 .padding(padding)
                 // 全屏无底部工具栏，键盘弹出时自行避让（画面等比缩小，远程底部输入框可见）；
-                // 非全屏时 bottomBar 已含 IME 避让（Scaffold content padding 已挤压本区域），无需重复
-                .then(if (isFullscreen) Modifier.imePadding() else Modifier)
+                // 非全屏时 bottomBar 已含 IME 避让（Scaffold content padding 已挤压本区域），无需重复。
+                // 用目标值 insets：动画值会让画面尺寸每帧变化一次（SurfaceView 反复重分配）
+                .then(if (isFullscreen) Modifier.windowInsetsPadding(imeLayoutInsets()) else Modifier)
         ) {
             val density = LocalDensity.current
             val parentWpx = constraints.maxWidth
@@ -711,6 +756,24 @@ fun RemoteSessionScreen(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+            }
+
+            // 全屏 + 键盘弹起：右下角浮一个「回车」。
+            // 全屏没有底部工具栏，且键盘占了屏幕下半，回车键必须紧贴键盘才好按 ——
+            // 外层 BoxWithConstraints 已经按 IME insets 收缩过，所以 BottomEnd 恰好就是
+            // 键盘上沿，这里不需要再叠一次 inset padding。放在悬浮球之后（后绘者优先接收触摸）。
+            if (isFullscreen && isKeyboardVisible) {
+                Box(modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 14.dp, bottom = 14.dp)
+                ) {
+                    FloatingToolButton(
+                        icon = Icons.AutoMirrored.Filled.KeyboardReturn,
+                        contentDescription = "回车",
+                        active = false,
+                        onClick = { sendKeyCombo(0x0D) }
+                    )
+                }
             }
 
             // 状态覆盖层（连接中/失败时显示）。

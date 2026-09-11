@@ -584,22 +584,50 @@ class RemoteSessionManager(
         }
     }
 
-    /** 设置渲染 Surface（由 UI 层在 SurfaceView 创建时调用）。 */
+    /**
+     * 设置渲染 Surface（由 UI 层在 SurfaceView 创建/尺寸变化/销毁时调用）。
+     *
+     * ⚠️ 性能关键：**同一个 Surface 的尺寸变化绝不能重建解码器**。
+     * SurfaceView 因布局变化（键盘弹起、旋转、进出全屏）改尺寸时会回调 surfaceChanged，
+     * 但 Surface 实例不变、缓冲区依然有效，解码输出会由合成器按新尺寸自动缩放
+     * （MediaCodec 的 configure 宽高只是提示，真实尺寸以 SPS 为准）。
+     * 若照旧 restart，键盘动画期间每帧都会跑一遍 stop → createDecoderByType → configure
+     * → start → 等 IDR，这正是「切输入法特别卡」的元凶。
+     * 与 ExoPlayer 的做法一致：改尺寸不重启 codec，只有 Surface 换实例/分辨率变了才重建。
+     */
     fun setSurface(surface: Surface?) {
+        val previous = this.surface
         this.surface = surface
-        if (surface != null && state == SessionState.CONNECTED) {
-            // surface 就绪：H.264 模式才启动 MediaCodec；jpeg 模式用 lockHardwareCanvas 直绘，
-            // 误启动 H264 会占用 surface 导致 jpeg 渲染崩溃
-            if (videoWidth > 0 && videoHeight > 0 && codec != "jpeg") {
-                decoder.start(surface, videoWidth, videoHeight)
-                logger.info("Surface ready, H264 decoder started: ${videoWidth}x${videoHeight}")
-                // surface 晚就绪期间的 IDR 已被丢弃，请求 PC 立即刷新关键帧
-                requestKeyframe()
-            } else if (codec == "jpeg") {
-                logger.info("Surface ready, jpeg mode (no H264 decoder): ${videoWidth}x${videoHeight}")
-            } else {
-                logger.info("Surface ready but no resolution yet (waiting CONTROL frame)")
+
+        // Surface 已销毁：必须停掉解码器。MediaCodec 继续向失效 Surface 输出会 native 崩溃；
+        // 下次 surfaceCreated 时本方法会被重新调用并重启解码器。
+        if (surface == null) {
+            if (previous != null && decoder.isRunning) {
+                decoder.stop()
+                logger.info("Surface destroyed, H264 decoder stopped")
             }
+            return
+        }
+
+        // 同一 Surface 实例（仅尺寸变化）且解码器仍在跑：无需任何操作，直接返回
+        if (previous === surface && decoder.isRunning) {
+            logger.info("Surface size-only change, decoder kept (no restart)")
+            return
+        }
+
+        if (state != SessionState.CONNECTED) return
+
+        // surface 就绪：H.264 模式才启动 MediaCodec；jpeg 模式用 lockHardwareCanvas 直绘，
+        // 误启动 H264 会占用 surface 导致 jpeg 渲染崩溃
+        if (videoWidth > 0 && videoHeight > 0 && codec != "jpeg") {
+            decoder.start(surface, videoWidth, videoHeight)
+            logger.info("Surface ready, H264 decoder started: ${videoWidth}x${videoHeight}")
+            // surface 晚就绪期间的 IDR 已被丢弃，请求 PC 立即刷新关键帧
+            requestKeyframe()
+        } else if (codec == "jpeg") {
+            logger.info("Surface ready, jpeg mode (no H264 decoder): ${videoWidth}x${videoHeight}")
+        } else {
+            logger.info("Surface ready but no resolution yet (waiting CONTROL frame)")
         }
     }
 
