@@ -21,12 +21,25 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.QuickRemote">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                手机配对深链：PC 端生成二维码（内容 quickremote://pair?d=...），
+                手机用系统相机扫即可拉起本 App 并自动写入服务器地址与密钥，
+                无需引入相机/扫码库，也无需相机权限。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="quickremote" android:host="pair" />
             </intent-filter>
         </activity>
 

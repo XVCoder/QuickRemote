@@ -45,4 +45,32 @@ public partial class SettingsWindow : Window
     {
         e.Handled = !e.Text.All(char.IsDigit);
     }
+
+    /// <summary>
+    /// 手机配对：用当前（未保存也可）的服务器地址与密钥生成二维码。
+    /// 地址或密钥为空时直接提示，避免生成一个扫了也没用的码。
+    /// </summary>
+    private void BtnPairing_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ViewModels.MainViewModel vm)
+        {
+            return;
+        }
+
+        var addr = vm.ServerAddressInput?.Trim() ?? string.Empty;
+        var psk = vm.PreSharedKeyInput?.Trim() ?? string.Empty;
+
+        if (addr.Length == 0 || psk.Length == 0)
+        {
+            DialogWindow.Show("请先填写服务器地址与预共享密钥，再生成配对二维码。",
+                "无法配对", DialogWindow.DialogType.Warning);
+            return;
+        }
+
+        var window = new PairingWindow(addr, psk, vm.DeviceNameInput?.Trim() ?? string.Empty)
+        {
+            Owner = this
+        };
+        window.ShowDialog();
+    }
 }

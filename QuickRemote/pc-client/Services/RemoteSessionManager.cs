@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using QuickRemote.PCClient.Interop;
 using QuickRemote.PCClient.Models;
 
 namespace QuickRemote.PCClient.Services;
@@ -118,6 +119,14 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>请求编码线程连投缓存帧快速填满 lookahead（首帧/编码器重建/keyframe 请求后）。</summary>
     private volatile bool _pendingFastFill;
 
+    // ============ 剪贴板双向同步（v1.1.63） ============
+    // 会话级资源：会话建立时创建、Cleanup 时销毁 —— 绝不可跨会话复用
+    // （历史教训 b837eb1：复用已关闭的会话级实例导致第二次连接秒断）。
+    /// <summary>本机剪贴板监听（WM_CLIPBOARDUPDATE），仅纯文本。</summary>
+    private ClipboardSync? _clipboardSync;
+    /// <summary>对端分片组装器（按 id 归组，5 秒超时丢弃残片）。</summary>
+    private ClipboardAssembler? _clipboardAssembler;
+
     // ============ 锁屏输入代理（向日葵式：锁屏时把输入注入 Winlogon 安全桌面） ============
 
     /// <summary>PC 当前是否处于锁屏/UAC 安全桌面（Winlogon 输入桌面激活）。</summary>
@@ -148,6 +157,9 @@ public sealed class RemoteSessionManager : IDisposable
 
     /// <summary>连接断开时自动锁屏（被控端）：会话曾建立且非新连接接管时调用 LockWorkStation。</summary>
     public volatile bool LockOnDisconnect = true;
+
+    /// <summary>剪贴板双向同步开关（被控端）：会话建立时读取，false = 整个会话不监听也不接收剪贴板。</summary>
+    public volatile bool ClipboardSyncEnabled = true;
 
     /// <summary>等待主控端验证码验证中（StartWithTransportAsync 设置，HandleAuthRequest/超时复位）。</summary>
     private volatile bool _awaitingAuth;
@@ -397,6 +409,27 @@ public sealed class RemoteSessionManager : IDisposable
             _sessionColorDepth = _hostColorDepth;
             _peerDeviceName = string.Empty; // 主控端设备名：configure 帧到达后填充，会话不跨会话残留
             _outWidth = 0; // 强制编码器首帧重建（读取最新尺寸/色深）
+
+            // 剪贴板同步：每次会话重建实例（释放上一会话的监听窗口与残留分片），
+            // 避免重连后未收齐的半个载荷与旧监听句柄串味
+            try { _clipboardSync?.Dispose(); } catch { }
+            _clipboardSync = null;
+            _clipboardAssembler = new ClipboardAssembler();
+            if (ClipboardSyncEnabled)
+            {
+                try
+                {
+                    var clip = new ClipboardSync();
+                    clip.TextChanged += OnLocalClipboardChanged;
+                    _clipboardSync = clip;
+                    _logger.Info("Clipboard sync enabled (bidirectional, text only)");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"Clipboard sync unavailable: {ex.Message}");
+                    _clipboardSync = null;
+                }
+            }
             // 会话代数递增：旧会话线程（若 Join 超时未退出）据此识别自己已过期
             var gen = Interlocked.Increment(ref _sessionGeneration);
             _running = true;
@@ -648,6 +681,48 @@ public sealed class RemoteSessionManager : IDisposable
                 Encoding.UTF8.GetBytes($"{{\"action\":\"{action}\"}}"));
         }
         catch { }
+    }
+
+    /// <summary>
+    /// 本机剪贴板变化 → 分片发送到主控端（UI 线程回调）。
+    ///
+    /// 放到后台线程发送：大文本（最大 256KB / 4 片）走网络写，
+    /// 不能占着 UI 线程等 socket 写入完成。
+    /// </summary>
+    private void OnLocalClipboardChanged(string text)
+    {
+        var chunks = ClipboardChunker.Split(text);
+        if (chunks.Count == 0)
+        {
+            _logger.Warn($"Clipboard too large to sync ({text.Length} chars), skipped");
+            return;
+        }
+
+        var id = Guid.NewGuid().ToString("N")[..8];
+        Task.Run(() =>
+        {
+            try
+            {
+                foreach (var c in chunks)
+                {
+                    var json = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        action = "clipboard",
+                        id,
+                        seq = c.Seq,
+                        total = c.Total,
+                        text = c.Text
+                    });
+                    _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, Encoding.UTF8.GetBytes(json));
+                }
+                _logger.Info($"Clipboard sent to peer: {text.Length} chars in {chunks.Count} chunk(s)");
+            }
+            catch (Exception ex)
+            {
+                // 连接断开时 Send 抛异常；剪贴板同步失败不应影响会话
+                _logger.Warn($"Clipboard send failed: {ex.Message}");
+            }
+        });
     }
 
     /// <summary>
@@ -1518,6 +1593,25 @@ public sealed class RemoteSessionManager : IDisposable
                 _logger.Info("Keyframe request received");
                 _pendingKeyframe = true;
             }
+            else if (action == "clipboard" &&
+                     root.TryGetProperty("id", out var clipId) &&
+                     root.TryGetProperty("seq", out var clipSeq) &&
+                     root.TryGetProperty("total", out var clipTotal) &&
+                     root.TryGetProperty("text", out var clipText))
+            {
+                // 对端剪贴板分片：集齐后写入本机剪贴板。
+                // ApplyRemote 会先记哈希再写，本机监听器因此不会把它推回对端（切断回环）。
+                var full = _clipboardAssembler?.Add(
+                    clipId.GetString() ?? "",
+                    clipSeq.GetInt32(),
+                    clipTotal.GetInt32(),
+                    clipText.GetString() ?? "");
+                if (full != null)
+                {
+                    _logger.Info($"Clipboard received from peer: {full.Length} chars");
+                    _clipboardSync?.ApplyRemote(full);
+                }
+            }
             else if (action == "auth" &&
                      root.TryGetProperty("code", out var codeProp))
             {
@@ -1648,6 +1742,10 @@ public sealed class RemoteSessionManager : IDisposable
         Interlocked.Increment(ref _sessionGeneration);
         _running = false;
         StopInputAgent();
+        // 剪贴板同步资源随会话结束销毁（监听窗口注册在 UI 线程，Dispose 内部会切回该线程）
+        try { _clipboardSync?.Dispose(); } catch { }
+        _clipboardSync = null;
+        _clipboardAssembler = null;
         // 锁屏状态复位：若残留 true，下次"连接时已锁屏"的会话里 UpdateLockState
         // 因状态未变化直接 return，输入代理永不启动（2026-09-06 22:38 LAN 会话实测：
         // 点击全部走本地 SendInput 被拒 lastError=5，锁屏画面/输入均无响应）

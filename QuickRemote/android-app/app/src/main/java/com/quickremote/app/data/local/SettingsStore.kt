@@ -34,7 +34,6 @@ class SettingsStore(private val context: Context) {
         val CUSTOM_WIDTH = intPreferencesKey("custom_width")
         val CUSTOM_HEIGHT = intPreferencesKey("custom_height")
         val COLOR_DEPTH = intPreferencesKey("color_depth")
-        val AUDIO_REDIRECT = booleanPreferencesKey("audio_redirect")
         val AUTO_UPDATE = booleanPreferencesKey("auto_update")
         val MANIFEST_URL = stringPreferencesKey("manifest_url")
         val QUALITY_PERCENT = intPreferencesKey("quality_percent")
@@ -64,7 +63,6 @@ class SettingsStore(private val context: Context) {
             customWidth = prefs[SettingsKeys.CUSTOM_WIDTH] ?: 1920,
             customHeight = prefs[SettingsKeys.CUSTOM_HEIGHT] ?: 1080,
             colorDepth = prefs[SettingsKeys.COLOR_DEPTH] ?: 32,
-            audioRedirect = prefs[SettingsKeys.AUDIO_REDIRECT] ?: false,
             autoUpdate = prefs[SettingsKeys.AUTO_UPDATE] ?: true,
             qualityPercent = prefs[SettingsKeys.QUALITY_PERCENT] ?: 80,
             blankTouchpad = prefs[SettingsKeys.BLANK_TOUCHPAD] ?: true,
@@ -112,7 +110,6 @@ class SettingsStore(private val context: Context) {
             prefs[SettingsKeys.CUSTOM_WIDTH] = settings.customWidth
             prefs[SettingsKeys.CUSTOM_HEIGHT] = settings.customHeight
             prefs[SettingsKeys.COLOR_DEPTH] = settings.colorDepth
-            prefs[SettingsKeys.AUDIO_REDIRECT] = settings.audioRedirect
             prefs[SettingsKeys.AUTO_UPDATE] = settings.autoUpdate
             prefs[SettingsKeys.QUALITY_PERCENT] = settings.qualityPercent
             prefs[SettingsKeys.BLANK_TOUCHPAD] = settings.blankTouchpad

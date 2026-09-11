@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.KeyboardCommandKey
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,6 +69,7 @@ import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -81,6 +83,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.KeyMapper
+import com.quickremote.app.services.ReconnectPolicy
 import com.quickremote.app.services.RemoteFrameProtocol
 import com.quickremote.app.services.RemoteSessionManager
 import com.quickremote.app.ui.components.LogViewerDialog
@@ -101,6 +104,8 @@ import com.quickremote.app.ui.theme.TextPrimary
 import com.quickremote.app.ui.theme.TextSecondary
 import com.quickremote.app.ui.theme.Warning
 import com.quickremote.app.viewmodels.SessionViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -139,10 +144,23 @@ fun RemoteSessionScreen(
     val authError by viewModel.authError.collectAsState()
     val blankTouchpad by viewModel.blankTouchpad.collectAsState()
     val touchpadCfg by viewModel.touchpadConfig.collectAsState()
+    val reconnectState by viewModel.reconnecting.collectAsState()
 
     // 进入页面自动开始截屏远程会话（无需凭据）
     LaunchedEffect(device.device_id) {
         viewModel.startSession(device)
+    }
+
+    // 剪贴板同步触发时机：App 回到前台。
+    // Android 10+ 禁止后台读剪贴板，无法做变化监听，只能在回到前台时主动上报一次
+    // （内容未变化时管理器内部会按哈希跳过，不会重复推送）。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.syncClipboard()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // 会话页沉浸模式：非全屏仅隐藏底部导航栏（保留顶部状态栏：时间/电量/网络可见），
@@ -219,6 +237,10 @@ fun RemoteSessionScreen(
     // 快捷键面板显示状态 + 粘滞修饰键（点击激活后保持，随普通按键组合发送，再次点击取消）
     var showHotkeyPanel by remember { mutableStateOf(false) }
     var stickyMods by remember { mutableStateOf(setOf<Int>()) }
+
+    // 画质快捷面板显示状态（会话内直接切换档位，无需断开重连）
+    var showQualityPanel by remember { mutableStateOf(false) }
+    val qualityPercent by viewModel.qualityPercent.collectAsState()
 
     // 同步真实 IME 可见状态（用户按系统返回键收起键盘时修正，避免按钮高亮失真）
     val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
@@ -407,6 +429,12 @@ fun RemoteSessionScreen(
                         onClick = { toggleOrientation() }
                     )
                     ToolBarButton(
+                        icon = Icons.Filled.Tune,
+                        label = "画质",
+                        active = showQualityPanel,
+                        onClick = { showQualityPanel = !showQualityPanel }
+                    )
+                    ToolBarButton(
                         icon = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                         label = "全屏",
                         active = false,
@@ -591,6 +619,13 @@ fun RemoteSessionScreen(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     FloatingToolButton(
+                        icon = Icons.Filled.Tune,
+                        contentDescription = "画质",
+                        active = showQualityPanel,
+                        onClick = { showQualityPanel = !showQualityPanel }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FloatingToolButton(
                         icon = Icons.Filled.FullscreenExit,
                         contentDescription = "退出全屏",
                         active = false,
@@ -611,6 +646,41 @@ fun RemoteSessionScreen(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                 )
+            }
+
+            // 画质快捷面板：会话内切换档位，复用已有 quality 控制帧（PC 端零改动）
+            if (showQualityPanel) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(BgCard.copy(alpha = 0.94f))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    QUALITY_PRESETS.forEach { preset ->
+                        val selected = qualityPercent == preset.percent
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (selected) Accent else Color.Transparent)
+                                .clickable {
+                                    viewModel.setQuality(preset.percent)
+                                    // 面板操作 = 明确的前台交互时机，顺带同步一次剪贴板
+                                    viewModel.syncClipboard()
+                                }
+                                .padding(horizontal = 14.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                preset.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (selected) Color.White else TextPrimary
+                            )
+                        }
+                    }
+                }
             }
 
             // 鼠标悬浮球（向日葵式精准操控）：拖动移位（松手贴边）、长按拖动移动
@@ -643,8 +713,9 @@ fun RemoteSessionScreen(
                 )
             }
 
-            // 状态覆盖层（连接中/失败时显示）
-            if (state != RemoteSessionManager.SessionState.CONNECTED) {
+            // 状态覆盖层（连接中/失败时显示）。
+            // 自动重连期间不显示：改为下方的半透明重连浮层，保留最后一帧画面（不黑屏）。
+            if (state != RemoteSessionManager.SessionState.CONNECTED && reconnectState == null) {
                 var showLogViewer by remember { mutableStateOf(false) }
                 SessionOverlay(
                     state = state,
@@ -656,6 +727,16 @@ fun RemoteSessionScreen(
                 if (showLogViewer) {
                     LogViewerDialog(onDismiss = { showLogViewer = false })
                 }
+            }
+
+            // 断线自动重连浮层：半透明遮罩 + 倒计时 + 立即重试/取消。
+            // 底下的 RemoteDisplayView 保留最后一帧，用户能看到断线前的画面而不是黑屏。
+            reconnectState?.let { rc ->
+                ReconnectOverlay(
+                    state = rc,
+                    onRetryNow = { viewModel.retryNow() },
+                    onCancel = { viewModel.cancelReconnect() }
+                )
             }
 
             // PC 锁屏提示条：锁屏时输入由 PC 端 SYSTEM 代理注入 Winlogon 桌面，
@@ -1377,6 +1458,17 @@ private fun sendGestureKeys(viewModel: SessionViewModel, gesture: TouchpadGestur
     }
 }
 
+/** 画质档位。percent 与 PC 端码率缩放比例语义一致，label 仅用于展示。 */
+private data class QualityPreset(val percent: Int, val label: String)
+
+/** 会话内画质快捷面板的 4 档预设。 */
+private val QUALITY_PRESETS = listOf(
+    QualityPreset(40, "流畅"),
+    QualityPreset(60, "标准"),
+    QualityPreset(80, "高清"),
+    QualityPreset(100, "原画")
+)
+
 @Composable
 private fun ToolBarButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -1699,6 +1791,95 @@ private fun SessionOverlay(
                 InfoRow("会话 ID", t.session_id)
                 InfoRow("隧道主机", t.tunnel_host.ifBlank { "-" })
                 InfoRow("隧道端口", if (t.tunnel_port > 0) t.tunnel_port.toString() else "待分配")
+            }
+        }
+    }
+}
+
+/**
+ * 断线自动重连浮层。
+ *
+ * 设计要点：
+ * - 半透明遮罩，不全屏遮挡 —— 底下的 RemoteDisplayView 保留最后一帧画面，
+ *   用户看到断线前的画面而不是黑屏（fail() 不清空 surface，这是刻意保留的行为）
+ * - 倒计时按绝对时间戳计算，nextRetryAtMs 变化（如点了"立即重试"）时自动重启计时
+ * - 次数耗尽后 ViewModel 会清除重连状态，本浮层消失并回落 SessionOverlay 的错误详情
+ */
+@Composable
+private fun ReconnectOverlay(
+    state: SessionViewModel.ReconnectState,
+    onRetryNow: () -> Unit,
+    onCancel: () -> Unit
+) {
+    // 倒计时：200ms 粒度刷新，到点即停（到点后由 ViewModel 驱动状态流转）
+    var nowMs by remember(state.nextRetryAtMs) { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.nextRetryAtMs) {
+        while (System.currentTimeMillis() < state.nextRetryAtMs) {
+            nowMs = System.currentTimeMillis()
+            delay(200)
+        }
+        nowMs = state.nextRetryAtMs
+    }
+    val remainSec = ((state.nextRetryAtMs - nowMs).coerceAtLeast(0L) + 999L) / 1000L
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 32.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(BgCard)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = Accent
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    "连接中断，正在重连…",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                if (remainSec > 0) {
+                    "第 ${state.displayAttempt}/${ReconnectPolicy.MAX_ATTEMPTS} 次重试 · ${remainSec} 秒后自动重连"
+                } else {
+                    "第 ${state.displayAttempt}/${ReconnectPolicy.MAX_ATTEMPTS} 次重试 · 正在尝试连接…"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = onRetryNow) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = TextPrimary)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("立即重试", color = TextPrimary)
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "取消",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TextMuted,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(onClick = onCancel)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                )
             }
         }
     }

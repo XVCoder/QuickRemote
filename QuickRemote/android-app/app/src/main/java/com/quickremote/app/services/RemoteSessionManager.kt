@@ -64,10 +64,12 @@ class RemoteSessionManager(
     var surface: Surface? = null
         private set
 
-    /** 图像质量百分比（20-100），连接后通知 PC 调整压缩率。 */
+    /** 图像质量百分比（20-100），连接后通知 PC 调整压缩率。写入即夹取到合法区间。 */
     @Volatile
     var qualityPercent: Int = 80
-        private set
+        set(value) {
+            field = value.coerceIn(20, 100)
+        }
 
     /** 连接模式：lan=局域网直连，relay=公网中继。 */
     enum class ConnectionMode { LAN, RELAY }
@@ -140,6 +142,39 @@ class RemoteSessionManager(
         fun onAuthOk() {}
     }
 
+    /** 最近一次会话的设备信息与配置，供断线自动重连时复用。 */
+    private var lastHostname: String = ""
+    private var lastLanIp: String = ""
+    private var lastServerConfig: ServerConfig? = null
+
+    // ============ 剪贴板双向同步（v1.0.70） ============
+    // 会话级状态：start() 每次重建 —— 复用旧组装器会让上次的半个载荷串味。
+    /** 对端分片组装器（按 id 归组，5 秒超时丢弃残片）。 */
+    private var clipboardAssembler: ClipboardAssembler = ClipboardAssembler()
+
+    /** 最后一次由对端写入本机剪贴板的内容哈希：本机再上报时命中即跳过（切断回环）。 */
+    @Volatile
+    private var lastAppliedClipHash: String = ""
+
+    /** 最后一次推送出去的本机剪贴板内容哈希：内容未变化时不重复推送。 */
+    @Volatile
+    private var lastSentClipHash: String = ""
+
+    /**
+     * 收到对端剪贴板全文（分片已组装完成）。由接收线程回调，
+     * UI 层负责写入本机剪贴板 —— Android 10+ 剪贴板只能在前台读写。
+     */
+    @Volatile
+    var onClipboardReceived: ((String) -> Unit)? = null
+
+    /**
+     * 最近一次结束会话的原因，供 [ReconnectPolicy] 判定是否值得自动重连。
+     * 默认 UserInitiated：未经历过断线时不应被误判为"网络断了"。
+     */
+    @Volatile
+    var lastDisconnectReason: ReconnectPolicy.Reason = ReconnectPolicy.Reason.UserInitiated
+        internal set
+
     var listener: Listener? = null
 
     /**
@@ -157,9 +192,16 @@ class RemoteSessionManager(
         config: ServerConfig
     ) {
         this.deviceId = deviceId
+        this.lastHostname = hostname
+        this.lastLanIp = lanIp
+        this.lastServerConfig = config
         this.errorMessage = ""
         this.state = SessionState.CONNECTING
         this.qualityPercent = qualityPercent.coerceIn(20, 100)
+        // 剪贴板为会话级状态：重建组装器，避免重连后残留的未完成分片串味
+        this.clipboardAssembler = ClipboardAssembler()
+        this.lastAppliedClipHash = ""
+        this.lastSentClipHash = ""
         logger.info("Remote session starting: device=$deviceId host=$hostname lan=$lanIp quality=$qualityPercent%")
         listener?.onStateChanged(state)
 
@@ -181,7 +223,7 @@ class RemoteSessionManager(
                 // 1. 认证（中继）
                 if (relay.token.isEmpty()) {
                     if (!relay.authenticate(config)) {
-                        fail("认证失败：${relay.lastError}")
+                        fail("认证失败：${relay.lastError}", ReconnectPolicy.Reason.AuthFailed)
                         return@Thread
                     }
                 }
@@ -247,12 +289,18 @@ class RemoteSessionManager(
                 val now = System.currentTimeMillis()
                 if (now - lastDataAt > WATCHDOG_NO_DATA_TIMEOUT_MS) {
                     logger.warn("Watchdog: no data for ${(now - lastDataAt) / 1000}s, disconnecting")
-                    fail("连接后${WATCHDOG_NO_DATA_TIMEOUT_MS / 1000}秒无任何数据（链路中断或隧道未建立），已自动断开，请重连")
+                    fail(
+                        "连接后${WATCHDOG_NO_DATA_TIMEOUT_MS / 1000}秒无任何数据（链路中断或隧道未建立），已自动断开，请重连",
+                        ReconnectPolicy.Reason.Watchdog
+                    )
                     break
                 }
                 if (lastVideoFrameAt == 0L && now - connectedAt > WATCHDOG_NO_VIDEO_TIMEOUT_MS) {
                     logger.warn("Watchdog: no video frame since connect (${(now - connectedAt) / 1000}s), disconnecting")
-                    fail("连接后${WATCHDOG_NO_VIDEO_TIMEOUT_MS / 1000}秒未收到视频画面（远端推流异常），已自动断开，请重连")
+                    fail(
+                        "连接后${WATCHDOG_NO_VIDEO_TIMEOUT_MS / 1000}秒未收到视频画面（远端推流异常），已自动断开，请重连",
+                        ReconnectPolicy.Reason.Watchdog
+                    )
                     break
                 }
             }
@@ -273,6 +321,17 @@ class RemoteSessionManager(
             logger.info("Quality control sent: $qualityPercent%")
         } catch (_: Exception) {
         }
+    }
+
+    /**
+     * 会话内调整画质：写入档位并立即下发控制帧，无需重建会话。
+     * 走 inputExecutor 避免网络阻塞时拖累接收线程（与 keyframe 请求同策略）。
+     *
+     * 注意方法名不能叫 setQualityPercent —— 会与 qualityPercent 属性的 JVM setter 签名冲突。
+     */
+    fun applyQualityPercent(percent: Int) {
+        qualityPercent = percent
+        inputExecutor.execute { sendQualityControl() }
     }
 
     /**
@@ -436,8 +495,15 @@ class RemoteSessionManager(
             // 读线程退出=连接断开，记录原因（EOF=对端正常关闭，Reset=对端异常关闭）
             logger.warn("Receive loop exited: ${e.javaClass.name}: ${e.message}")
         } finally {
-            logger.warn("Receive loop ended, disconnecting (state was $state)")
-            disconnect()
+            // running 仍为 true ⇒ 不是我们主动收尾（fail()/disconnect() 都会先置 false），
+            // 说明是对端断开或网络中断。此时**绝不能**走 disconnect()：
+            // 那会把断线原因标成 UserInitiated，自动重连白名单直接放行失败。
+            if (running) {
+                logger.warn("Receive loop ended unexpectedly, treating as network failure")
+                fail("连接已断开，正在尝试恢复…", ReconnectPolicy.Reason.Network)
+            } else {
+                logger.warn("Receive loop ended (state was $state)")
+            }
         }
     }
 
@@ -462,6 +528,7 @@ class RemoteSessionManager(
                         logger.info("Control: auth accepted by host")
                         listener?.onAuthOk()
                     }
+                    "clipboard" -> handleClipboardChunk(json)
                 }
                 return
             }
@@ -557,6 +624,88 @@ class RemoteSessionManager(
         }
     }
 
+    // ============ 剪贴板双向同步 ============
+
+    /**
+     * 收到一片对端剪贴板数据。集齐后回调 UI 写入本机剪贴板。
+     *
+     * 记下全文哈希：本机下一次上报（ON_RESUME）命中同一哈希即跳过 ——
+     * 否则 PC 复制的内容会在两端来回推送，形成无限互刷。
+     */
+    private fun handleClipboardChunk(json: JSONObject) {
+        val id = json.optString("id")
+        val seq = json.optInt("seq", -1)
+        val total = json.optInt("total", 0)
+        val text = json.optString("text")
+
+        val full = clipboardAssembler.add(id, seq, total, text) ?: return
+        lastAppliedClipHash = sha256Hex(full)
+        logger.info("Clipboard received from peer: ${full.length} chars")
+        onClipboardReceived?.invoke(full)
+    }
+
+    /**
+     * 把本机剪贴板文本推送到对端。
+     *
+     * 调用时机由 UI 层决定（回到前台 / 会话内面板操作后）—— Android 10+ 禁止后台读剪贴板，
+     * 因此绝不做轮询。与"上次由对端写入本机"或"上次已推送"的内容相同则直接跳过。
+     */
+    fun syncLocalClipboard(text: String?) {
+        if (text == null) return
+        if (state != SessionState.CONNECTED) return
+
+        val hash = sha256Hex(text)
+        if (hash == lastAppliedClipHash || hash == lastSentClipHash) return
+
+        val chunks = ClipboardChunker.split(text)
+        if (chunks.isEmpty()) {
+            logger.warn("Clipboard too large to sync (${text.length} chars), skipped")
+            return
+        }
+        lastSentClipHash = hash
+
+        val id = java.util.UUID.randomUUID().toString().replace("-", "").take(8)
+        // 走 inputExecutor：主线程直接写 socket 会抛 NetworkOnMainThreadException
+        inputExecutor.execute {
+            try {
+                val out = output ?: return@execute
+                chunks.forEach { c ->
+                    val frame = "{\"action\":\"clipboard\",\"id\":\"$id\",\"seq\":${c.seq}," +
+                        "\"total\":${c.total},\"text\":${jsonString(c.text)}}"
+                    val data = frame.toByteArray(Charsets.UTF_8)
+                    synchronized(out) {
+                        out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_CONTROL, data.size))
+                        out.write(data)
+                        out.flush()
+                    }
+                }
+                logger.info("Clipboard sent to peer: ${text.length} chars in ${chunks.size} chunk(s)")
+            } catch (e: Exception) {
+                logger.warn("Clipboard send failed: ${e.javaClass.name}: ${e.message}")
+            }
+        }
+    }
+
+    /** 最小 JSON 字符串转义（只覆盖 JSON 必需项，不引入新依赖）。 */
+    private fun jsonString(s: String): String {
+        val sb = StringBuilder(s.length + 16)
+        sb.append('"')
+        for (ch in s) {
+            when (ch) {
+                '"' -> sb.append("\\\"")
+                '\\' -> sb.append("\\\\")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                '\b' -> sb.append("\\b")
+                '\u000C' -> sb.append("\\f")
+                else -> if (ch < ' ') sb.append("\\u%04x".format(ch.code)) else sb.append(ch)
+            }
+        }
+        sb.append('"')
+        return sb.toString()
+    }
+
     private fun readExactly(input: DataInputStream, buf: ByteArray, count: Int) {
         var offset = 0
         while (offset < count) {
@@ -566,18 +715,36 @@ class RemoteSessionManager(
         }
     }
 
-    private fun fail(message: String) {
+    private fun fail(message: String, reason: ReconnectPolicy.Reason = ReconnectPolicy.Reason.Network) {
         errorMessage = message
         state = SessionState.FAILED
         running = false
+        lastDisconnectReason = reason
         logger.warn("Remote session failed: $message")
         listener?.onStateChanged(state)
         closeSocket()
     }
 
+    /**
+     * 重新连接上一次的设备。
+     *
+     * start() 内部会重建全部会话级资源（socket / 输入输出流 / 解码器 / 看门狗代数），
+     * 所以这里直接复用它 —— **绝不可复用上一次会话的任何资源实例**。
+     * 历史教训（提交 b837eb1）：复用被 CompleteAdding() 关闭的帧队列，
+     * 导致第二次连接秒断，日志特征为 session started 紧接 Encode loop ended。
+     */
+    fun reconnect() {
+        val config = lastServerConfig ?: return
+        val id = deviceId
+        if (id.isBlank()) return
+        logger.info("Reconnecting: device=$id host=$lastHostname lan=$lastLanIp")
+        start(id, lastHostname, lastLanIp, qualityPercent, config)
+    }
+
     /** 断开会话。 */
     fun disconnect() {
         running = false
+        lastDisconnectReason = ReconnectPolicy.Reason.UserInitiated
         decoder.stop()
         // FAILED（含看门狗超时）不降级为 DISCONNECTED：保留错误信息供 UI 展示断开原因
         if (state != SessionState.FAILED) {

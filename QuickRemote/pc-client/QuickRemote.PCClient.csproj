@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <RootNamespace>QuickRemote.PCClient</RootNamespace>
     <AssemblyName>QuickRemote.PCClient</AssemblyName>
-    <Version>1.1.62</Version>
+    <Version>1.1.63</Version>
     <Company>QuickRemote</Company>
     <Product>QuickRemote PC Client</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>
@@ -33,6 +33,11 @@
     <PackageReference Include="Vortice.DXGI" Version="3.5.0" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.5.0" />
     <PackageReference Include="Vortice.MediaFoundation" Version="3.5.0" />
+  </ItemGroup>
+
+  <!-- 手机配对：生成配对二维码（纯托管，无原生依赖） -->
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
   <!--

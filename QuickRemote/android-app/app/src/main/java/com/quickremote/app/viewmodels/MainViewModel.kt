@@ -107,6 +107,21 @@ class MainViewModel(
         }
     }
 
+    /**
+     * 导入配对配置（扫码深链 / 粘贴配置串）：写入地址与密钥后重新认证。
+     * 与 [saveAndContinue] 的区别是额外作废旧认证令牌 —— 服务器地址很可能已变更，
+     * 旧令牌在新服务器上无效。
+     */
+    fun importServerConfig(config: ServerConfig) {
+        viewModelScope.launch {
+            settingsStore.clearToken()
+            settingsStore.saveServerConfig(config)
+            _serverConfig.value = config
+            _isConfigured.value = true
+            authenticateAndLoadDevices(config)
+        }
+    }
+
     /** 刷新设备列表。 */
     fun refreshDevices() {
         viewModelScope.launch {

@@ -43,6 +43,7 @@ public sealed class MainViewModel : BaseViewModel
     private string _accessCodeInput = string.Empty;
     private bool _accessCodeEnabled;
     private bool _lockOnDisconnect = true;
+    private bool _clipboardSyncEnabled = true;
 
     // 配置有未保存的修改时为 true：保存设置按钮显示「* 保存设置」
     private bool _isConfigDirty;
@@ -361,6 +362,21 @@ public sealed class MainViewModel : BaseViewModel
         }
     }
 
+    /// <summary>剪贴板双向同步（被控端）：主控端与本机之间同步纯文本剪贴板。</summary>
+    public bool ClipboardSyncEnabled
+    {
+        get => _clipboardSyncEnabled;
+        set
+        {
+            if (SetField(ref _clipboardSyncEnabled, value))
+            {
+                _configService.Config.ClipboardSyncEnabled = value;
+                _remoteSessionManager.ClipboardSyncEnabled = value; // 下次会话生效
+                MarkDirty();
+            }
+        }
+    }
+
     // ========== 远程配置（本机作为主控端远程其他主机时的参数） ==========
 
     /// <summary>图像质量百分比（20-100，映射被控端编码码率缩放）。</summary>
@@ -541,10 +557,12 @@ public sealed class MainViewModel : BaseViewModel
         _accessCodeInput = cfg.AccessCode;
         _accessCodeEnabled = cfg.AccessCodeEnabled;
         _lockOnDisconnect = cfg.LockOnDisconnect;
+        _clipboardSyncEnabled = cfg.ClipboardSyncEnabled;
         // 同步被控端安全参数到会话管理器（新连接立即生效）
         _remoteSessionManager.AccessCode = cfg.AccessCode;
         _remoteSessionManager.AccessCodeEnabled = cfg.AccessCodeEnabled;
         _remoteSessionManager.LockOnDisconnect = cfg.LockOnDisconnect;
+        _remoteSessionManager.ClipboardSyncEnabled = cfg.ClipboardSyncEnabled;
         ServerAddressDisplay = cfg.Server.Address;
         OnPropertyChanged(nameof(AutoStart));
         OnPropertyChanged(nameof(CheckUpdateOnStart));
@@ -552,6 +570,7 @@ public sealed class MainViewModel : BaseViewModel
         OnPropertyChanged(nameof(AccessCodeInput));
         OnPropertyChanged(nameof(AccessCodeEnabled));
         OnPropertyChanged(nameof(LockOnDisconnect));
+        OnPropertyChanged(nameof(ClipboardSyncEnabled));
         // 远程配置（直接读写 Config 对象，重载后通知 UI 刷新）
         OnPropertyChanged(nameof(ViewerQualityPercent));
         OnPropertyChanged(nameof(ViewerFps));
@@ -607,6 +626,8 @@ public sealed class MainViewModel : BaseViewModel
         _remoteSessionManager.AccessCodeEnabled = AccessCodeEnabled;
         cfg.LockOnDisconnect = LockOnDisconnect;
         _remoteSessionManager.LockOnDisconnect = LockOnDisconnect;
+        cfg.ClipboardSyncEnabled = ClipboardSyncEnabled;
+        _remoteSessionManager.ClipboardSyncEnabled = ClipboardSyncEnabled;
 
         _configService.Save();
         _logger.Info("Settings saved");

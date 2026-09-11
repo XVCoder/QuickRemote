@@ -12,8 +12,8 @@ android {
         applicationId = "com.quickremote.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 69
-        versionName = "1.0.69"
+        versionCode = 70
+        versionName = "1.0.70"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -106,4 +106,7 @@ dependencies {
     // 调试
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // 单元测试（本地 JVM，仅覆盖纯逻辑：编解码 / 分片 / 退避策略）
+    testImplementation("junit:junit:4.13.2")
 }

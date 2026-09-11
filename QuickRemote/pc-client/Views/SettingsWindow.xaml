@@ -184,6 +184,19 @@
                                 <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
                                               IsChecked="{Binding AutoUploadLogs, Mode=TwoWay}"/>
                             </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,6"/>
+                            <Grid Margin="0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="手机配对" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="生成二维码" MinWidth="100"
+                                        Click="BtnPairing_Click"
+                                        ToolTip="生成配对二维码，手机扫码即可自动填入服务器地址与密钥"
+                                        Style="{StaticResource ActionButton}"/>
+                            </Grid>
                         </StackPanel>
 
                         <!-- 远程配置（本机远程其他主机时的参数） -->
@@ -294,6 +307,17 @@
                                            ToolTip="远程连接断开时自动锁定本机桌面（LockWorkStation），保护未锁屏离开时的隐私"/>
                                 <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
                                               IsChecked="{Binding LockOnDisconnect, Mode=TwoWay}"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="剪贴板同步" FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                           ToolTip="会话期间与主控端双向同步纯文本剪贴板（手机复制的文字可直接在电脑粘贴，反之亦然）；关闭后不读取也不写入剪贴板"/>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding ClipboardSyncEnabled, Mode=TwoWay}"/>
                             </Grid>
                         </StackPanel>
                     </Grid>

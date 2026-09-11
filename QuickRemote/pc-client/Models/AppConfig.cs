@@ -42,6 +42,11 @@ public class AppConfig
     [JsonPropertyName("LockOnDisconnect")]
     public bool LockOnDisconnect { get; set; } = true;
 
+    /// <summary>剪贴板双向同步（被控端）：会话期间在主控端与本机之间同步纯文本剪贴板。
+    /// 关闭后整个会话不监听本机剪贴板，也不写入对端推来的内容。</summary>
+    [JsonPropertyName("ClipboardSyncEnabled")]
+    public bool ClipboardSyncEnabled { get; set; } = true;
+
     /// <summary>远程设备备注（设备 ID → 备注文本；仅本机可见，不上传服务器）。</summary>
     [JsonPropertyName("DeviceRemarks")]
     public Dictionary<string, string> DeviceRemarks { get; set; } = new();

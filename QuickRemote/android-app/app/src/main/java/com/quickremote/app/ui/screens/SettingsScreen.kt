@@ -62,8 +62,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.content.FileProvider
 import com.quickremote.app.BuildConfig
+import com.quickremote.app.data.PairingPayload
 import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.ResolutionMode
+import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.Border
@@ -191,6 +193,42 @@ fun SettingsScreen(
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     placeholder = { Text("未设置，请输入", style = MaterialTheme.typography.bodyMedium, color = TextMuted) }
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        val clip = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                        val text = clip.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                        if (text.isNullOrBlank()) {
+                            isError = true
+                            statusMessage = "剪贴板为空"
+                        } else {
+                            PairingPayload.parse(text)
+                                .onSuccess { info ->
+                                    // 同步输入框显示（服务器地址/密钥已随导入变更）
+                                    serverAddress = info.addr
+                                    pskInput = info.psk
+                                    viewModel.importServerConfig(
+                                        ServerConfig(address = info.addr, preSharedKey = info.psk)
+                                    )
+                                    isError = false
+                                    statusMessage = if (info.name.isBlank()) {
+                                        "已导入配置"
+                                    } else {
+                                        "已导入配置：${info.name}"
+                                    }
+                                }
+                                .onFailure {
+                                    isError = true
+                                    statusMessage = "导入失败：${it.message ?: "内容无效"}"
+                                }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(40.dp),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text("粘贴配置导入", style = MaterialTheme.typography.labelMedium)
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = { showResetPsk = true },
@@ -360,18 +398,6 @@ fun SettingsScreen(
                     "左右滑切换虚拟桌面 / 轻点通知中心",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 音频
-            SectionTitle("音频")
-            SettingCard {
-                ToggleRow(
-                    label = "音频重定向",
-                    checked = settings.audioRedirect,
-                    onCheckedChange = { settings = settings.copy(audioRedirect = it) }
                 )
             }
 

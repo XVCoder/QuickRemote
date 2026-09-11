@@ -1,0 +1,87 @@
+<Window x:Class="QuickRemote.PCClient.Views.PairingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="360" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource UiFont}">
+    <Border Background="{StaticResource BgSecondaryBrush}"
+            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            CornerRadius="14">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏 -->
+            <Border Grid.Row="0" Background="Transparent"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid Height="46" Margin="20,0,8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="手机配对"
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Click="BtnClose_Click"
+                            Style="{StaticResource TitleCloseButton}">
+                        <Path Data="M3,3 L9,9 M9,3 L3,9" Width="12" Height="12"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- 内容 -->
+            <StackPanel Grid.Row="1" Margin="22,4,22,8">
+
+                <!-- 密钥仍是默认值时的警告条 -->
+                <Border x:Name="WarnBar" CornerRadius="6" Padding="10,8" Margin="0,0,0,12"
+                        Background="#33F59E0B" BorderBrush="#66F59E0B" BorderThickness="1"
+                        Visibility="Collapsed">
+                    <TextBlock Text="当前预共享密钥仍是默认值，建议先修改后再配对"
+                               FontSize="11.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource WarningBrush}"/>
+                </Border>
+
+                <!-- 二维码：白底是为了保证扫码对比度 -->
+                <Border Background="White" CornerRadius="8" Padding="12"
+                        HorizontalAlignment="Center">
+                    <Image x:Name="QrImage" Width="216" Height="216"
+                           RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                </Border>
+
+                <TextBlock Text="用手机相机扫描二维码，或复制配置串后在 App 设置页「粘贴配置导入」"
+                           FontSize="11.5" TextWrapping="Wrap" Margin="0,12,0,8"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                <TextBox x:Name="PayloadBox" IsReadOnly="True" TextWrapping="Wrap"
+                         MaxHeight="52" VerticalScrollBarVisibility="Auto"
+                         FontSize="10.5" Padding="8,6"
+                         Background="{StaticResource BgPrimaryBrush}"
+                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                         Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                <TextBlock Text="请勿截图分享此二维码，它等同于你的密钥"
+                           FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                           Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+
+            <!-- 按钮 -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                        Margin="20,10,20,20">
+                <Button x:Name="BtnCopy" Content="复制配置串" MinWidth="100"
+                        Click="BtnCopy_Click" Margin="0,0,10,0"
+                        Style="{StaticResource ActionButton}"/>
+                <Button Content="关闭" MinWidth="88"
+                        Click="BtnClose_Click"
+                        Style="{StaticResource PrimaryActionButton}"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
