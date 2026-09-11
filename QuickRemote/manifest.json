@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.71",
-    "changelog": "键盘弹起时右下角按钮改「回车」（全屏模式下浮出回车按钮）；修复切换输入法时的严重卡顿（SurfaceView 尺寸变化导致 H.264 解码器被逐帧重建）；修复 Surface 销毁时未释放解码器的隐患",
+    "latest_version": "1.0.72",
+    "changelog": "修复切后台/锁屏后远程断开（会话期保活锁 + 断线判定与前后台联动）；修复重连凭证失效导致的\"一直连不上\"（自动重新认证）；隧道新增读超时防半开连接僵死；回到前台自动恢复会话；会话界面工具栏等宽瘦身",
     "versions": {
+      "1.0.72": {
+        "apk": "https://qd.solutionx.top/d/p/2e31bbf7-89de-49d4-9e49-9a75dc180d7f"
+      },
       "1.0.71": {
         "apk": "https://qd.solutionx.top/d/p/0baa0cf1-37a8-4475-b39d-354aefa824bd"
       },
       "1.0.70": {
         "apk": "https://qd.solutionx.top/d/p/cf5b0695-6b7c-4d75-b15d-39c8fcdf6f3a"
-      },
-      "1.0.69": {
-        "apk": "https://qd.solutionx.top/d/p/148880c9-510e-4fdf-b0da-3b00491c2cd3"
       }
     }
   }
