@@ -31,10 +31,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardCommandKey
+import androidx.compose.material.icons.filled.KeyboardControlKey
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
@@ -271,6 +273,35 @@ fun RemoteSessionScreen(
     var showHotkeyPanel by remember { mutableStateOf(false) }
     var stickyMods by remember { mutableStateOf(setOf<Int>()) }
 
+    // 底部 Shift/Ctrl（键盘弹起时替换画质/旋转按钮）的三态：
+    // NONE → 单击 → ONESHOT（「单击效果」：修饰下一个按键，组合发出后自动失效）
+    // ONESHOT → 300ms 内再点 → LOCKED（「长按效果」：持续修饰后续输入，再点一次解除）
+    var bottomModStates by remember {
+        mutableStateOf(mapOf(VK_SHIFT to ModKeyState.NONE, VK_CONTROL to ModKeyState.NONE))
+    }
+    var bottomModLastTapAt by remember { mutableStateOf(mapOf<Int, Long>()) }
+
+    /** 底部修饰键点击：NONE→单击激活；单击后 300ms 内再点→长按锁定；长按中再点→解除。 */
+    fun onBottomModTap(vk: Int) {
+        val now = System.currentTimeMillis()
+        val next = when (bottomModStates[vk] ?: ModKeyState.NONE) {
+            ModKeyState.NONE -> ModKeyState.ONESHOT
+            ModKeyState.ONESHOT ->
+                if (now - (bottomModLastTapAt[vk] ?: 0L) < 300) ModKeyState.LOCKED
+                else ModKeyState.ONESHOT // 超时后再点：重新计时，维持单击态
+            ModKeyState.LOCKED -> ModKeyState.NONE
+        }
+        bottomModStates = bottomModStates + (vk to next)
+        bottomModLastTapAt = bottomModLastTapAt + (vk to now)
+    }
+
+    // 键盘收起时复位底部修饰键（按钮已还原为画质/旋转，残留的修饰态不应影响后续输入）
+    LaunchedEffect(isKeyboardVisible) {
+        if (!isKeyboardVisible) {
+            bottomModStates = mapOf(VK_SHIFT to ModKeyState.NONE, VK_CONTROL to ModKeyState.NONE)
+        }
+    }
+
     // 画质快捷面板显示状态（会话内直接切换档位，无需断开重连）
     var showQualityPanel by remember { mutableStateOf(false) }
     val qualityPercent by viewModel.qualityPercent.collectAsState()
@@ -308,7 +339,9 @@ fun RemoteSessionScreen(
      * 修饰键顺序：先按下所有激活的修饰键 → 目标键按下/释放 → 释放修饰键。
      */
     fun sendKeyCombo(vk: Int, needShift: Boolean = false) {
-        val mods = stickyMods.toList()
+        // 底部 Shift/Ctrl 的「单击」态与快捷键面板粘滞修饰键合并生效（「长按」态同样逐组合修饰）
+        val oneShot = bottomModStates.filterValues { it == ModKeyState.ONESHOT }.keys
+        val mods = (stickyMods + oneShot).toList()
         val shiftExtra = needShift && 0x10 !in mods
         if (shiftExtra) sendKeyRaw(0x10, true)
         mods.forEach { sendKeyRaw(it, true) }
@@ -316,6 +349,12 @@ fun RemoteSessionScreen(
         sendKeyRaw(vk, false)
         mods.forEach { sendKeyRaw(it, false) }
         if (shiftExtra) sendKeyRaw(0x10, false)
+        // 「单击效果」：ONESHOT 修饰键作用于本次组合后自动失效（LOCKED 长按不受影响）
+        if (oneShot.isNotEmpty()) {
+            bottomModStates = bottomModStates.mapValues { (k, v) ->
+                if (k in oneShot) ModKeyState.NONE else v
+            }
+        }
     }
 
     /**
@@ -343,6 +382,13 @@ fun RemoteSessionScreen(
             }
         }
         flushUnicode()
+        // 中文/emoji 等 Unicode 上屏不携带按键状态，但「单击」修饰键视为已消耗，
+        // 避免滞留到之后毫不相关的英文输入上（「长按」LOCKED 态保持）
+        if (bottomModStates.any { it.value == ModKeyState.ONESHOT }) {
+            bottomModStates = bottomModStates.mapValues { (_, v) ->
+                if (v == ModKeyState.ONESHOT) ModKeyState.NONE else v
+            }
+        }
     }
 
     /** 唤起/收起软键盘（工具栏按钮与全屏悬浮按钮共用）。 */
@@ -482,20 +528,40 @@ fun RemoteSessionScreen(
                         modifier = Modifier.weight(1f),
                         onClick = { showHotkeyPanel = !showHotkeyPanel }
                     )
-                    ToolBarButton(
-                        icon = Icons.Filled.ScreenRotation,
-                        label = "旋转",
-                        active = isLandscape,
-                        modifier = Modifier.weight(1f),
-                        onClick = { toggleOrientation() }
-                    )
-                    ToolBarButton(
-                        icon = Icons.Filled.Tune,
-                        label = "画质",
-                        active = showQualityPanel,
-                        modifier = Modifier.weight(1f),
-                        onClick = { showQualityPanel = !showQualityPanel }
-                    )
+                    // 键盘弹起时「旋转/画质」让位给「Ctrl/Shift」：正在输入时修饰键比
+                    // 切屏/调画质常用得多。单击 = 修饰下一个输入（自动失效）；
+                    // 300ms 内快速再点 = 长按锁定（持续修饰），再次单击解除（高亮表示激活）
+                    if (isKeyboardVisible) {
+                        ToolBarButton(
+                            icon = Icons.Filled.KeyboardControlKey,
+                            label = "Ctrl",
+                            active = bottomModStates[VK_CONTROL] != ModKeyState.NONE,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onBottomModTap(VK_CONTROL) }
+                        )
+                        ToolBarButton(
+                            icon = Icons.Filled.ArrowUpward,
+                            label = "Shift",
+                            active = bottomModStates[VK_SHIFT] != ModKeyState.NONE,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onBottomModTap(VK_SHIFT) }
+                        )
+                    } else {
+                        ToolBarButton(
+                            icon = Icons.Filled.ScreenRotation,
+                            label = "旋转",
+                            active = isLandscape,
+                            modifier = Modifier.weight(1f),
+                            onClick = { toggleOrientation() }
+                        )
+                        ToolBarButton(
+                            icon = Icons.Filled.Tune,
+                            label = "画质",
+                            active = showQualityPanel,
+                            modifier = Modifier.weight(1f),
+                            onClick = { showQualityPanel = !showQualityPanel }
+                        )
+                    }
                     // 键盘弹起时右端按钮让位给「回车」：此刻用户正在输入，一个紧贴键盘、
                     // 触手可及的 Enter 比「切换全屏」有用得多（收起键盘后全屏按钮自动回来）
                     if (isKeyboardVisible) {
@@ -1551,6 +1617,9 @@ private fun sendGestureKeys(viewModel: SessionViewModel, gesture: TouchpadGestur
         }
     }
 }
+
+/** 底部修饰键三态：NONE 无 / ONESHOT 单击（修饰下一个输入后自动失效）/ LOCKED 长按（双击触发，持续生效）。 */
+private enum class ModKeyState { NONE, ONESHOT, LOCKED }
 
 /** 画质档位定义与会话内/设置页共用的 4 档预设见 `data/models/Models.kt`（QUALITY_PRESETS）。 */
 
