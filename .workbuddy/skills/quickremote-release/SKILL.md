@@ -270,6 +270,22 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 > **MCP 侧无解**：需要用户在 qd.solutionx.top 控制台把 `quickremote-about` 应用的
 > 归属 key 换绑到当前 MCP key（mcp.json 中 qdrl 的 Bearer）。
 > 换绑后重新执行第 5 步即可，tar.gz 已上传不必重传。
+>
+> ✅ 2026-09-11 已实际发生一次并解除：用户换绑 key 后 `upgrade_app` 一次成功
+> （v1.0.99，蓝绿部署，端口 20105）。遇到同样报错直接让用户换绑，不要反复重试上传。
+
+### 部署后校验（必做）
+
+```bash
+curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/about" \
+  | grep -oE "1\.1\.[0-9]+|1\.0\.[0-9]+" | sort | uniq -c
+```
+
+判据：**PC 与 Android 两个版本号应各出现 2 次**（下载卡片 + 教程步骤两处文案）。
+只出现 1 次 ⇒ 两处文案不同步（见第 9 条坑），必须补改后重新打包部署。
+
+> 注：沙箱里 `curl -o /tmp/x.html` 后再 grep 常报 "No such file or directory"
+> （写入路径与后续读取不在同一视图），改用**管道直接 grep** 一次成功。
 
 ---
 
@@ -282,14 +298,19 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 3. `mcp__qdrl__delete_file`（`file_id`）逐个删除
 4. 同步从 manifest.json 的 `versions` 中移除对应条目，确保没有残留死链
 
+**根目录的 about 包也要顺手清理**：`QuickRemote-about-v{X}.tar.gz` 会一直堆在根目录（不在三个子目录里，
+容易漏）。同样保留最近 3 个，`delete_file` 删更早的。
+> 删除是安全的：应用部署时平台已把包复制进版本目录，file 区的 tar.gz 只是升级时的来源。
+> 根目录另有 manifest.json / CHANGELOG.md / install.sh 三个文件**绝对不能删**。
+
 ---
 
 ## 当前线上版本（2026-09-11）
 
 - relay-server **1.0.7**：amd64 `…/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935`，arm64 `…/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835`
 - pc-client **1.1.63**：`…/d/p/b0ac4dd3-c7ec-438f-9033-e7c8e14ac2a6`
-- android-app **1.0.70**（versionCode 70）：`…/d/p/cf5b0695-6b7c-4d75-b15d-39c8fcdf6f3a`
-- about **v1.0.99**：包 `…/d/p/87e8a684-47fa-407c-ba1a-73c4ccfc0302`（待 key 换绑后部署）
+- android-app **1.0.71**（versionCode 71）：`…/d/p/0baa0cf1-37a8-4475-b39d-354aefa824bd`
+- about **v1.0.100**：包 `…/d/p/0079333d-dcf0-4791-a0db-d3131ab575bb`（2026-09-11 已部署，端口 20106）
 
 ## MCP 工具速查（全部为 `mcp__qdrl__*`）
 

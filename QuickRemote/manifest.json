@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.70",
-    "changelog": "扫码配对与粘贴配置导入；会话内画质快捷切换（四档，无需重连）；断线自动重连（1→2→4→8→15 秒共 8 次，带倒计时浮层）；剪贴板双向同步；移除无效的音频重定向开关",
+    "latest_version": "1.0.71",
+    "changelog": "键盘弹起时右下角按钮改「回车」（全屏模式下浮出回车按钮）；修复切换输入法时的严重卡顿（SurfaceView 尺寸变化导致 H.264 解码器被逐帧重建）；修复 Surface 销毁时未释放解码器的隐患",
     "versions": {
+      "1.0.71": {
+        "apk": "https://qd.solutionx.top/d/p/0baa0cf1-37a8-4475-b39d-354aefa824bd"
+      },
       "1.0.70": {
         "apk": "https://qd.solutionx.top/d/p/cf5b0695-6b7c-4d75-b15d-39c8fcdf6f3a"
       },
       "1.0.69": {
         "apk": "https://qd.solutionx.top/d/p/148880c9-510e-4fdf-b0da-3b00491c2cd3"
-      },
-      "1.0.68": {
-        "apk": "https://qd.solutionx.top/d/p/56f5997d-05c2-4ec5-a414-16a4e0b8304a"
       }
     }
   }
