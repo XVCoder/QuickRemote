@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <RootNamespace>QuickRemote.PCClient</RootNamespace>
     <AssemblyName>QuickRemote.PCClient</AssemblyName>
-    <Version>1.1.63</Version>
+    <Version>1.1.64</Version>
     <Company>QuickRemote</Company>
     <Product>QuickRemote PC Client</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>

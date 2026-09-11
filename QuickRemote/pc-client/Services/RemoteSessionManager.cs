@@ -158,6 +158,15 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>连接断开时自动锁屏（被控端）：会话曾建立且非新连接接管时调用 LockWorkStation。</summary>
     public volatile bool LockOnDisconnect = true;
 
+    /// <summary>断开延迟锁屏宽限期（v1.1.64）：异常断开后等待 30 秒，给 Android 自动重连留窗口。</summary>
+    private const int LockGraceMs = 30000;
+
+    /// <summary>延迟锁屏的取消源（ScheduleDisconnectLock 设置，重连/接管/退出时取消）。</summary>
+    private CancellationTokenSource? _pendingLockCts;
+
+    /// <summary>延迟锁屏状态转换锁（调度/取消/立即执行互斥）。</summary>
+    private readonly object _pendingLockGate = new();
+
     /// <summary>剪贴板双向同步开关（被控端）：会话建立时读取，false = 整个会话不监听也不接收剪贴板。</summary>
     public volatile bool ClipboardSyncEnabled = true;
 
@@ -215,6 +224,9 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>启动远程会话（中继隧道模式）。</summary>
     public async Task<bool> StartAsync(string sessionId, string serverHost, int tunnelPort)
     {
+        // 断开延迟锁屏（v1.1.64）：新会话启动即取消待定锁屏——30s 宽限期内重连成功不锁屏
+        CancelPendingLock();
+
         // 新连接接管（v1.1.38）：旧会话可能因客户端半死连接成为僵尸——手机切后台被系统
         // 杀掉时 TCP 无 FIN，中继链路无 keepalive 感知不到，PC 端 ReadLoop 永远阻塞，
         // _running 永远为 true，此后所有新连接（中继/局域网）都被静默拒绝（Android 表现
@@ -253,11 +265,14 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>启动远程会话（局域网直连模式，连接已由 LanListener 认证建立）。</summary>
     public async Task<bool> StartLocalAsync(string sessionId, System.Net.Sockets.TcpClient client)
     {
+        // 断开延迟锁屏（v1.1.64）：新会话启动即取消待定锁屏（同 StartAsync）
+        CancelPendingLock();
+
         // 新连接接管（同 StartAsync——僵尸会话不论新旧模式都必须能被新连接替换）
         if (_running)
         {
             _logger.Warn($"Session takeover: new LAN session {sessionId} replaces active session {SessionId}");
-            Cleanup();
+            Cleanup(isTakeover: true); // 接管不触发断开锁屏（与 StartAsync 中继路径对齐）
         }
 
         SessionId = sessionId;
@@ -1703,26 +1718,96 @@ public sealed class RemoteSessionManager : IDisposable
         }
     }
 
+    /// <summary>执行 LockWorkStation 并记录结果（延迟锁屏与退出补锁共用）。</summary>
+    private void TryLockWorkStation(string context)
+    {
+        try
+        {
+            if (LockWorkStation())
+                _logger.Info($"Workstation locked on disconnect ({context})");
+            else
+                _logger.Warn($"LockWorkStation failed: win32 error {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"LockWorkStation error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 断开延迟锁屏（v1.1.64）：异常断开后延迟 30 秒再锁屏——Android v1.0.72 起断线
+    /// 自动重连（1→2→4→8→15s 退避，8 次约 75 秒，多数 30 秒内成功），立即锁屏会让
+    /// 重连回来的手机直接面对锁屏画面。30 秒窗口内新会话启动/接管（StartAsync /
+    /// StartLocalAsync 入口）会取消待定锁屏；窗口内无人重连才真正 LockWorkStation。
+    /// </summary>
+    private void ScheduleDisconnectLock()
+    {
+        lock (_pendingLockGate)
+        {
+            CancelPendingLockCore();
+            var cts = new CancellationTokenSource();
+            _pendingLockCts = cts;
+            var token = cts.Token;
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(LockGraceMs, token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; } // 窗口期内重连/接管，锁屏已取消
+                if (_running) return; // 双保险：窗口期有会话在跑（理论上已被取消）则不锁
+                _logger.Info($"Disconnect lock grace ({LockGraceMs / 1000}s) expired with no reconnect");
+                TryLockWorkStation("grace expired");
+            });
+        }
+        _logger.Info($"Disconnect lock scheduled: LockWorkStation in {LockGraceMs / 1000}s unless reconnected");
+    }
+
+    /// <summary>取消待执行的延迟锁屏（新会话启动/接管时调用）。</summary>
+    private void CancelPendingLock()
+    {
+        lock (_pendingLockGate)
+        {
+            if (_pendingLockCts != null)
+                _logger.Info("Pending disconnect lock cancelled (new session starting)");
+            CancelPendingLockCore();
+        }
+    }
+
+    private void CancelPendingLockCore()
+    {
+        var cts = _pendingLockCts;
+        _pendingLockCts = null;
+        if (cts == null) return;
+        try { cts.Cancel(); } catch { }
+        try { cts.Dispose(); } catch { }
+    }
+
+    /// <summary>
+    /// 立即执行待定的延迟锁屏（Dispose 进程退出路径调用）：30s 定时器是后台线程池任务，
+    /// 进程退出即消亡，等不到自然触发；同步补执行，保持旧版「退出客户端即锁屏」语义。
+    /// </summary>
+    private void ExecutePendingLockNow()
+    {
+        lock (_pendingLockGate)
+        {
+            if (_pendingLockCts == null) return;
+            CancelPendingLockCore();
+        }
+        TryLockWorkStation("client disposing");
+    }
+
     /// <summary>
     /// 停止并清理会话。isTakeover=true 表示被新连接接管（不触发断开锁屏）。
+    /// 断开锁屏为延迟执行（v1.1.64）：30 秒宽限期内重连成功则取消，见 ScheduleDisconnectLock。
     /// </summary>
     private void Cleanup(bool isTakeover = false)
     {
-        // 断开自动锁屏（v1.1.54）：会话曾真实建立（_sessionInfo 非空 = 验证通过并推流过）
-        // 且非新连接接管时，锁定本机桌面保护隐私。接管场景新连接即将继续控制，不能锁。
+        // 断开自动锁屏（v1.1.54 引入；v1.1.64 改延迟 30s）：会话曾真实建立
+        // （_sessionInfo 非空 = 验证通过并推流过）且非新连接接管时，锁定本机桌面
+        // 保护隐私。接管场景新连接即将继续控制，不能锁。
+        // 延迟动机：Android v1.0.72 起断线自动重连（退避最长约 75s，多数 30s 内
+        // 成功），立即锁屏会让重连回来的手机直接面对锁屏画面，恢复体验断裂。
         if (!isTakeover && LockOnDisconnect && _sessionInfo != null)
         {
-            try
-            {
-                if (LockWorkStation())
-                    _logger.Info("Workstation locked on disconnect");
-                else
-                    _logger.Warn($"LockWorkStation failed: win32 error {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
-            }
-            catch (Exception ex)
-            {
-                _logger.Warn($"LockWorkStation error: {ex.Message}");
-            }
+            ScheduleDisconnectLock();
         }
         // 验证状态复位（超时/断开路径兜底；Monitor 可重入，HandleAuthRequest 持锁路径安全）
         lock (_authLock)
@@ -1802,6 +1887,9 @@ public sealed class RemoteSessionManager : IDisposable
         if (_disposed) return;
         _disposed = true;
         Cleanup();
+        // 进程即将退出：延迟锁屏的后台定时器等不到触发（线程池任务随进程消亡），
+        // 立即补执行，保持旧版「关闭客户端即锁屏」的隐私语义
+        ExecutePendingLockNow();
         try { _frameQueue.Dispose(); } catch { }
         try { _sendQueue.Dispose(); } catch { }
     }

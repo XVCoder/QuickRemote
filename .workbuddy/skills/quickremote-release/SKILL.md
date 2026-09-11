@@ -309,8 +309,8 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 
 - relay-server **1.0.7**：amd64 `…/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935`，arm64 `…/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835`
 - pc-client **1.1.63**：`…/d/p/b0ac4dd3-c7ec-438f-9033-e7c8e14ac2a6`
-- android-app **1.0.71**（versionCode 71）：`…/d/p/0baa0cf1-37a8-4475-b39d-354aefa824bd`
-- about **v1.0.100**：包 `…/d/p/0079333d-dcf0-4791-a0db-d3131ab575bb`（2026-09-11 已部署，端口 20106）
+- android-app **1.0.72**（versionCode 72）：`…/d/p/2e31bbf7-89de-49d4-9e49-9a75dc180d7f`
+- about **v1.0.101**：包 `…/d/p/5ca245b0-c692-4542-8e19-0cf1767d546c`（2026-09-11 已部署，端口 20107）
 
 ## MCP 工具速查（全部为 `mcp__qdrl__*`）
 
