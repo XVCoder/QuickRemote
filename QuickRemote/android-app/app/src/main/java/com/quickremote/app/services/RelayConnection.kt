@@ -69,23 +69,44 @@ class RelayConnection(
         }
     }
 
-    /** 获取在线设备列表。若 token 为空会先认证。 */
-    fun getDevices(): List<Device> {
-        if (token.isEmpty()) {
-            val ok = authenticate(serverConfig)
-            if (!ok) throw IllegalStateException("未认证")
-        }
-        return api.getDevices(serverConfig.address, token).devices
+    /** 获取在线设备列表。token 为空或已失效时自动认证/重认证。 */
+    fun getDevices(): List<Device> =
+        withAuthRetry { api.getDevices(serverConfig.address, token).devices }
+
+    /** 请求建立到指定设备的隧道。token 为空或已失效时自动认证/重认证。 */
+    fun requestTunnel(deviceId: String): TunnelResponse {
+        logger.info("Requesting tunnel for device=$deviceId")
+        return withAuthRetry { api.requestTunnel(serverConfig.address, token, deviceId) }
     }
 
-    /** 请求建立到指定设备的隧道。 */
-    fun requestTunnel(deviceId: String): TunnelResponse {
-        if (token.isEmpty()) {
-            val ok = authenticate(serverConfig)
-            if (!ok) throw IllegalStateException("未认证")
+    /** 保证有可用 token：为空时先认证，失败抛 IllegalStateException。 */
+    private fun ensureToken() {
+        if (token.isEmpty() && !authenticate(serverConfig)) {
+            throw IllegalStateException("未认证")
         }
-        logger.info("Requesting tunnel for device=$deviceId")
-        return api.requestTunnel(serverConfig.address, token, deviceId)
+    }
+
+    /**
+     * 带「401 自动重认证」的执行包装。
+     *
+     * 为什么必须做：原先只在 `token.isEmpty()` 时才认证，token 一旦过期或被服务端失效
+     * （服务端重启、token TTL 到期），后续每一次调用都会拿着**同一个坏 token** 反复失败。
+     * 对用户的表现就是「断线后点重连一直连不上，退回列表页再进来又能连上」——
+     * 因为重进页面会新建连接对象，token 才被清掉重认证。这里把这条路彻底堵上。
+     *
+     * 注意：401 也可能是预共享密钥不对（认证本身就失败）→ 此时 authenticate 返回 false，
+     * 原样抛出第一次的异常，不会无限重试。
+     */
+    private inline fun <T> withAuthRetry(block: () -> T): T {
+        ensureToken()
+        return try {
+            block()
+        } catch (e: ApiException) {
+            if (e.code != 401) throw e
+            logger.warn("Got 401 (token expired/invalid), re-authenticating and retrying once")
+            if (!authenticate(serverConfig)) throw e
+            block()
+        }
     }
 
     /** 上传日志。 */

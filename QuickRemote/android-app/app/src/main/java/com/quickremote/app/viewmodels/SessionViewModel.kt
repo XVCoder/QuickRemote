@@ -13,6 +13,7 @@ import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.Logger
 import com.quickremote.app.services.ReconnectPolicy
 import com.quickremote.app.services.RemoteSessionManager
+import com.quickremote.app.services.SessionKeepAlive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -35,6 +36,16 @@ class SessionViewModel(
     private val settingsStore: SettingsStore,
     private val sessionManager: RemoteSessionManager = RemoteSessionManager(logger = Logger())
 ) : AndroidViewModel(app) {
+
+    /**
+     * 会话期间的 CPU 保活锁：仅在已连接时持有，断线/退出立即释放。
+     * 没有它时，App 切后台/锁屏会被系统冻结，隧道 socket 收不到心跳而被判超时 ——
+     * 即「一进后台就断线」。
+     */
+    private val keepAlive = SessionKeepAlive(app)
+
+    /** 用户主动断开过：回到前台时不应自动重连（尊重用户意图）。 */
+    private var userDisconnected = false
 
     val state: StateFlow<RemoteSessionManager.SessionState> get() = _state
     private val _state = MutableStateFlow(RemoteSessionManager.SessionState.IDLE)
@@ -126,6 +137,10 @@ class SessionViewModel(
             } else {
                 _tunnel.value = sessionManager.tunnel
             }
+
+            // 保活锁只在会话建立后持有：连接中/失败/断开一律释放，避免无谓耗电
+            if (state == RemoteSessionManager.SessionState.CONNECTED) keepAlive.acquire()
+            else keepAlive.release()
 
             when (state) {
                 RemoteSessionManager.SessionState.FAILED -> onSessionFailed()
@@ -221,6 +236,7 @@ class SessionViewModel(
             return
         }
         cancelReconnect()
+        userDisconnected = false
         _device.value = device
         _state.value = RemoteSessionManager.SessionState.CONNECTING
         _errorMessage.value = ""
@@ -331,11 +347,48 @@ class SessionViewModel(
     /** 断开当前会话。 */
     fun disconnect() {
         cancelReconnect()
+        // 用户主动断开：回到前台时不再自动重连（尊重用户意图，避免"我明明关了它又连上"）
+        userDisconnected = true
         viewModelScope.launch {
             withContext(Dispatchers.IO) { sessionManager.disconnect() }
             _state.value = sessionManager.state
             _tunnel.value = null
         }
+    }
+
+    /** App 进入后台/锁屏：暂停看门狗超时判定（此刻"没数据"不代表链路已死）。 */
+    fun onAppBackground() {
+        sessionManager.setAppForeground(false)
+    }
+
+    /**
+     * App 回到前台。
+     *
+     * 1. 恢复看门狗判定并给一段宽限期（见 RemoteSessionManager.setAppForeground）；
+     * 2. 若会话已断开 —— 包括"后台期间自动重连 8 次全部用光"这种 —— 立刻从零重试一次。
+     *
+     * 此前回到前台只会停在"已断开"界面干等用户手动点重连，而自动重连上限仅 8 次/约 75 秒，
+     * 锁屏稍久就耗尽，用户感知就是「锁屏回来点重连一直连不上」。
+     */
+    fun onAppForeground() {
+        sessionManager.setAppForeground(true)
+        val device = _device.value ?: return
+        if (userDisconnected) return
+        when (sessionManager.state) {
+            RemoteSessionManager.SessionState.CONNECTED,
+            RemoteSessionManager.SessionState.CONNECTING,
+            // IDLE：本页还没发起过会话（首次进入的 ON_RESUME 会落到这里），
+            // 交给页面自己的 LaunchedEffect 处理，避免重复建连
+            RemoteSessionManager.SessionState.IDLE -> return
+            else -> Unit
+        }
+        // 验证码流程进行中不自动重连：否则会反复弹验证框
+        if (_authRequired.value || _authError.value != null) return
+        // 与自动重连同一套白名单：服务器明确拒绝/用户主动断开这类"重试必然失败"的原因不补
+        if (!ReconnectPolicy.shouldAutoReconnect(sessionManager.lastDisconnectReason)) return
+        reconnectAttempt = 0
+        cancelReconnect()
+        startSession(device)
     }
 
     fun toggleFullscreen() {
@@ -365,6 +418,8 @@ class SessionViewModel(
     }
 
     override fun onCleared() {
+        // 保活锁必须显式释放：ViewModel 销毁后没人再持有引用，漏放会一直耗电
+        keepAlive.release()
         sessionManager.reset()
         super.onCleared()
     }

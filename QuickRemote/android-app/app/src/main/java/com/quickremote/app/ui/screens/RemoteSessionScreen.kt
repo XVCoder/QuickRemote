@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -76,10 +77,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.app.Activity
@@ -176,7 +179,17 @@ fun RemoteSessionScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.syncClipboard()
+            when (event) {
+                // 回到前台：恢复看门狗判定、必要时自动补一次重连，并上报本机剪贴板
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.onAppForeground()
+                    viewModel.syncClipboard()
+                }
+                // 切到后台/锁屏：暂停看门狗超时判定 —— 否则"切出去那几十秒没收到数据"
+                // 会被当成链路已死，回来必然看到断开（这正是"一进后台就断线"的成因之一）
+                Lifecycle.Event.ON_STOP -> viewModel.onAppBackground()
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -392,40 +405,48 @@ fun RemoteSessionScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             if (!isFullscreen) {
+                // 紧凑顶部栏：垂直留白压到 2dp、图标按钮 38dp（Material3 IconButton 的
+                // 48dp 最小触控尺寸会把这一条顶到 64dp，屏幕高度浪费在纯留白上）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = TextPrimary
-                        )
-                    }
+                    CompactIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = TextPrimary,
+                        onClick = onBack
+                    )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             device.hostname.ifBlank { device.device_id },
                             style = MaterialTheme.typography.titleSmall,
                             color = TextPrimary,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             if (videoWidth > 0) {
                                 "$videoWidth x $videoHeight · " +
                                     if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) "局域网直连" else "公网中继"
                             } else "远程桌面",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) Success else TextMuted
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) Success else TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    IconButton(onClick = { viewModel.disconnect(); onBack() }) {
-                        Icon(Icons.Filled.LinkOff, contentDescription = "断开连接", tint = Warning)
-                    }
+                    CompactIconButton(
+                        icon = Icons.Filled.LinkOff,
+                        contentDescription = "断开连接",
+                        tint = Warning,
+                        onClick = { viewModel.disconnect(); onBack() }
+                    )
                 }
             }
         },
@@ -439,32 +460,39 @@ fun RemoteSessionScreen(
                         // 用 imeLayoutInsets()（目标值）而非 WindowInsets.ime：动画值会让本行
                         // 每帧改一次高度，连带 Scaffold 内容区每帧重排（详见 imeLayoutInsets 注释）
                         .windowInsetsPadding(WindowInsets.navigationBars.union(imeLayoutInsets()))
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    // 按钮个数固定为 5，用 weight 均分：既保证五个按钮**宽度完全一致**
+                    // （此前 SpaceEvenly + 文字定宽，「快捷键」3 字比其它宽一截），
+                    // 也自动适配窄屏与横屏，不需要再缩字号
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ToolBarButton(
                         icon = Icons.Filled.Keyboard,
                         label = "键盘",
                         active = isKeyboardVisible,
+                        modifier = Modifier.weight(1f),
                         onClick = { toggleIme() }
                     )
                     ToolBarButton(
                         icon = Icons.Filled.KeyboardCommandKey,
                         label = "快捷键",
                         active = showHotkeyPanel,
+                        modifier = Modifier.weight(1f),
                         onClick = { showHotkeyPanel = !showHotkeyPanel }
                     )
                     ToolBarButton(
                         icon = Icons.Filled.ScreenRotation,
                         label = "旋转",
                         active = isLandscape,
+                        modifier = Modifier.weight(1f),
                         onClick = { toggleOrientation() }
                     )
                     ToolBarButton(
                         icon = Icons.Filled.Tune,
                         label = "画质",
                         active = showQualityPanel,
+                        modifier = Modifier.weight(1f),
                         onClick = { showQualityPanel = !showQualityPanel }
                     )
                     // 键盘弹起时右端按钮让位给「回车」：此刻用户正在输入，一个紧贴键盘、
@@ -474,6 +502,7 @@ fun RemoteSessionScreen(
                             icon = Icons.AutoMirrored.Filled.KeyboardReturn,
                             label = "回车",
                             active = false,
+                            modifier = Modifier.weight(1f),
                             onClick = { sendKeyCombo(0x0D) }
                         )
                     } else {
@@ -481,6 +510,7 @@ fun RemoteSessionScreen(
                             icon = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                             label = "全屏",
                             active = false,
+                            modifier = Modifier.weight(1f),
                             onClick = { viewModel.toggleFullscreen() }
                         )
                     }
@@ -1532,24 +1562,72 @@ private val QUALITY_PRESETS = listOf(
     QualityPreset(100, "原画")
 )
 
+/**
+ * 会话底部工具栏按钮。
+ *
+ * ⚠️ 尺寸一致性：整列宽度由调用方用 `Modifier.weight(1f)` 均分，
+ * 内部**不能**再让内容决定宽度 —— 否则「快捷键」（3 字）会比「键盘」「旋转」（2 字）
+ * 明显更宽，一排按钮看起来就是「大小不一致」。
+ * 同理不再用 Material3 的 IconButton：它带 48dp 最小触控尺寸，
+ * 会把这一行顶得过高（实测 92dp），而这里的图标本身已是可点区域。
+ */
 @Composable
 private fun ToolBarButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     active: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (active) BgCard else Color.Transparent)
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 5.dp)
     ) {
-        IconButton(onClick = onClick) {
-            Icon(icon, contentDescription = label, tint = if (active) Success else TextPrimary)
-        }
-        Text(label, style = MaterialTheme.typography.labelSmall, color = if (active) Success else TextMuted)
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = if (active) Success else TextPrimary,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) Success else TextMuted,
+            maxLines = 1,
+            softWrap = false
+        )
+    }
+}
+
+/** 顶部栏用的紧凑图标按钮（38dp 圆形，避开 Material3 IconButton 的 48dp 最小触控尺寸）。 */
+@Composable
+private fun CompactIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    tint: Color,
+    size: Dp = 38.dp,
+    iconSize: Dp = 22.dp,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(iconSize)
+        )
     }
 }
 

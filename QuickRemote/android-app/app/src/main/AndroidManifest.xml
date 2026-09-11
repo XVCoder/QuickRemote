@@ -4,6 +4,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+        远程会话期间的 CPU 保活锁：App 切到后台或锁屏后，系统会冻结进程 / 进入 Doze，
+        导致隧道 socket 收不到数据而被判超时断开。持有 PARTIAL_WAKE_LOCK 可让本进程
+        脱离 cached 状态、维持网络收发，会话结束立即释放（不会常驻耗电）。
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- App 内下载更新包并唤起系统安装器（Android 8+ 需声明才能触发"允许安装未知应用"引导） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

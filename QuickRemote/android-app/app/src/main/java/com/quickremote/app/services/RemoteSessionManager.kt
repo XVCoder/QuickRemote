@@ -15,6 +15,19 @@ private const val WATCHDOG_NO_DATA_TIMEOUT_MS = 30_000L
 private const val WATCHDOG_NO_VIDEO_TIMEOUT_MS = 30_000L
 
 /**
+ * 隧道 socket 的读超时。
+ *
+ * 必须设置：不设时 `read()` 会**永久阻塞**，半开连接（对端进程已死/网络已切走，
+ * 但本端收不到 FIN）会让接收线程静静挂死 —— 看门狗只看状态为 CONNECTED 的连接，
+ * 而状态一直是 CONNECTED，于是出现"没断但也没画面、点了没反应"的僵死态。
+ *
+ * 取值依据：PC 端会话循环每 5 秒发一个心跳帧（`RemoteSessionManager.SendHeartbeats`
+ * 同源逻辑，锁屏等待期间也保持），20 秒 = 连续漏掉 4 个心跳，正常会话不可能触发。
+ * 超时后按网络故障收尾 → 交给自动重连，比等 30 秒看门狗更快也更可靠。
+ */
+private const val SOCKET_READ_TIMEOUT_MS = 20_000
+
+/**
  * Android 端远程会话管理器（截屏方案，替代 FreeRDP）。
  *
  * 流程：认证 → 请求隧道 → 连接隧道服务器并发送 [0x02][session_id] 握手 →
@@ -120,6 +133,17 @@ class RemoteSessionManager(
 
     @Volatile
     private var running = false
+
+    /**
+     * App 是否处于前台。
+     *
+     * 看门狗只在**前台**判定超时：App 被切到后台/锁屏时，即使有保活锁，
+     * 网络与线程调度也都不受我们控制，此刻判定"无数据"会把一条本来还活着的连接杀掉 ——
+     * 这正是「一进后台就断线」的主因之一。回到前台时由 [setAppForeground] 给一段宽限期，
+     * 让积压的数据先流进来再恢复判定。
+     */
+    @Volatile
+    private var appForeground = true
 
     /** 事件监听器。 */
     interface Listener {
@@ -237,7 +261,7 @@ class RemoteSessionManager(
                 val host = t.tunnel_host.ifBlank { config.address.substringBefore(':') }
                 val port = if (t.tunnel_port > 0) t.tunnel_port else 8445
                 val sock = Socket(host, port)
-                sock.tcpNoDelay = true
+                configureSocket(sock)
                 this.tunnelSocket = sock
                 input = DataInputStream(sock.getInputStream())
                 val out = DataOutputStream(sock.getOutputStream())
@@ -286,6 +310,9 @@ class RemoteSessionManager(
                 try { Thread.sleep(WATCHDOG_CHECK_INTERVAL_MS) } catch (_: InterruptedException) { return@Thread }
                 if (!running || sessionGeneration.get() != gen || state != SessionState.CONNECTED) continue
                 if (pcLocked) continue
+                // 后台/锁屏期间不判超时：此刻的"没数据"不代表链路已死（见 appForeground 注释）。
+                // 真正死掉的链路由 socket 读超时（SOCKET_READ_TIMEOUT_MS）兜底。
+                if (!appForeground) continue
                 val now = System.currentTimeMillis()
                 if (now - lastDataAt > WATCHDOG_NO_DATA_TIMEOUT_MS) {
                     logger.warn("Watchdog: no data for ${(now - lastDataAt) / 1000}s, disconnecting")
@@ -416,7 +443,7 @@ class RemoteSessionManager(
     private fun tryLanDirect(lanIp: String, config: ServerConfig): Boolean {
         return try {
             val sock = Socket(lanIp, LanUtils.LAN_PORT)
-            sock.tcpNoDelay = true
+            configureSocket(sock)
             this.tunnelSocket = sock
             input = DataInputStream(sock.getInputStream())
             val out = DataOutputStream(sock.getOutputStream())
@@ -491,6 +518,10 @@ class RemoteSessionManager(
                     else -> logger.warn("Unknown frame type: 0x${type.toString(16)}")
                 }
             }
+        } catch (e: java.net.SocketTimeoutException) {
+            // 读超时 = 链路变哑（半开连接/网络切走）。PC 端正常时每 5 秒一个心跳，
+            // 连续 20 秒读不到任何东西说明这条路已经死了，按网络故障收尾并交给自动重连。
+            logger.warn("Receive loop timeout: no data for ${SOCKET_READ_TIMEOUT_MS / 1000}s (link dead)")
         } catch (e: Exception) {
             // 读线程退出=连接断开，记录原因（EOF=对端正常关闭，Reset=对端异常关闭）
             logger.warn("Receive loop exited: ${e.javaClass.name}: ${e.message}")
@@ -581,6 +612,43 @@ class RemoteSessionManager(
             listener?.onVideoFrame(w, h)
         } catch (e: Exception) {
             logger.warn("Control parse failed: ${e.message}")
+        }
+    }
+
+    /**
+     * 通知 App 前后台切换（由会话页在 ON_RESUME / ON_STOP 调用）。
+     *
+     * 回到前台时**重置数据活性时间戳**，给积压数据一段宽限期 ——
+     * 否则看门狗会在恢复的第一时间就把这条"刚回来、数据还在路上"的连接判死，
+     * 用户看到的就是"切出去再回来必然断开"。
+     */
+    fun setAppForeground(foreground: Boolean) {
+        if (appForeground == foreground) return
+        appForeground = foreground
+        if (foreground) {
+            val now = System.currentTimeMillis()
+            lastDataAt = now
+            connectedAt = now
+            lastVideoFrameAt = 0L
+            logger.info("App foregrounded: watchdog grace period restarted")
+        } else {
+            logger.info("App backgrounded: watchdog paused")
+        }
+    }
+
+    /**
+     * 隧道 socket 的通用配置：低延迟 + TCP keepalive + 读超时。
+     *
+     * 读超时必须设置，否则半开连接会让接收线程**永久阻塞**，
+     * 表现为"没断但也没画面"的僵死态（详见 [SOCKET_READ_TIMEOUT_MS]）。
+     */
+    private fun configureSocket(sock: Socket) {
+        try {
+            sock.tcpNoDelay = true
+            sock.keepAlive = true
+            sock.soTimeout = SOCKET_READ_TIMEOUT_MS
+        } catch (e: Exception) {
+            logger.warn("Configure socket failed: ${e.javaClass.name}: ${e.message}")
         }
     }
 
