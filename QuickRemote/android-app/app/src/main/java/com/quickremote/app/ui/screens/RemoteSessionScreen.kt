@@ -339,9 +339,11 @@ fun RemoteSessionScreen(
      * 修饰键顺序：先按下所有激活的修饰键 → 目标键按下/释放 → 释放修饰键。
      */
     fun sendKeyCombo(vk: Int, needShift: Boolean = false) {
-        // 底部 Shift/Ctrl 的「单击」态与快捷键面板粘滞修饰键合并生效（「长按」态同样逐组合修饰）
+        // 底部 Shift/Ctrl 的「单击」与「长按」态都参与修饰（v1.0.74 曾漏并 LOCKED，
+        // 症状：双击高亮但方向键不选字）；与快捷键面板粘滞修饰键按集合并去重
         val oneShot = bottomModStates.filterValues { it == ModKeyState.ONESHOT }.keys
-        val mods = (stickyMods + oneShot).toList()
+        val bottomMods = bottomModStates.filterValues { it != ModKeyState.NONE }.keys
+        val mods = (stickyMods + bottomMods).toList()
         val shiftExtra = needShift && 0x10 !in mods
         if (shiftExtra) sendKeyRaw(0x10, true)
         mods.forEach { sendKeyRaw(it, true) }

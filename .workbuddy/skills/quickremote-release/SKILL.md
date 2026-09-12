@@ -309,8 +309,8 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 
 - relay-server **1.0.7**：amd64 `…/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935`，arm64 `…/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835`
 - pc-client **1.1.64**：`…/d/p/d071d861-df1b-40c0-a9c7-c351f7c0a470`
-- android-app **1.0.73**（versionCode 73）：`…/d/p/69457656-1c94-4366-9571-51006a611cbb`
-- about **v1.0.103**：包 `…/d/p/929dcdee-da27-4622-93e3-95a09ac379b8`（2026-09-11 已部署，端口 20109）
+- android-app **1.0.74**（versionCode 74）：`…/d/p/1213dcff-5942-4a90-a80e-efdda48b0188`
+- about **v1.0.104**：包 `…/d/p/b787f9ed-8fbc-4f81-bd38-737de1e6c2ed`（2026-09-12 已部署，端口 20110）
 
 > ⚠️ 环境坑（2026-09-11 晚）：沙箱 bash PATH 可能整体损坏（`dirname`/`tail` not found、
 > MSYS 路径映射失效导致 `/e/...` 不可用，PowerShell stdout 被吞）。修复方式：bash 里
