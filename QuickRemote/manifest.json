@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.73",
-    "changelog": "设置页「画质」合并：原显示分辨率/颜色深度/图像质量三项合并为流畅/标准/高清/原画四档，与会话内画质按钮共用同一配置；移除无实际作用的显示分辨率与颜色深度死设置",
+    "latest_version": "1.0.74",
+    "changelog": "键盘弹起时底部「旋转/画质」自动变为「Ctrl」「Shift」修饰键：单击修饰下一个输入、快速双击长按锁定；收起键盘自动恢复；PC 端无需升级",
     "versions": {
+      "1.0.74": {
+        "apk": "https://qd.solutionx.top/d/p/1213dcff-5942-4a90-a80e-efdda48b0188"
+      },
       "1.0.73": {
         "apk": "https://qd.solutionx.top/d/p/69457656-1c94-4366-9571-51006a611cbb"
       },
       "1.0.72": {
         "apk": "https://qd.solutionx.top/d/p/2e31bbf7-89de-49d4-9e49-9a75dc180d7f"
-      },
-      "1.0.71": {
-        "apk": "https://qd.solutionx.top/d/p/0baa0cf1-37a8-4475-b39d-354aefa824bd"
       }
     }
   }
