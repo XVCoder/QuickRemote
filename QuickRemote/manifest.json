@@ -1,8 +1,12 @@
 {
   "relay-server": {
-    "latest_version": "1.0.7",
-    "changelog": "新增 PC→PC 远程控制支持：设备注册携带自定义名称（默认自动分配“PC客户端N”）、rename 改名协议、tunnel_open 隧道请求、device_list 全量设备列表广播（含离线设备）",
+    "latest_version": "1.0.8",
+    "changelog": "设备列表接口 GET /api/devices 新增可选参数 all=1，返回全部设备（含离线设备）；不带参数时行为与旧版完全一致，旧客户端升级零影响",
     "versions": {
+      "1.0.8": {
+        "amd64": "https://qd.solutionx.top/d/p/cfc52a23-36b5-464a-a626-8021538a381b",
+        "arm64": "https://qd.solutionx.top/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191"
+      },
       "1.0.7": {
         "amd64": "https://qd.solutionx.top/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935",
         "arm64": "https://qd.solutionx.top/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835"
@@ -10,10 +14,6 @@
       "1.0.6": {
         "amd64": "https://qd.solutionx.top/d/p/df79c7e1-5822-40b0-a11c-0719932b2366",
         "arm64": "https://qd.solutionx.top/d/p/55732f27-b1bb-45dc-9471-479123977a9f"
-      },
-      "1.0.5": {
-        "amd64": "https://qd.solutionx.top/d/p/398c030e-82f0-4f99-b657-36a8a46e8d80",
-        "arm64": "https://qd.solutionx.top/d/p/5ba5dbca-384b-4356-9537-5032d40e8e5e"
       }
     }
   },
@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.76",
-    "changelog": "新增「中英」键：键盘弹起时底部工具栏多出一个「中英」按钮（位于 Shift 与回车之间），单击即切换远程电脑的输入法中/英文；与 Shift 修饰键职责分离，PC 端无需升级",
+    "latest_version": "1.0.77",
+    "changelog": "新增设备备注（仅本机可见，最长 64 字符，清空即删除）、离线设备展示（列表分在线/离线两段，显示最后心跳时间）、移除离线设备（仅本机隐藏，设备上线自动恢复）；设备标题改用服务器下发的设备名",
     "versions": {
+      "1.0.77": {
+        "apk": "https://qd.solutionx.top/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36"
+      },
       "1.0.76": {
         "apk": "https://qd.solutionx.top/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7"
       },
       "1.0.75": {
         "apk": "https://qd.solutionx.top/d/p/69d559c2-abd5-4d2b-bd80-326408d08b35"
-      },
-      "1.0.74": {
-        "apk": "https://qd.solutionx.top/d/p/1213dcff-5942-4a90-a80e-efdda48b0188"
       }
     }
   }
