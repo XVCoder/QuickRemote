@@ -100,6 +100,7 @@ import com.quickremote.app.services.KeyMapper
 import com.quickremote.app.services.ReconnectPolicy
 import com.quickremote.app.services.RemoteFrameProtocol
 import com.quickremote.app.services.RemoteSessionManager
+import com.quickremote.app.ui.components.CompactIconButton
 import com.quickremote.app.ui.components.LogViewerDialog
 import com.quickremote.app.ui.components.MouseFloatingBall
 import com.quickremote.app.ui.components.PixelWheel
@@ -1701,32 +1702,6 @@ private fun ToolBarButton(
             color = if (active) Success else TextMuted,
             maxLines = 1,
             softWrap = false
-        )
-    }
-}
-
-/** 顶部栏用的紧凑图标按钮（38dp 圆形，避开 Material3 IconButton 的 48dp 最小触控尺寸）。 */
-@Composable
-private fun CompactIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    tint: Color,
-    size: Dp = 38.dp,
-    iconSize: Dp = 22.dp,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier.size(iconSize)
         )
     }
 }

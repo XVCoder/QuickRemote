@@ -75,11 +75,22 @@ class RelayApi {
         }
     }
 
-    /** 获取在线设备列表。 */
-    fun getDevices(serverAddress: String, token: String): DeviceListResponse {
+    /**
+     * 获取设备列表。
+     *
+     * [includeOffline] = true 时带 `?all=1`，服务端返回全部设备（含离线）；
+     * 旧版服务端会忽略该参数、只返回在线设备 —— 属于设计内的优雅降级，
+     * 因此本方法不需要做版本探测。
+     */
+    fun getDevices(
+        serverAddress: String,
+        token: String,
+        includeOffline: Boolean = true
+    ): DeviceListResponse {
         val base = baseUrl(serverAddress)
+        val url = if (includeOffline) "$base/api/devices?all=1" else "$base/api/devices"
         val request = Request.Builder()
-            .url("$base/api/devices")
+            .url(url)
             .header("Authorization", "Bearer $token")
             .get()
             .build()

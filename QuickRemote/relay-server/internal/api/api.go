@@ -104,14 +104,28 @@ func (h *Handler) HandleAuth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleGetDevices 返回在线设备列表。
+// HandleGetDevices 返回设备列表。
+//
+// 默认只返回在线设备（历史行为，旧客户端不带参数时行为不变）；
+// 带 ?all=1 时返回全部设备（含离线），供需要展示离线主机的新客户端使用。
+//
+// 为什么用可选参数而不是直接改默认行为：Android 旧版本不认离线设备
+// （会显示成一批点不动的僵尸主机），必须保持零破坏升级。
 func (h *Handler) HandleGetDevices(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
 
-	devices, err := h.registry.ListOnline()
+	var (
+		devices []registry.Device
+		err     error
+	)
+	if r.URL.Query().Get("all") == "1" {
+		devices, err = h.registry.ListAll()
+	} else {
+		devices, err = h.registry.ListOnline()
+	}
 	if err != nil {
 		http.Error(w, `{"error":"internal_error"}`, http.StatusInternalServerError)
 		return

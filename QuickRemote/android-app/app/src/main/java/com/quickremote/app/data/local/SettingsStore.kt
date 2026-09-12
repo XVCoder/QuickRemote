@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.ServerConfig
@@ -40,6 +41,14 @@ class SettingsStore(private val context: Context) {
         val TOUCHPAD_FOUR_FINGER = booleanPreferencesKey("touchpad_four_finger")
     }
 
+    private object DeviceKeys {
+        /** 设备备注表（JSON：device_id → 备注文本）。仅本机可见，不上传服务器。 */
+        val REMARKS = stringPreferencesKey("device_remarks")
+
+        /** 软删除（本机隐藏）的设备 ID 集合；设备再次上线时移除。 */
+        val HIDDEN = stringSetPreferencesKey("hidden_devices")
+    }
+
     val serverConfig: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
         ServerConfig(
             address = prefs[ServerKeys.ADDRESS] ?: "",
@@ -66,6 +75,16 @@ class SettingsStore(private val context: Context) {
 
     val manifestUrl: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[SettingsKeys.MANIFEST_URL] ?: ""
+    }
+
+    /** 设备备注表（仅本机可见）。 */
+    val deviceRemarks: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
+        decodeRemarks(prefs[DeviceKeys.REMARKS].orEmpty())
+    }
+
+    /** 被本机软删除的设备 ID 集合。 */
+    val hiddenDevices: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[DeviceKeys.HIDDEN].orEmpty()
     }
 
     suspend fun saveServerConfig(config: ServerConfig) {
@@ -110,6 +129,41 @@ class SettingsStore(private val context: Context) {
     suspend fun saveManifestUrl(url: String) {
         context.dataStore.edit { prefs ->
             prefs[SettingsKeys.MANIFEST_URL] = url
+        }
+    }
+
+    /** 设置/清除设备备注：规范化后为空则删除该条（「清空即删除备注」语义）。 */
+    suspend fun setDeviceRemark(deviceId: String, remark: String) {
+        if (deviceId.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val map = decodeRemarks(prefs[DeviceKeys.REMARKS].orEmpty()).toMutableMap()
+            val normalized = normalizeRemark(remark)
+            if (normalized.isEmpty()) map.remove(deviceId) else map[deviceId] = normalized
+            prefs[DeviceKeys.REMARKS] = encodeRemarks(map)
+        }
+    }
+
+    /** 软删除：把设备加入本机隐藏集合（不动服务端记录，不影响其它客户端）。 */
+    suspend fun hideDevices(deviceIds: Set<String>) {
+        val ids = deviceIds.filter { it.isNotBlank() }.toSet()
+        if (ids.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            prefs[DeviceKeys.HIDDEN] = prefs[DeviceKeys.HIDDEN].orEmpty() + ids
+        }
+    }
+
+    /**
+     * 解除隐藏（设备重新上线时调用）。
+     *
+     * 集合清空时必须用 remove 把整个键删掉：DataStore 的 Preferences 写入空集合语义不明，
+     * 留着空集合会让「是否还有隐藏设备」的判断变得不可靠。
+     */
+    suspend fun restoreDevices(deviceIds: Set<String>) {
+        val ids = deviceIds.filter { it.isNotBlank() }.toSet()
+        if (ids.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            val left = prefs[DeviceKeys.HIDDEN].orEmpty() - ids
+            if (left.isEmpty()) prefs.remove(DeviceKeys.HIDDEN) else prefs[DeviceKeys.HIDDEN] = left
         }
     }
 }

@@ -3,9 +3,12 @@ package com.quickremote.app.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.quickremote.app.data.local.SettingsStore
+import com.quickremote.app.data.local.normalizeRemark
 import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.Device
+import com.quickremote.app.data.models.DeviceListResult
 import com.quickremote.app.data.models.ServerConfig
+import com.quickremote.app.data.models.assembleDeviceList
 import com.quickremote.app.services.Logger
 import com.quickremote.app.services.RelayConnection
 import com.quickremote.app.services.UpdateChecker
@@ -40,6 +43,17 @@ class MainViewModel(
 
     private val _devices = MutableStateFlow<List<Device>>(emptyList())
     val devices: StateFlow<List<Device>> = _devices.asStateFlow()
+
+    /**
+     * 装配后的展示列表（在线/离线两段 + 本机备注）。UI 只消费它，不直接读 [devices]。
+     * 装配规则见 data/models/DeviceListAssembler.kt。
+     */
+    private val _deviceList = MutableStateFlow(DeviceListResult())
+    val deviceList: StateFlow<DeviceListResult> = _deviceList.asStateFlow()
+
+    /** 本机私有状态缓存：DataStore 的 Flow 到达时用它做装配（装配是纯函数，需要同步入参）。 */
+    @Volatile private var remarksCache: Map<String, String> = emptyMap()
+    @Volatile private var hiddenCache: Set<String> = emptySet()
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -76,6 +90,19 @@ class MainViewModel(
         }
         viewModelScope.launch {
             settingsStore.appSettings.collect { _appSettings.value = it }
+        }
+        // 本机私有状态（备注 / 软删除）变化 → 重算展示列表
+        viewModelScope.launch {
+            settingsStore.deviceRemarks.collect {
+                remarksCache = it
+                rebuildDeviceList()
+            }
+        }
+        viewModelScope.launch {
+            settingsStore.hiddenDevices.collect {
+                hiddenCache = it
+                rebuildDeviceList()
+            }
         }
     }
 
@@ -143,25 +170,70 @@ class MainViewModel(
             val ok = withContext(Dispatchers.IO) { relay.authenticate(config) }
             if (!ok) {
                 _connectionState.value = ConnectionState.ERROR
-                _devices.value = emptyList()
+                applyRawDevices(emptyList())
                 _lastError.value = relay.lastError
                 _toast.value = "认证失败"
                 return
             }
             _connectionState.value = ConnectionState.CONNECTED
             _lastError.value = ""
+            // 服务端返回全量设备（含离线），展示层再按在线/离线分段
             val list = withContext(Dispatchers.IO) { relay.getDevices() }
-            _devices.value = list
-            if (list.isEmpty()) _toast.value = "暂无在线设备"
+            applyRawDevices(list)
+            if (list.isEmpty()) _toast.value = "暂无设备"
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.ERROR
-            _devices.value = emptyList()
+            applyRawDevices(emptyList())
             _lastError.value = e.message ?: "未知错误"
             _toast.value = "加载失败"
             logger.warn("loadDevices failed: ${e.message}")
         } finally {
             _isRefreshing.value = false
         }
+    }
+
+    /** 更新原始设备表并立即重算展示列表（两者永远一起变，避免出现短暂不一致）。 */
+    private fun applyRawDevices(list: List<Device>) {
+        _devices.value = list
+        rebuildDeviceList()
+    }
+
+    /**
+     * 用最新原始设备表 + 本机私有状态重算展示列表。
+     *
+     * 顺带处理「软删除设备重新上线自动恢复」：装配器把这类设备列进 revived，
+     * 这里把它写回本地隐藏集合（移除）。下次装配就不会再隐藏它。
+     */
+    private fun rebuildDeviceList() {
+        val result = assembleDeviceList(_devices.value, remarksCache, hiddenCache)
+        _deviceList.value = result
+        if (result.revived.isNotEmpty()) {
+            viewModelScope.launch { settingsStore.restoreDevices(result.revived) }
+        }
+    }
+
+    /**
+     * 设置/清除设备备注（仅本机可见，不影响设备自身名称）。
+     * 清空输入即删除备注 —— 这与 PC 端「设置备注」对话框同语义。
+     */
+    fun setDeviceRemark(deviceId: String, remark: String) {
+        viewModelScope.launch {
+            settingsStore.setDeviceRemark(deviceId, remark)
+            _toast.value = if (normalizeRemark(remark).isEmpty()) "备注已清除" else "备注已保存"
+        }
+    }
+
+    /** 软删除离线设备：仅本机隐藏，设备再次上线时自动恢复显示。 */
+    fun removeOfflineDevice(deviceId: String) {
+        viewModelScope.launch {
+            settingsStore.hideDevices(setOf(deviceId))
+            _toast.value = "已从列表移除，设备上线后自动恢复"
+        }
+    }
+
+    /** 由 UI 主动弹一条提示（如点击离线设备）。 */
+    fun showToast(message: String) {
+        _toast.value = message
     }
 
     /** 上传日志。 */
@@ -205,7 +277,7 @@ class MainViewModel(
         viewModelScope.launch {
             settingsStore.clearPreSharedKey()
             _serverConfig.value = _serverConfig.value.copy(preSharedKey = "")
-            _devices.value = emptyList()
+            applyRawDevices(emptyList())
             _connectionState.value = ConnectionState.DISCONNECTED
             _lastError.value = ""
             _toast.value = "预共享密钥已重置"

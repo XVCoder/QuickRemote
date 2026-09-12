@@ -130,3 +130,73 @@ func TestUploadLogs(t *testing.T) {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
 }
+
+// TestGetDevices_All 覆盖 ?all=1 参数：
+// 不带参数时只返回在线设备（旧客户端行为，回归保护）；
+// 带 all=1 时返回在线 + 离线，且在线排在前。
+func TestGetDevices_All(t *testing.T) {
+	handler, reg, cleanup := setupTestAPI(t)
+	defer cleanup()
+
+	onlineID, _, err := reg.Register(&registry.Device{
+		MachineID: "m1", Hostname: "PC1", OS: "Win11", RDPPort: 3389, Version: "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("register m1: %v", err)
+	}
+	offlineID, _, err := reg.Register(&registry.Device{
+		MachineID: "m2", Hostname: "PC2", OS: "Win10", RDPPort: 3389, Version: "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("register m2: %v", err)
+	}
+	if err := reg.MarkOffline(offlineID); err != nil {
+		t.Fatalf("mark offline: %v", err)
+	}
+
+	token, _ := handler.authService.GenerateToken("test-device")
+
+	// 默认（不带参数）：只返回在线设备
+	req := httptest.NewRequest("GET", "/api/devices", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	handler.HandleGetDevices(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("default: expected 200, got %d", w.Code)
+	}
+	var only struct {
+		Devices []registry.Device `json:"devices"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&only); err != nil {
+		t.Fatalf("default: decode response: %v", err)
+	}
+	if len(only.Devices) != 1 || only.Devices[0].DeviceID != onlineID {
+		t.Fatalf("default: expected only online device %s, got %+v", onlineID, only.Devices)
+	}
+
+	// all=1：返回在线 + 离线
+	req = httptest.NewRequest("GET", "/api/devices?all=1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w = httptest.NewRecorder()
+	handler.HandleGetDevices(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("all=1: expected 200, got %d", w.Code)
+	}
+	var all struct {
+		Devices []registry.Device `json:"devices"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&all); err != nil {
+		t.Fatalf("all=1: decode response: %v", err)
+	}
+	if len(all.Devices) != 2 {
+		t.Fatalf("all=1: expected 2 devices, got %d", len(all.Devices))
+	}
+	if all.Devices[0].DeviceID != onlineID || all.Devices[0].Status != "online" {
+		t.Errorf("all=1: expected online device first, got %s (%s)",
+			all.Devices[0].DeviceID, all.Devices[0].Status)
+	}
+	if all.Devices[1].DeviceID != offlineID || all.Devices[1].Status != "offline" {
+		t.Errorf("all=1: expected offline device second, got %s (%s)",
+			all.Devices[1].DeviceID, all.Devices[1].Status)
+	}
+}

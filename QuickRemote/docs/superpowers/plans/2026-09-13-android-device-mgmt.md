@@ -1487,3 +1487,37 @@ superpowers 第 2 步默认「新开 worktree 做隔离」。本项目**不适�
 2. 向 X 给出 4 个选项：合并到 main / 保留在 `ux-quick-wins` / 丢弃 / 继续在此基础上迭代
    （本项目历史惯例：继续保留在 `ux-quick-wins`，main 在批次收口时统一推进）
 3. 提交信息格式参照既有风格：`feat(android): …` / `feat(relay): …` / `release: …`
+
+---
+
+# 执行记录（2026-09-13 完成）
+
+全部 6 个 Phase 已执行完毕。实际结果与计划的三处偏差，逐条记录：
+
+| # | 偏差 | 处理 |
+|---|---|---|
+| 1 | **任务 5.4 是必需而非可选**。核实后确认项目里没有任何全局 toast 渲染：`DeviceListScreen` / `ServerConfigScreen` / `SettingsScreen` 三处 `ToastHost` 都只调 `consumeToast()` 把消息丢掉，所以「认证失败 / 加载失败」等提示一直是静默的 | 按 `MainActivity` 处理配对提示的同一写法（`Toast.makeText`）补上渲染，仅改 `DeviceListScreen`；另两个屏幕的同类缺口**不在本轮范围**，留作后续 |
+| 2 | `Json.encodeToString(map)` 的 reified 重载编译不过（解析成了需要 `SerializationStrategy` 参数的重载） | 在 `DeviceStateCodec.kt` 补 `import kotlinx.serialization.encodeToString` |
+| 3 | 计划里写的 `rm -rf app/build/intermediates/project_dex_archive app/build/intermediates/dex` **会被批量删除护栏拦下**（529 个目标 > 50 阈值，命令静默不生效），导致已知的 `dexBuilderRelease` AccessDeniedException 依旧复现 | 改为**只删报错点名的那个 .dex 文件**（单文件不触发护栏），再单独重跑 `:app:assembleRelease` 即成功。下次直接用这招，不要试图整目录删 |
+
+另外纠正一条环境认知：该 `AccessDeniedException` 发生时报错文件**并未真的被进程占用**（无 java 进程、文件可正常删除），更像是杀软/索引器对新写入 .dex 的瞬时占用 —— 定向删除 + 重跑是有效解法，不必怀疑工具链。
+
+## 完成情况
+
+| Phase | 结果 |
+|---|---|
+| 0 基线 | relay `go test ./...` 全绿；Android 基线 `BUILD SUCCESSFUL` |
+| 1 relay | `TestGetDevices_All` 先红（`expected 2 devices, got 1`）→ 实现 `?all=1` → 三个 devices 测试全绿；`Version = "1.0.8"`；`go build` / `go vet` 干净 |
+| 2 纯逻辑 TDD | 三个测试类先红（Unresolved reference）→ 实现后转绿：`DeviceDisplayTitleTest` 4 / `DeviceRemarkCodecTest` 6 / `DeviceListAssemblerTest` 6 |
+| 3 持久化 | `SettingsStore` 新增 `device_remarks`（JSON 单键）与 `hidden_devices`（stringSet）；`restoreDevices` 用 `remove` 收尾空集合 |
+| 4 网络/VM | `RelayApi.getDevices(includeOffline = true)` 走 `?all=1`；`MainViewModel` 新增 `deviceList` / `setDeviceRemark` / `removeOfflineDevice` / `showToast` / `rebuildDeviceList`（含复活回写） |
+| 5 UI | `CompactIconButton` 抽为公共组件（`RemoteSessionScreen` 改引用）；`DeviceCard` 加备注行与 ✎/✕ 操作列；`DeviceListScreen` 两段分组 + 两个对话框 + 离线点击拦截 + toast 渲染 |
+| 6 版本/构建 | `versionCode 77` / `versionName 1.0.77`；两份 changelog 同步；`assembleRelease` 产出 APK（12,018,727 字节）；APK 内 `versionCode='77' versionName='1.0.77'` 与源码一致 |
+
+**单测总计 48 个用例、0 失败**（新增 16 个，既有 32 个无回归）。
+
+## 未完成项（有意留白）
+
+- `ServerConfigScreen` / `SettingsScreen` 的 toast 同样是「只消费不渲染」，本轮未动。
+- `MainViewModel.devices`（原始表）在 UI 层已无消费者，保留作为调试/后续用途；若判为死代码可另行清理。
+- 真机 + 真实中继的人工验收清单（计划 §任务 6.2）与发版（§任务 6.3）**尚未执行**，等 X 的「发布吧」。

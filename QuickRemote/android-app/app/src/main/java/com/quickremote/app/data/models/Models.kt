@@ -10,19 +10,27 @@ data class ServerConfig(
     val preSharedKey: String = ""
 )
 
-// 在线 PC 设备（字段与 relay-server registry.Device 对齐）
+// 设备（含离线；字段与 relay-server registry.Device 对齐）
 @Serializable
 data class Device(
     val device_id: String = "",
     val machine_id: String = "",
     val hostname: String = "",
+    /** 服务端分配或用户自定义的设备名；空 = 未分配（展示时回退 hostname）。 */
+    val display_name: String = "",
     val os: String = "",
     val lan_ip: String = "",
     val rdp_port: Int = 3389,
     val version: String = "",
     val status: String = "online",
     val last_seen: String = ""
-)
+) {
+    /** 展示标题：display_name → hostname → device_id 逐级回退（与 PC 端 DisplayName 语义一致）。 */
+    val displayTitle: String
+        get() = display_name.ifBlank { hostname.ifBlank { device_id } }
+
+    val isOnline: Boolean get() = status == "online"
+}
 
 // 设备列表响应
 @Serializable
