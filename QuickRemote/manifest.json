@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.74",
-    "changelog": "键盘弹起时底部「旋转/画质」自动变为「Ctrl」「Shift」修饰键：单击修饰下一个输入、快速双击长按锁定；收起键盘自动恢复；PC 端无需升级",
+    "latest_version": "1.0.75",
+    "changelog": "修复修饰键「长按」不生效：双击 Shift/Ctrl 后按钮虽高亮但实际按键未携带修饰键（方向键不选字、打字不全大写）；现已正常持续修饰",
     "versions": {
+      "1.0.75": {
+        "apk": "https://qd.solutionx.top/d/p/69d559c2-abd5-4d2b-bd80-326408d08b35"
+      },
       "1.0.74": {
         "apk": "https://qd.solutionx.top/d/p/1213dcff-5942-4a90-a80e-efdda48b0188"
       },
       "1.0.73": {
         "apk": "https://qd.solutionx.top/d/p/69457656-1c94-4366-9571-51006a611cbb"
-      },
-      "1.0.72": {
-        "apk": "https://qd.solutionx.top/d/p/2e31bbf7-89de-49d4-9e49-9a75dc180d7f"
       }
     }
   }
