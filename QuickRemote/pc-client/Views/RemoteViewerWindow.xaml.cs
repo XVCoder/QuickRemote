@@ -28,6 +28,14 @@ public partial class RemoteViewerWindow : Window
         _device = device;
         _connectFunc = connectFunc;
         Title = $"远程控制 - {device.DisplayName}";
+
+        // 禁用本机输入法：远程控制语义下，主控端按下的物理键应原样转发，
+        // 字符由被控端自己的键盘布局/输入法产生。若不禁用，主控端处于中文输入法时
+        // 会接管主键盘字母（转拼音组合）与上排数字（选候选词），
+        // Window_TextInput 收不到单字符 → TYPE_INPUT_TEXT 帧根本发不出，
+        // 表现为被控端打字毫无反应（小键盘不受输入法拦截，所以只有它能用）。
+        InputMethod.SetIsInputMethodEnabled(this, false);
+
         Loaded += (_, _) => _ = ConnectAsync();
     }
 
@@ -270,6 +278,18 @@ public partial class RemoteViewerWindow : Window
         var client = _client;
         if (client == null) return;
 
+        // 兜底：输入法若仍接管了该键（此时 e.Key 变成 Key.ImeProcessed、真实键在
+        // ImeProcessedKey 里），用还原出的真实键强制走原始 VK 转发——
+        // 绝不能交给本机输入法，否则字符会被吞成拼音组合而永远发不出去。
+        if (e.Key == Key.ImeProcessed)
+        {
+            var ivk = KeyInterop.VirtualKeyFromKey(e.ImeProcessedKey);
+            if (ivk == 0) return;
+            client.SendKey((ushort)ivk, down: true);
+            e.Handled = true;
+            return;
+        }
+
         // Alt 组合键以 SystemKey 形式上报
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
 
@@ -292,6 +312,16 @@ public partial class RemoteViewerWindow : Window
     {
         var client = _client;
         if (client == null) return;
+
+        // 与 KeyDown 对称：输入法接管过的键同样按还原出的真实 VK 补发 KeyUp
+        if (e.Key == Key.ImeProcessed)
+        {
+            var ivk = KeyInterop.VirtualKeyFromKey(e.ImeProcessedKey);
+            if (ivk == 0) return;
+            client.SendKey((ushort)ivk, down: false);
+            e.Handled = true;
+            return;
+        }
 
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
 
