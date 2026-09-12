@@ -145,17 +145,24 @@ cd QuickRemote/android-app && ./gradlew :app:assembleRelease --console=plain
   → Kotlin 增量缓存损坏，加 `--rerun-tasks` 强制全量重编。
 - 若 wrapper 的 `.lck` 被锁死，改用直接 gradle.bat + 独立 GRADLE_USER_HOME + `--no-build-cache`。
 
-**上传前必须验证：**
+**上传前必须验证**（⚠️ 见下方「路径必须 Windows 风格」）：
 
 ```bash
-AAPT=$(find "$LOCALAPPDATA/Android/Sdk/build-tools" -name aapt.exe | sort | tail -1)
-"$AAPT" dump badging app/build/outputs/apk/release/app-release.apk | grep -E "^package:"
+BT="C:/Users/<用户名>/AppData/Local/Android/Sdk/build-tools/36.0.0"
+APK="E:/.../android-app/app/build/outputs/apk/release/app-release.apk"
+
+"$BT/aapt.exe" dump badging "$APK" | grep -E "^package:"
 # 期望 versionCode='N' versionName='X.Y.Z'
 
-"$LOCALAPPDATA/Android/Sdk/build-tools/36.0.0/apksigner.bat" verify --print-certs \
-    app/build/outputs/apk/release/app-release.apk
+"$BT/apksigner.bat" verify --print-certs "$APK" | grep -iE "Signer #1 certificate DN|DOES NOT VERIFY"
 # 期望 Signer #1 certificate DN: ... CN=Android Debug；出现 DOES NOT VERIFY 即为未签名
 ```
+
+> ⚠️ **路径必须 Windows 风格（2026-09-13 实测坑）**：`"$BT/aapt.exe"` 配合 MSYS 风格
+> `/c/Users/...` 会**静默失败**——无报错、无输出、exit 1（stderr 只剩 shim 噪音），
+> 极易被误读成「拿不到版本号」而白折腾。改 `C:/Users/...` 与 `E:/...` 立刻正常。
+> 另：沙箱里 `find` 是 Windows 的 `find.exe`（不是 GNU find），**不要用它找 aapt**，
+> 直接写死版本号目录（本机现有 30.0.3 / 34.0.0 / 35.0.0 / 36.0.0，取最新）。
 
 验证通过后重命名为 `QuickRemote-Android-v{ver}.apk`。
 
@@ -305,16 +312,28 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 
 ---
 
-## 当前线上版本（2026-09-11）
+## 当前线上版本（2026-09-13）
 
 - relay-server **1.0.7**：amd64 `…/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935`，arm64 `…/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835`
 - pc-client **1.1.64**：`…/d/p/d071d861-df1b-40c0-a9c7-c351f7c0a470`
-- android-app **1.0.75**（versionCode 75）：`…/d/p/69d559c2-abd5-4d2b-bd80-326408d08b35`
-- about **v1.0.105**：包 `…/d/p/ae90f93d-7811-48fb-ab5a-4fc9258271d5`（2026-09-12 已部署，端口 20111）
+- android-app **1.0.76**（versionCode 76）：`…/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7`
+- about **v1.0.106**：包 `…/d/p/0f5587a2-cc10-4acf-bd96-a9b5d93f3a8d`（2026-09-13 已部署，端口 20112）
 
-> ⚠️ 发版坑（2026-09-12 两次复现）：版本号变更后**首次** `assembleRelease` 必 BUILD FAILED
-> （错误详情被吞，重跑即成功，疑似 APK 重打包瞬时锁）。铁律：**aapt 验证版本号必须在
-> 构建成功后做**——失败时 outputs 里仍是旧版 APK，切勿把旧包复制成新版本名上传。
+> ⚠️ 发版坑（**根因已查明，2026-09-13**）：版本号变更后**首次** `assembleRelease` 报
+> BUILD FAILED，前两次（v1.0.74/v1.0.75）错误详情被 `tail` 截断，只看到「重跑即过」，
+> 误以为是「APK 重打包瞬时锁」的玄学。实际抓到完整报错后确认 —— **就是第 2.3 节那条
+> dex 文件锁**，与版本号变更无关：
+>
+> ```
+> Caused by: java.nio.file.AccessDeniedException:
+>   ...\app\build\intermediates\project_dex_archive\release\dexBuilderRelease\out\...\XxxKt$Xxx$5.dex
+> Execution failed for task ':app:dexBuilderRelease'.
+> ```
+>
+> **不要再靠重跑碰运气**，直接走第 2.3 节的 dex 锁处置（`--stop` + 删
+> `intermediates/project_dex_archive` 与 `intermediates/dex` 后重跑）；2026-09-13 实测一次通过。
+> 铁律不变：**aapt 验证版本号必须在构建成功后做**——构建失败时 outputs 里仍是旧版 APK，
+> 切勿把旧包复制成新版本名上传。
 
 > ⚠️ 环境坑（2026-09-11 晚）：沙箱 bash PATH 可能整体损坏（`dirname`/`tail` not found、
 > MSYS 路径映射失效导致 `/e/...` 不可用，PowerShell stdout 被吞）。修复方式：bash 里
