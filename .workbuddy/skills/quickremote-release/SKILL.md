@@ -309,8 +309,12 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 
 - relay-server **1.0.7**：amd64 `…/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935`，arm64 `…/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835`
 - pc-client **1.1.64**：`…/d/p/d071d861-df1b-40c0-a9c7-c351f7c0a470`
-- android-app **1.0.74**（versionCode 74）：`…/d/p/1213dcff-5942-4a90-a80e-efdda48b0188`
-- about **v1.0.104**：包 `…/d/p/b787f9ed-8fbc-4f81-bd38-737de1e6c2ed`（2026-09-12 已部署，端口 20110）
+- android-app **1.0.75**（versionCode 75）：`…/d/p/69d559c2-abd5-4d2b-bd80-326408d08b35`
+- about **v1.0.105**：包 `…/d/p/ae90f93d-7811-48fb-ab5a-4fc9258271d5`（2026-09-12 已部署，端口 20111）
+
+> ⚠️ 发版坑（2026-09-12 两次复现）：版本号变更后**首次** `assembleRelease` 必 BUILD FAILED
+> （错误详情被吞，重跑即成功，疑似 APK 重打包瞬时锁）。铁律：**aapt 验证版本号必须在
+> 构建成功后做**——失败时 outputs 里仍是旧版 APK，切勿把旧包复制成新版本名上传。
 
 > ⚠️ 环境坑（2026-09-11 晚）：沙箱 bash PATH 可能整体损坏（`dirname`/`tail` not found、
 > MSYS 路径映射失效导致 `/e/...` 不可用，PowerShell stdout 被吞）。修复方式：bash 里

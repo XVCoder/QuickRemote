@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardCommandKey
 import androidx.compose.material.icons.filled.KeyboardControlKey
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
@@ -91,7 +92,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import com.quickremote.app.data.models.Device
+import com.quickremote.app.data.models.ImeToggle
+import com.quickremote.app.data.models.ModKeyState
 import com.quickremote.app.data.models.QUALITY_PRESETS
+import com.quickremote.app.data.models.consumeOneShot
 import com.quickremote.app.services.KeyMapper
 import com.quickremote.app.services.ReconnectPolicy
 import com.quickremote.app.services.RemoteFrameProtocol
@@ -281,6 +285,17 @@ fun RemoteSessionScreen(
     }
     var bottomModLastTapAt by remember { mutableStateOf(mapOf<Int, Long>()) }
 
+    // 「中英」按钮的瞬时高亮：PC 端的输入法中/英状态读不到，所以不做常亮
+    // （那会是假状态），只在点击后点亮 200ms 表示「切换序列已发出」。
+    // 它不参与 bottomModStates 三态机 —— 切输入法与 Shift 修饰是两件事。
+    var imeFlash by remember { mutableStateOf(false) }
+    LaunchedEffect(imeFlash) {
+        if (imeFlash) {
+            delay(200)
+            imeFlash = false
+        }
+    }
+
     /** 底部修饰键点击：NONE→单击激活；单击后 300ms 内再点→长按锁定；长按中再点→解除。 */
     fun onBottomModTap(vk: Int) {
         val now = System.currentTimeMillis()
@@ -341,7 +356,6 @@ fun RemoteSessionScreen(
     fun sendKeyCombo(vk: Int, needShift: Boolean = false) {
         // 底部 Shift/Ctrl 的「单击」与「长按」态都参与修饰（v1.0.74 曾漏并 LOCKED，
         // 症状：双击高亮但方向键不选字）；与快捷键面板粘滞修饰键按集合并去重
-        val oneShot = bottomModStates.filterValues { it == ModKeyState.ONESHOT }.keys
         val bottomMods = bottomModStates.filterValues { it != ModKeyState.NONE }.keys
         val mods = (stickyMods + bottomMods).toList()
         val shiftExtra = needShift && 0x10 !in mods
@@ -352,11 +366,7 @@ fun RemoteSessionScreen(
         mods.forEach { sendKeyRaw(it, false) }
         if (shiftExtra) sendKeyRaw(0x10, false)
         // 「单击效果」：ONESHOT 修饰键作用于本次组合后自动失效（LOCKED 长按不受影响）
-        if (oneShot.isNotEmpty()) {
-            bottomModStates = bottomModStates.mapValues { (k, v) ->
-                if (k in oneShot) ModKeyState.NONE else v
-            }
-        }
+        bottomModStates = bottomModStates.consumeOneShot()
     }
 
     /**
@@ -386,11 +396,27 @@ fun RemoteSessionScreen(
         flushUnicode()
         // 中文/emoji 等 Unicode 上屏不携带按键状态，但「单击」修饰键视为已消耗，
         // 避免滞留到之后毫不相关的英文输入上（「长按」LOCKED 态保持）
-        if (bottomModStates.any { it.value == ModKeyState.ONESHOT }) {
-            bottomModStates = bottomModStates.mapValues { (_, v) ->
-                if (v == ModKeyState.ONESHOT) ModKeyState.NONE else v
-            }
-        }
+        bottomModStates = bottomModStates.consumeOneShot()
+    }
+
+    /**
+     * 「中英」切换：向 PC 注入一次裸按 Shift（按下 + 抬起，中间不夹任何键），
+     * PC 端输入法据此判定为「单击 Shift」并切换中/英文。
+     *
+     * 与 Shift 修饰键彻底解耦：不改 bottomModStates 的 Shift 三态，也不把 Shift 包在别的键外面。
+     * 但它是一次**输入动作**，按既有规则消耗单击态（ONESHOT），长按锁定态（LOCKED）保留 ——
+     * 否则残留的单击态会让下一次毫不相关的输入突然带上 Shift。
+     *
+     * 已知边界（暂不处理）：底部三态只是**逻辑**按下，组合之间并不会让 PC 端物理按住 Shift，
+     * 所以本方法无需先释放任何东西。唯一的例外是外接物理键盘 —— 若用户正按着实体 Shift
+     * （`handleAndroidKeyDown` 会真的把 Shift 按住不放）同时点本按钮，多出的这一对 Shift
+     * 按下/抬起会打乱其实体 Shift 的按住状态。场景罕见（有实体键盘时直接用实体 Shift 更顺手），
+     * 故不为此增加状态跟踪；真遇到时在发送序列后补一次 Shift 按下即可还原。
+     */
+    fun onImeToggleTap() {
+        ImeToggle.sequence().forEach { sendKeyRaw(it.vk, it.down) }
+        bottomModStates = bottomModStates.consumeOneShot()
+        imeFlash = true
     }
 
     /** 唤起/收起软键盘（工具栏按钮与全屏悬浮按钮共用）。 */
@@ -510,9 +536,11 @@ fun RemoteSessionScreen(
                         // 每帧改一次高度，连带 Scaffold 内容区每帧重排（详见 imeLayoutInsets 注释）
                         .windowInsetsPadding(WindowInsets.navigationBars.union(imeLayoutInsets()))
                         .padding(horizontal = 6.dp, vertical = 4.dp),
-                    // 按钮个数固定为 5，用 weight 均分：既保证五个按钮**宽度完全一致**
+                    // 每一格都用 weight(1f) 均分：既保证同排按钮**宽度完全一致**
                     // （此前 SpaceEvenly + 文字定宽，「快捷键」3 字比其它宽一截），
-                    // 也自动适配窄屏与横屏，不需要再缩字号
+                    // 也自动适配窄屏与横屏，不需要再缩字号。
+                    // 列数随键盘状态在 5 / 6 之间切换（键盘弹起时多出「中英」），
+                    // 6 列时单格宽度在 360dp 屏上仍高于 48dp 最小触控面积
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -547,6 +575,16 @@ fun RemoteSessionScreen(
                             active = bottomModStates[VK_SHIFT] != ModKeyState.NONE,
                             modifier = Modifier.weight(1f),
                             onClick = { onBottomModTap(VK_SHIFT) }
+                        )
+                        // 中/英切换：与上面的 Shift 修饰键**职责分离** —— 它发的是裸按 Shift
+                        // （按下/抬起相邻，不夹其他键），这才是输入法认的「单击 Shift」手势；
+                        // Shift 按钮则保持原有的三态修饰语义不变（见 onImeToggleTap 注释）
+                        ToolBarButton(
+                            icon = Icons.Filled.Language,
+                            label = "中英",
+                            active = imeFlash,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onImeToggleTap() }
                         )
                     } else {
                         ToolBarButton(
@@ -1620,8 +1658,7 @@ private fun sendGestureKeys(viewModel: SessionViewModel, gesture: TouchpadGestur
     }
 }
 
-/** 底部修饰键三态：NONE 无 / ONESHOT 单击（修饰下一个输入后自动失效）/ LOCKED 长按（双击触发，持续生效）。 */
-private enum class ModKeyState { NONE, ONESHOT, LOCKED }
+/** 底部修饰键三态与「消耗单击态」规则已抽到 `data/models/ModifierState.kt`（纯逻辑，有单测）。 */
 
 /** 画质档位定义与会话内/设置页共用的 4 档预设见 `data/models/Models.kt`（QUALITY_PRESETS）。 */
 
