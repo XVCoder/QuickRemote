@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.75",
-    "changelog": "修复修饰键「长按」不生效：双击 Shift/Ctrl 后按钮虽高亮但实际按键未携带修饰键（方向键不选字、打字不全大写）；现已正常持续修饰",
+    "latest_version": "1.0.76",
+    "changelog": "新增「中英」键：键盘弹起时底部工具栏多出一个「中英」按钮（位于 Shift 与回车之间），单击即切换远程电脑的输入法中/英文；与 Shift 修饰键职责分离，PC 端无需升级",
     "versions": {
+      "1.0.76": {
+        "apk": "https://qd.solutionx.top/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7"
+      },
       "1.0.75": {
         "apk": "https://qd.solutionx.top/d/p/69d559c2-abd5-4d2b-bd80-326408d08b35"
       },
       "1.0.74": {
         "apk": "https://qd.solutionx.top/d/p/1213dcff-5942-4a90-a80e-efdda48b0188"
-      },
-      "1.0.73": {
-        "apk": "https://qd.solutionx.top/d/p/69457656-1c94-4366-9571-51006a611cbb"
       }
     }
   }
