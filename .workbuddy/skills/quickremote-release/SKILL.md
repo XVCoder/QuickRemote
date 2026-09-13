@@ -388,9 +388,12 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
 - pc-client **1.1.66**：`…/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6`（设置中心新增「版本更新」页，独立更新记录弹窗删除；commit `4b6cba8`）
 - android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
-- about **v1.0.111**：包 `…/d/p/b56984ba-64e4-41f9-86ef-6f29e1871da5`（2026-09-13 已部署，端口 20119，data 统计卷延续）
+- about **v1.0.112**：包 `…/d/p/3751e126-6b4d-4143-922c-0e9cf735bce0`（2026-09-13 已部署，端口 20120，data 统计卷延续）
   - 下载统计：`/api/stats` 统计接口 + `/dl/<id>` 计数 302；PC 目标 v1.1.66、Android 目标 v1.0.77
   - **32KB 截断修复版**（坑 16）：server.js 加 gzip + 内联 CSS/JS 拆成 `public/style.css`、`public/app.js`
+  - **间歇 502 修复版**（2026-09-13 午后）：用户报 502 但实测 6/6 全 200、进程 running —— 判定为平台 nginx upstream keepalive 复用已关闭连接的竞态（Node 默认 keepAliveTimeout 仅 5s）。
+    修复：`server.keepAliveTimeout=72000; server.headersTimeout=76000`（必须 > 反代 upstream keepalive，且 headersTimeout > keepAliveTimeout）。
+    **判据特征：应用 running + 用户偶发 502 + 重试即好 + 探测全 200** → 优先查这条，别往进程崩溃方向排查
   - v1.0.108 曾短暂上线（下载目标误留 v1.0.76），v1.0.109 已修正为 v1.0.77；v1.0.110 因页面超 32KB 触发平台截断"白屏"，v1.0.111 修复
   - ⚠️ updater 的 `publish -o` 相对路径不生效（2026-09-13 实测，产物落在默认 `bin/Release/.../win-x64/`）→
     **一律用 Windows 风格绝对路径** `-o "E:/.../pc-updater/bin/publish"`

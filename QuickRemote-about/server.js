@@ -364,6 +364,13 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 }
 
 await loadStats();
+
+// 反 502 硬化：平台 nginx 的 upstream keepalive（通常 60s）可能复用一条 Node 已关闭的连接 → 间歇 502。
+// Node 默认 keepAliveTimeout 仅 5s，必须拉到大于反代的 upstream keepalive；
+// headersTimeout 必须 > keepAliveTimeout，否则连接会被提前掐断。
+server.keepAliveTimeout = 72000;
+server.headersTimeout = 76000;
+
 server.listen(PORT, () => {
   console.log(`QuickRemote About 页面已启动: http://localhost:${PORT}/about`);
   console.log(`统计起始日 ${stats.since}｜累计 ${CLIENT_IDS.map(id => `${id}=${(baseline[id] || 0) + (stats.counted[id] || 0)}`).join(' ')}`);
