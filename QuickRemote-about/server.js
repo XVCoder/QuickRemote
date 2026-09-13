@@ -278,8 +278,25 @@ async function sendJson(req, res, code, body) {
   res.end(payload);
 }
 
+// 请求日志（诊断 502：判断手机/用户的请求是否真正到达 Node）。内存环形缓冲，重启即清。
+const REQLOG_CAP = 400;
+const reqlog = [];
+function logReq(req) {
+  try {
+    reqlog.push({
+      t: new Date().toISOString(),
+      ip: clientIp(req),
+      m: req.method,
+      p: (req.url || '/').split('?')[0],
+      ua: String(req.headers['user-agent'] || '').slice(0, 80),
+    });
+    if (reqlog.length > REQLOG_CAP) reqlog.splice(0, reqlog.length - REQLOG_CAP);
+  } catch { /* 日志失败不影响服务 */ }
+}
+
 const server = http.createServer(async (req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
+  logReq(req);
 
   try {
     // 下载计数 + 跳转
@@ -312,6 +329,14 @@ const server = http.createServer(async (req, res) => {
       if (!Number.isFinite(days)) days = 14;
       days = Math.min(Math.max(days, 1), MAX_TREND_DAYS);
       sendJson(req, res, 200, buildStats(days));
+      return;
+    }
+
+    // 请求日志接口（502 诊断：对比“用户看到 502 的时刻”与“请求到达 Node 的记录”）
+    if (urlPath === '/api/reqlog' || urlPath === '/api/reqlog/') {
+      const nRaw = parseInt(new URL(req.url, 'http://localhost').searchParams.get('n') ?? '60', 10);
+      const n = Math.min(Math.max(Number.isFinite(nRaw) ? nRaw : 60, 1), REQLOG_CAP);
+      sendJson(req, res, 200, { now: new Date().toISOString(), buffered: reqlog.length, recent: reqlog.slice(-n) });
       return;
     }
 
