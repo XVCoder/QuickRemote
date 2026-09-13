@@ -414,6 +414,8 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
 > 铁律不变：**aapt 验证版本号必须在构建成功后做**——构建失败时 outputs 里仍是旧版 APK，
 > 切勿把旧包复制成新版本名上传。
 
+17. **「我通用户不通」先查用户侧代理，别盯着服务端**（2026-09-13 实测）：用户报 about 502，但服务端沙箱/直连/WebFetch 全 200、宿主机 `C:/Windows/System32/curl.exe --noproxy "*"` 直连也 200 → 根因是 X 开发机常驻 **ShadowsocksR PAC 模式**（127.0.0.1:54333，gfw_whitelist：海外 IP 全走代理），qd.solutionx.top 是海外 IP 被劫持进 SSR，节点抖动即 502（HTTP 502 是"合法响应"，浏览器不会 fallback DIRECT）。排查三板斧：①`curl.exe --noproxy` 直连区分服务器/链路；②PowerShell 读注册表 `AutoConfigURL` 找 PAC；③PAC 端口 `Get-NetTCPConnection -LocalPort <port>` 找进程。服务端无辜时不要重启/重发。
+
 > ⚠️ 环境坑（2026-09-11 晚）：沙箱 bash PATH 可能整体损坏（`dirname`/`tail` not found、
 > MSYS 路径映射失效导致 `/e/...` 不可用，PowerShell stdout 被吞）。修复方式：bash 里
 > `export PATH="/c/Users/xiong/.workbuddy/binaries/PortableGit/versions/1.2.0/bin:...:/c/Program Files/dotnet:/c/Windows/System32:$PATH"`
