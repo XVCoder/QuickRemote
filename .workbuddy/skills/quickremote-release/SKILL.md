@@ -320,6 +320,22 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 
 ### 部署后校验（必做）
 
+**第 0 步：响应完整性（字节数比对，防 32KB 截断，见坑 16）**
+
+```bash
+B="https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3"
+curl -sS "$B/about" | wc -c        # 期望 19275（本地 19201 + 平台注入 favicon 行 74B）
+curl -sS "$B/style.css" | wc -c    # 期望 15699
+curl -sS "$B/app.js" | wc -c       # 期望 4543
+curl -sS "$B/about" | grep -c "</html>"   # 期望 1；为 0 ⇒ 被截断
+```
+
+判据：**实际收到的字节数必须 == 本地文件大小（HTML 允许 +74B 平台注入），绝不能是 32768**。
+出现 32768 = 触发平台反向代理截断（坑 16），页面会"无法加载"，必须瘦身后再发（gzip + 拆外部资源）。
+每次给页面加内容后都要重新比对——32KB 阈值是静默生效的，超了不报任何错。
+
+**版本号与下载链路：**
+
 ```bash
 curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/about" \
   | grep -oE "1\.1\.[0-9]+|1\.0\.[0-9]+" | sort | uniq -c
@@ -372,9 +388,10 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
 - pc-client **1.1.66**：`…/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6`（设置中心新增「版本更新」页，独立更新记录弹窗删除；commit `4b6cba8`）
 - android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
-- about **v1.0.110**：包 `…/d/p/031c5633-dbd7-4676-815b-68916b9d56e2`（2026-09-13 已部署，端口 20118，data 统计卷延续）
-  - PC 下载目标已切至 v1.1.66；`/api/stats` 统计接口 + `/dl/<id>` 计数 302
-  - v1.0.108 曾短暂上线（下载目标误留 v1.0.76），v1.0.109 已修正为 v1.0.77
+- about **v1.0.111**：包 `…/d/p/b56984ba-64e4-41f9-86ef-6f29e1871da5`（2026-09-13 已部署，端口 20119，data 统计卷延续）
+  - 下载统计：`/api/stats` 统计接口 + `/dl/<id>` 计数 302；PC 目标 v1.1.66、Android 目标 v1.0.77
+  - **32KB 截断修复版**（坑 16）：server.js 加 gzip + 内联 CSS/JS 拆成 `public/style.css`、`public/app.js`
+  - v1.0.108 曾短暂上线（下载目标误留 v1.0.76），v1.0.109 已修正为 v1.0.77；v1.0.110 因页面超 32KB 触发平台截断"白屏"，v1.0.111 修复
   - ⚠️ updater 的 `publish -o` 相对路径不生效（2026-09-13 实测，产物落在默认 `bin/Release/.../win-x64/`）→
     **一律用 Windows 风格绝对路径** `-o "E:/.../pc-updater/bin/publish"`
 
@@ -467,6 +484,14 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
     cd .. && rm -rf .v
     ```
     另：部署后一定要 `curl -I` 走一遍 `/dl/pc`、`/dl/android`，**看 Location 指向的分享 ID 是否对应当前版本**（只 grep 页面版本文案抓不到这个错）。
-14. **about 线上校验要用真实路径**：应用挂在 `/about` 前缀下，页面里的相对链接 `dl/android` 从页面 URL `/app/{id}/about` 解析时会**丢掉 `about` 段** → 浏览器实际请求 `/app/{id}/dl/android`。所以校验必须用
+15. **about 线上校验要用真实路径**：应用挂在 `/about` 前缀下，页面里的相对链接 `dl/android` 从页面 URL `/app/{id}/about` 解析时会**丢掉 `about` 段** → 浏览器实际请求 `/app/{id}/dl/android`。所以校验必须用
     `https://qd.solutionx.top/app/{id}/dl/android` 与 `…/app/{id}/api/stats`；
     **不要**用 `…/app/{id}/about/dl/android`（必然 404，会误判成线上 bug）。同理 `/about` 无尾斜杠才对，`/about/` 是 404。
+16. **qdrl 反向代理对 `/app/{id}/` 路径的响应体在 32768 字节（32KB）处静默截断**（2026-09-13 实测，v1.0.110 曾因此"线上无法加载"）：
+    页面 HTML 一旦超过 32KB，`</body></html>` 与整个 `<script>` 块被切掉，reveal 动画全部停在 `opacity:0`，页面看起来"白屏/无法加载"。
+    **本地同代码跑是好的**（Node 无辜），只在平台上复现，极难定位。
+    **两层防护（v1.0.111 起，已内置在 about 应用里，勿回退）**：
+    ① `server.js` 对文本响应做 gzip（`node:zlib`，按 `accept-encoding` 判断，压缩后 ~5.5KB）；
+    ② 内联 CSS/JS 已拆成 `public/style.css` + `public/app.js` 外部文件（HTML 19.2KB / CSS 15.7KB / JS 4.5KB，identity 编码下也远低于 32KB）。
+    **新增页面内容时注意**：别把大段内容重新内联回 HTML。校验判据见「部署后校验」的字节数比对——**实际收到的字节数 == 本地文件大小（+74B 平台注入 favicon 行），绝不能是 32768**。
+    另：平台会向 HTML 注入 `<link rel="icon" href="/app/{id}/favicon">`（+74 字节），本地/线上 diff 只允许差这一行。
