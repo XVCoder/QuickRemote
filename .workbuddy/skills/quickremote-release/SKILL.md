@@ -246,27 +246,37 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 
 `QuickRemote-about/`（与 `QuickRemote/` 同级，**同一 git 仓库内**）：
 
-1. 改 `public/index.html`：**全量**替换版本号与下载链接。用 grep 兜底，别只改一处：
+0. **下载地址只写在 `server.js` 顶部的 `CLIENTS`**（`url` + `version`）。页面上的下载按钮一律是
+   相对路径 `dl/pc` / `dl/android`（`/app/{id}/about` → `/app/{id}/dl/pc`），由 server.js
+   **计数后 302 跳转**到真实链接 —— 这是下载统计的唯一入口。
+   ⚠️ 页面里**不要再写 `https://qd.solutionx.top/d/p/...` 绝对链接**（relay install.sh 除外），
+   否则绕过计数、统计漏数。
+1. 改 `public/index.html`：**全量**替换版本文案（下载 href 已不需要改这里）。用 grep 兜底，别只改一处：
 
    ```bash
-   grep -n "v[0-9]\+\.[0-9]\+\.[0-9]\+" -n public/index.html
-   grep -n "solutionx.top/d/p/" public/index.html
+   grep -n "v[0-9]\+\.[0-9]\+\.[0-9]\+" public/index.html
+   grep -n "solutionx.top/d/p/" public/index.html   # 只应命中 relay install.sh；命中 pc/android 即为漏改
    ```
 
-   待更新点：**下载卡片**（PC `.dl-version` + 下载 ZIP href；Android `.dl-version` + 下载 APK href）、
+   待更新点：**下载卡片**（PC `.dl-version`、Android `.dl-version`）、
    **快速上手**步骤 1「点击下载 PC 客户端 vX」、步骤 2「点击下载 Android App vX」。
    > 历史坑：下载卡片与教程步骤是两处独立文案，只改一处会导致卡片长期停留在旧版本。
-
-2. `package.json` 的 `version` 递增
-3. 打包（不含 node_modules；平台会自动 `npm install --omit=dev`）：
+2. 同步改 `server.js` 的 `CLIENTS[*].url` 与 `CLIENTS[*].version`
+3. `package.json` 的 `version` 递增
+4. （可选）`seed.json` 的 `baseline`：把「统计上线前已产生的下载量」计入总量（趋势图无历史明细）。
+   改完随包发布即生效。
+5. 打包（不含 node_modules 与 `data/`；平台会自动 `npm install --omit=dev`）：
 
    ```bash
-   tar -czf QuickRemote-about-v{ver}.tar.gz public server.js package.json
+   tar -czf QuickRemote-about-v{ver}.tar.gz public server.js package.json seed.json
    ```
 
-4. 上传到 qdrl 根目录（`target_dir_id = 5b681a68-...`，`allowed_extensions="tar.gz"`），拿到 `file_id`
-5. `mcp__qdrl__upgrade_app`（`app_id="quickremote-about"`、`version`、`package_content="file://<file_id>"`、`auto_start=true`）
-6. `mcp__qdrl__get_app_status` 确认 running
+   > ⚠️ **不要打 `data/`** —— 那是运行时计数目录，打进去会污染（且升级时卷优先，包内内容会被丢弃）。
+6. 上传到 qdrl 根目录（`target_dir_id = 5b681a68-...`，`allowed_extensions="tar.gz"`），拿到 `file_id`
+7. `mcp__qdrl__upgrade_app`（`app_id="quickremote-about"`、`version`、`package_content="file://<file_id>"`、
+   `auto_start=true`、**`volumes=["data"]`**）
+   > ⚠️ **`volumes=["data"]` 必须带**：下载统计存在 `data/stats.json`，只有声明为持久化卷才能跨升级保留。
+8. `mcp__qdrl__get_app_status` 确认 running
 
 线上地址：`https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/about`
 （`landing_path=/about`；该 URL 也硬编码在 Android 设置页「关于」的兜底 Intent 里）
@@ -277,7 +287,7 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 > 而 `list_apps` 显示"暂无已部署的应用"——三者互相矛盾即为此症状。
 > **MCP 侧无解**：需要用户在 qd.solutionx.top 控制台把 `quickremote-about` 应用的
 > 归属 key 换绑到当前 MCP key（mcp.json 中 qdrl 的 Bearer）。
-> 换绑后重新执行第 5 步即可，tar.gz 已上传不必重传。
+> 换绑后重新执行第 7 步（upgrade_app）即可，tar.gz 已上传不必重传。
 >
 > ✅ 2026-09-11 已实际发生一次并解除：用户换绑 key 后 `upgrade_app` 一次成功
 > （v1.0.99，蓝绿部署，端口 20105）。遇到同样报错直接让用户换绑，不要反复重试上传。
@@ -294,6 +304,19 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 
 > 注：沙箱里 `curl -o /tmp/x.html` 后再 grep 常报 "No such file or directory"
 > （写入路径与后续读取不在同一视图），改用**管道直接 grep** 一次成功。
+
+**下载统计链路校验（首次上线后必做）：**
+
+```bash
+B="https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3"
+curl -sS -o /dev/null -D - "$B/dl/pc" | grep -i "^HTTP\|^location"   # 期望 302 + qd 真实链接
+curl -sS "$B/api/stats" | head -c 240                                # 期望 JSON（total/clients/trend）
+```
+
+判据：`/dl/pc` 返回 `302` 且 `Location` 指向 `qd.solutionx.top/d/p/<PC 分享ID>`；
+`/api/stats` 返回含 `"total"`、`"clients"`、`"trend"` 的 JSON。
+`/dl/pc` 若 404 ⇒ 页面里还是绝对链接，或 server.js 未更新。
+`get_app_status` 应能看到 `data` 持久化卷 —— 没有的话升级时会丢统计。
 
 ---
 
@@ -315,10 +338,13 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 
 ## 当前线上版本（2026-09-13）
 
-- relay-server **1.0.7**：amd64 `…/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935`，arm64 `…/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835`
+- relay-server **1.0.8**：amd64 `…/d/p/cfc52a23-36b5-464a-a626-8021538a381b`，arm64 `…/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191`
+  （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
 - pc-client **1.1.65**：`…/d/p/dd0c4345-2cc6-4c9f-b56b-09fb6e21fc8a`（修复主控端中文输入法导致远程打字失效）
-- android-app **1.0.76**（versionCode 76）：`…/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7`
-- about **v1.0.107**：包 `…/d/p/c67f02f4-d20e-4ffb-bc36-b3dc59145009`（2026-09-13 已部署，端口 20113）
+- android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
+- about **v1.0.109**：包 `…/d/p/4e2e314c-6cad-4caa-a840-2af62afbd291`（2026-09-13 已部署，端口 20115）
+  - 新增各客户端下载统计：`/api/stats` 统计接口 + `/dl/<id>` 计数 302；持久化卷 `data`
+  - v1.0.108 曾短暂上线（下载目标误留 v1.0.76），v1.0.109 已修正为 v1.0.77
 
 > ⚠️ 发版坑（**根因已查明，2026-09-13**）：版本号变更后**首次** `assembleRelease` 报
 > BUILD FAILED，前两次（v1.0.74/v1.0.75）错误详情被 `tail` 截断，只看到「重跑即过」，
@@ -396,7 +422,11 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 6. **Android 版本号三处一致** + 递增 `versionCode` + apksigner 验证签名
 7. **manifest.json / CHANGELOG.md 覆盖上传**（`allow_overwrite=true`），保持固定分享链接不变
 8. **各目录只留最近 3 个版本**，manifest 同步删除，不留死链
-9. **about 页面同步易遗漏**：下载卡片与教程步骤是两处独立文案，都要改；应用归属 key 可能漂移导致 `upgrade_app` 无权（见第 5 节）
+9. **about 版本号有三处硬编码**：①`public/index.html` 下载卡片 ②`public/index.html` 快速上手步骤 ③`server.js` 的 `CLIENTS.<id>`（`version` 与下载 `url` 各一）—— 三处必须同改，只改前两处会得到「页面写新版本号、点下载仍拿旧包」这种最难发现的错（v1.0.108 就踩了）；应用归属 key 可能漂移导致 `upgrade_app` 无权（见第 5 节）
 10. **Android `assets/changelog.txt`** 每版必须同步更新（App 内更新记录读它）
 11. **发版必须同步重新发布 `pc-updater`**（配置保护逻辑在 updater 里：覆盖时保护 `appsettings.json`，已存在则备份 `.bak` 并跳过）
 12. **Android dev 目录残留旧 APK** 无所谓（已被 gitignore），但清理能避免视觉混淆
+13. **about 的下载统计**：下载 href 必须是相对路径 `dl/pc`/`dl/android`（写绝对链接会绕过计数）；真实地址只在 `server.js` 的 `CLIENTS`；`upgrade_app` 必须带 `volumes=["data"]`，否则统计清零（见第 5 节）
+14. **about 线上校验要用真实路径**：应用挂在 `/about` 前缀下，页面里的相对链接 `dl/android` 从页面 URL `/app/{id}/about` 解析时会**丢掉 `about` 段** → 浏览器实际请求 `/app/{id}/dl/android`。所以校验必须用
+    `https://qd.solutionx.top/app/{id}/dl/android` 与 `…/app/{id}/api/stats`；
+    **不要**用 `…/app/{id}/about/dl/android`（必然 404，会误判成线上 bug）。同理 `/about` 无尾斜杠才对，`/about/` 是 404。

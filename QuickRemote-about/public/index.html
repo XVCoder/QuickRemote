@@ -239,6 +239,73 @@
   .dl-card .dl-desc { font-size: 13px; color: var(--text-3); }
   .dl-card .dl-action { margin-top: 4px; }
 
+  /* 下载统计 */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; transition: border-color .15s, background .15s;
+  }
+  .stat:hover { border-color: var(--border-strong); background: var(--card-hover); }
+  .stat-label { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
+  .stat-label i { color: var(--primary); font-size: 12px; }
+  .stat-label i.android { color: var(--success); }
+  .stat-value {
+    margin-top: 8px; font-size: 27px; font-weight: 500; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .stat-value.skeleton { color: var(--text-3); }
+  .stat-sub { margin-top: 3px; font-size: 12px; color: var(--text-3); }
+
+  .trend-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  .trend-head .trend-title { font-size: 14px; font-weight: 500; }
+  .trend-legend { display: flex; gap: 14px; margin-left: auto; }
+  .trend-legend .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+  .trend-legend .lg i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .trend-range { display: flex; gap: 2px; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+  .trend-range button {
+    background: transparent; border: none; color: var(--text-2); cursor: pointer; font-family: inherit;
+    font-size: 12px; line-height: 1.4; padding: 3px 10px; border-radius: 6px; transition: all .15s;
+  }
+  .trend-range button:hover { color: var(--text); }
+  .trend-range button.active { background: var(--primary-soft); color: var(--primary); }
+
+  .chart { position: relative; height: 168px; display: flex; align-items: stretch; gap: 5px; }
+  .chart .col {
+    flex: 1 1 0; min-width: 0; position: relative;
+    display: flex; flex-direction: column;
+  }
+  .chart .stack { display: flex; flex-direction: column-reverse; gap: 2px; border-radius: 4px; overflow: hidden; min-height: 3px; }
+  .chart .seg { width: 100%; background: var(--primary); transition: filter .15s; }
+  .chart .seg.android { background: var(--success); }
+  .chart .col:hover .seg { filter: brightness(1.18); }
+  /* 悬浮提示框：只在支持 hover 的设备启用，避免移动端横向溢出 */
+  @media (hover: hover) {
+    .chart .col::after {
+      content: attr(data-tip);
+      position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%) translateY(4px);
+      background: #1c1c1c; border: 1px solid var(--border-strong); border-radius: 8px;
+      padding: 7px 11px; font-size: 12px; line-height: 1.5; color: var(--text); white-space: pre;
+      text-align: left; opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 5;
+    }
+    .chart .col:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* 两端列贴边对齐，防止提示框超出容器 */
+    .chart .col:nth-child(-n+2)::after { left: 0; transform: translateY(4px); }
+    .chart .col:nth-child(-n+2):hover::after { transform: translateY(0); }
+    .chart .col:nth-last-child(-n+2)::after { left: auto; right: 0; transform: translateY(4px); }
+    .chart .col:nth-last-child(-n+2):hover::after { transform: translateY(0); }
+  }
+  .chart-axis { display: flex; gap: 5px; margin-top: 9px; }
+  .chart-axis span {
+    flex: 1 1 0; min-width: 0; text-align: center; font-size: 10.5px; color: var(--text-3);
+    white-space: nowrap; overflow: hidden;
+  }
+  .chart-empty {
+    height: 168px; display: grid; place-items: center; text-align: center;
+    font-size: 13.5px; color: var(--text-3); border: 1px dashed var(--border); border-radius: 10px;
+  }
+  .trend-foot { margin-top: 16px; font-size: 12.5px; color: var(--text-3); }
+
   /* 页脚 */
   footer { border-top: 1px solid var(--border); padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 14px; }
   footer .links { margin-top: 10px; display: flex; gap: 18px; justify-content: center; }
@@ -253,6 +320,10 @@
     .hero { padding: 64px 0 48px; }
     .hero h1 { font-size: 32px; }
     .download-grid { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat { padding: 14px 16px; }
+    .stat-value { font-size: 22px; }
+    .trend-legend { margin-left: 0; width: 100%; }
     .arch { flex-direction: column; gap: 8px; }
     .arch-link { transform: rotate(90deg); padding: 6px 0; }
     .nav-links { display: none; }
@@ -270,6 +341,7 @@
     <div class="nav-links">
       <a class="nav-item" href="#intro">介绍</a>
       <a class="nav-item" href="#download">下载</a>
+      <a class="nav-item" href="#stats">统计</a>
       <a class="nav-item" href="#deploy">部署</a>
       <a class="nav-item" href="#usage">使用</a>
       <a class="nav-item" href="#security">安全</a>
@@ -350,20 +422,64 @@
           <span><i class="fa-brands fa-windows"></i> Windows</span>
         </div>
         <div class="dl-desc">解压后运行 QuickRemote.PCClient.exe 即可，包含 .NET 8 自包含运行时。</div>
-        <a class="btn btn-primary dl-action" href="https://qd.solutionx.top/d/p/dd0c4345-2cc6-4c9f-b56b-09fb6e21fc8a" target="_blank"><i class="fa-solid fa-download"></i> 下载 ZIP</a>
+        <a class="btn btn-primary dl-action" href="dl/pc" target="_blank" rel="noopener"><i class="fa-solid fa-download"></i> 下载 ZIP</a>
       </div>
       <div class="dl-card">
         <div class="dl-top">
           <div class="dl-name"><div class="dl-icon"><i class="fa-solid fa-mobile-screen-button"></i></div>Android App</div>
-          <span class="dl-version">v1.0.76</span>
+          <span class="dl-version">v1.0.77</span>
         </div>
         <div class="dl-meta">
           <span><i class="fa-brands fa-android"></i> APK · 约 12MB</span>
           <span><i class="fa-solid fa-mobile"></i> Android</span>
         </div>
         <div class="dl-desc">需在手机上开启「允许安装未知来源应用」后安装，支持 arm64 / armv7。</div>
-        <a class="btn btn-primary dl-action" href="https://qd.solutionx.top/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7" target="_blank"><i class="fa-solid fa-download"></i> 下载 APK</a>
+        <a class="btn btn-primary dl-action" href="dl/android" target="_blank" rel="noopener"><i class="fa-solid fa-download"></i> 下载 APK</a>
       </div>
+    </div>
+  </section>
+
+  <!-- 下载统计 -->
+  <section id="stats" class="reveal">
+    <h2 class="section-title"><span class="bar"></span>下载统计</h2>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="stat-label"><i class="fa-solid fa-download"></i>下载总量</div>
+        <div class="stat-value skeleton" id="st-total">—</div>
+        <div class="stat-sub">PC + Android 累计</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label"><i class="fa-solid fa-desktop"></i>PC 客户端</div>
+        <div class="stat-value skeleton" id="st-pc">—</div>
+        <div class="stat-sub" id="st-pc-sub">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label"><i class="fa-brands fa-android android"></i>Android App</div>
+        <div class="stat-value skeleton" id="st-android">—</div>
+        <div class="stat-sub" id="st-android-sub">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label"><i class="fa-solid fa-calendar-day"></i>今日下载</div>
+        <div class="stat-value skeleton" id="st-today">—</div>
+        <div class="stat-sub" id="st-today-sub">—</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="trend-head">
+        <div class="trend-title">每日下载趋势</div>
+        <div class="trend-legend">
+          <span class="lg"><i style="background:#6799fe"></i>PC 客户端</span>
+          <span class="lg"><i style="background:#28c840"></i>Android App</span>
+        </div>
+        <div class="trend-range" id="trend-range">
+          <button type="button" data-days="7">7 天</button>
+          <button type="button" data-days="14" class="active">14 天</button>
+          <button type="button" data-days="30">30 天</button>
+        </div>
+      </div>
+      <div id="chart-host"><div class="chart-empty">正在加载…</div></div>
+      <div class="trend-foot" id="trend-foot">正在加载统计…</div>
     </div>
   </section>
 
@@ -448,7 +564,7 @@
 
     <h3 style="margin-top:32px;">PC 客户端（Windows）</h3>
     <div class="steps" style="margin:16px 0;">
-      <div class="step"><div class="num">1</div><div class="body"><h4>下载客户端</h4><p><a href="https://qd.solutionx.top/d/p/dd0c4345-2cc6-4c9f-b56b-09fb6e21fc8a" target="_blank">点击下载 PC 客户端 v1.1.65</a>（ZIP），解压到任意目录</p></div></div>
+      <div class="step"><div class="num">1</div><div class="body"><h4>下载客户端</h4><p><a href="dl/pc" target="_blank" rel="noopener">点击下载 PC 客户端 v1.1.65</a>（ZIP），解压到任意目录</p></div></div>
       <div class="step"><div class="num">2</div><div class="body"><h4>配置服务器</h4><p>在「设置」填入服务器地址与预共享密钥，点击「保存设置」</p></div></div>
       <div class="step"><div class="num">3</div><div class="body"><h4>启用 RDP</h4><p>点击「检查 RDP」确认服务已启用，未启用点「一键启用」（需 UAC 提权）</p></div></div>
     </div>
@@ -456,7 +572,7 @@
     <h3 style="margin:24px 0 12px;">Android App</h3>
     <div class="steps" style="margin:16px 0;">
       <div class="step"><div class="num">1</div><div class="body"><h4>允许未知来源</h4><p>手机开启「允许安装未知来源应用」</p></div></div>
-      <div class="step"><div class="num">2</div><div class="body"><h4>下载安装 APK</h4><p><a href="https://qd.solutionx.top/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7" target="_blank">点击下载 Android App v1.0.76</a>（APK）并点击安装</p></div></div>
+      <div class="step"><div class="num">2</div><div class="body"><h4>下载安装 APK</h4><p><a href="dl/android" target="_blank" rel="noopener">点击下载 Android App v1.0.77</a>（APK）并点击安装</p></div></div>
       <div class="step"><div class="num">3</div><div class="body"><h4>配置服务器</h4><p>进入「服务器配置」页，输入中转服务器地址与预共享密钥</p></div></div>
       <div class="step"><div class="num">4</div><div class="body"><h4>测试并连接</h4><p>点击「测试连接」确认可达后保存，即可看到在线 PC 并远程连接</p></div></div>
     </div>
@@ -540,6 +656,96 @@
     });
   }, { threshold: 0.08 });
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // 下载统计（数据来自 server.js 的 /api/stats）
+  (() => {
+    const $ = id => document.getElementById(id);
+    const host = $('chart-host');
+    const foot = $('trend-foot');
+    const rangeBox = $('trend-range');
+    let days = 14;
+
+    const num = n => Number(n || 0).toLocaleString('zh-CN');
+    const shortDate = d => { const p = d.split('-'); return `${+p[1]}/${+p[2]}`; };
+
+    function setValue(id, value) {
+      const el = $(id);
+      el.textContent = num(value);
+      el.classList.remove('skeleton');
+    }
+
+    // 用 flex 比例控制柱高与分段高度，避免依赖百分比高度
+    function renderChart(trend) {
+      const max = Math.max(1, ...trend.map(t => t.total));
+      const last = trend.length - 1;
+      const step = trend.length <= 7 ? 1 : trend.length <= 14 ? 2 : 5;
+
+      const cols = trend.map(t => {
+        if (!t.total) return `<div class="col" data-tip="${t.date}\n暂无下载"></div>`;
+        const segs = [];
+        if (t.pc) segs.push(`<div class="seg" style="flex:${t.pc}"></div>`);
+        if (t.android) segs.push(`<div class="seg android" style="flex:${t.android}"></div>`);
+        const tip = `${t.date}\nPC 客户端 ${t.pc}\nAndroid App ${t.android}\n合计 ${t.total}`;
+        return `<div class="col" data-tip="${tip}">`
+          + `<div class="stack" style="flex:${t.total}">${segs.join('')}</div>`
+          + `<div style="flex:${max - t.total}"></div>`
+          + `</div>`;
+      }).join('');
+
+      const axis = trend.map((t, i) =>
+        `<span>${(last - i) % step === 0 ? shortDate(t.date) : ''}</span>`).join('');
+
+      host.innerHTML = `<div class="chart">${cols}</div><div class="chart-axis">${axis}</div>`;
+    }
+
+    function render(data) {
+      const pc = data.clients.find(c => c.id === 'pc');
+      const android = data.clients.find(c => c.id === 'android');
+
+      setValue('st-total', data.total);
+      setValue('st-pc', pc.total);
+      setValue('st-android', android.total);
+      setValue('st-today', data.today);
+
+      $('st-pc-sub').textContent = pc.version + (pc.baseline ? ` · 含历史基数 ${num(pc.baseline)}` : '');
+      $('st-android-sub').textContent = android.version + (android.baseline ? ` · 含历史基数 ${num(android.baseline)}` : '');
+      $('st-today-sub').textContent = shortDate(data.range.to);
+
+      if (data.countedTotal > 0) {
+        renderChart(data.trend);
+      } else {
+        host.innerHTML = '<div class="chart-empty">暂无下载数据<br><span style="font-size:12.5px">统计自服务上线后开始记录，有新下载后即显示趋势</span></div>';
+      }
+
+      const range = `${shortDate(data.range.from)} — ${shortDate(data.range.to)}`;
+      foot.textContent = data.baselineTotal
+        ? `统计自 ${data.since} 起记录，趋势区间 ${range}；另有 ${num(data.baselineTotal)} 次历史下载计入总量（无每日明细）。`
+        : `统计自 ${data.since} 起记录，趋势区间 ${range}，按东八区日期归集。`;
+    }
+
+    async function load() {
+      try {
+        const res = await fetch(`api/stats?days=${days}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        render(await res.json());
+      } catch (err) {
+        host.innerHTML = '<div class="chart-empty">统计暂时不可用</div>';
+        foot.textContent = '无法获取下载统计：' + err.message;
+      }
+    }
+
+    rangeBox.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-days]');
+      if (!btn) return;
+      const d = Number(btn.dataset.days);
+      if (!d || d === days) return;
+      days = d;
+      rangeBox.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      load();
+    });
+
+    load();
+  })();
 </script>
 </body>
 </html>
