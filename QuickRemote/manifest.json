@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.65",
-    "changelog": "修复主控端中文输入法导致远程打字失效：远程控制窗口禁用本机输入法，按键原样转发给被控端（此前主控端处于中文态时，字母与上排数字被输入法吞成拼音组合与候选词选择，表现为被控端打字毫无反应）",
+    "latest_version": "1.1.66",
+    "changelog": "设置中心新增「版本更新」页：主窗口底部「检查更新/更新记录」按钮整体挪进设置页，独立更新记录弹窗删除，改为页内阅读区（内部滚动+可手动刷新）；检查结果实时回显；更新记录的 **粗体** 与 `代码` 标记此前裸露显示，现已正常渲染",
     "versions": {
+      "1.1.66": {
+        "zip": "https://qd.solutionx.top/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6"
+      },
       "1.1.65": {
         "zip": "https://qd.solutionx.top/d/p/dd0c4345-2cc6-4c9f-b56b-09fb6e21fc8a"
       },
       "1.1.64": {
         "zip": "https://qd.solutionx.top/d/p/d071d861-df1b-40c0-a9c7-c351f7c0a470"
-      },
-      "1.1.63": {
-        "zip": "https://qd.solutionx.top/d/p/b0ac4dd3-c7ec-438f-9033-e7c8e14ac2a6"
       }
     }
   },
