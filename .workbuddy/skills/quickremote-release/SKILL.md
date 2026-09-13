@@ -305,18 +305,22 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 > 注：沙箱里 `curl -o /tmp/x.html` 后再 grep 常报 "No such file or directory"
 > （写入路径与后续读取不在同一视图），改用**管道直接 grep** 一次成功。
 
-**下载统计链路校验（首次上线后必做）：**
+**下载链路校验（每次发版必做）：**
 
 ```bash
 B="https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3"
-curl -sS -o /dev/null -D - "$B/dl/pc" | grep -i "^HTTP\|^location"   # 期望 302 + qd 真实链接
-curl -sS "$B/api/stats" | head -c 240                                # 期望 JSON（total/clients/trend）
+curl -sS -o /dev/null -D - "$B/dl/pc"      | grep -i "^HTTP\|^location"   # 期望 302
+curl -sS -o /dev/null -D - "$B/dl/android" | grep -i "^HTTP\|^location"   # 期望 302
+curl -sS "$B/api/stats" | head -c 240                                     # 期望 JSON（total/clients/trend）
 ```
 
-判据：`/dl/pc` 返回 `302` 且 `Location` 指向 `qd.solutionx.top/d/p/<PC 分享ID>`；
-`/api/stats` 返回含 `"total"`、`"clients"`、`"trend"` 的 JSON。
-`/dl/pc` 若 404 ⇒ 页面里还是绝对链接，或 server.js 未更新。
-`get_app_status` 应能看到 `data` 持久化卷 —— 没有的话升级时会丢统计。
+判据：
+- `/dl/pc`、`/dl/android` 都返回 `302`，且 **`Location` 的分享 ID 必须是当前版本的包**——
+  用 `curl -sI -L "<Location>"` 复核 `Content-Disposition` 里的文件名版本号对不对
+  （只 grep 页面文案抓不到「页面写 v1.0.77、下载仍是 v1.0.76」这种错，见坑列表第 9、14 条）。
+- `/api/stats` 返回含 `"total"`、`"clients"`、`"trend"` 的 JSON，且 `clients[].version` 与当前版本一致。
+- `/dl/pc` 若 404 ⇒ 页面里还是绝对链接，或 server.js 未更新。
+- `get_app_status` 应能看到 `data` 持久化卷 —— 没有的话升级时会丢统计。
 
 ---
 
@@ -427,6 +431,14 @@ curl -sS "$B/api/stats" | head -c 240                                # 期望 JS
 11. **发版必须同步重新发布 `pc-updater`**（配置保护逻辑在 updater 里：覆盖时保护 `appsettings.json`，已存在则备份 `.bak` 并跳过）
 12. **Android dev 目录残留旧 APK** 无所谓（已被 gitignore），但清理能避免视觉混淆
 13. **about 的下载统计**：下载 href 必须是相对路径 `dl/pc`/`dl/android`（写绝对链接会绕过计数）；真实地址只在 `server.js` 的 `CLIENTS`；`upgrade_app` 必须带 `volumes=["data"]`，否则统计清零（见第 5 节）
+14. **上传前必须重建 tar.gz，不要拿旧包直接传**：本工作区存在并行工作线，`QuickRemote-about/` 的源文件可能已被另一条线改过（改 `server.js` 下载目标、升 Android 版本号）。若上传的是几小时前打的包，会把**旧的下载目标**重新推上线（v1.0.108 就因此二次回归：页面文案 v1.0.77、点下载却拿 v1.0.76）。
+    上传前先跑这句，确认包内内容 == 当前工作副本，不一致就重新打包：
+    ```bash
+    mkdir -p .v && cd .v && tar --force-local -xzf ../QuickRemote-about-v{ver}.tar.gz
+    for f in server.js package.json public/index.html seed.json; do diff -q "$f" "../$f" || echo "**过期: $f**"; done
+    cd .. && rm -rf .v
+    ```
+    另：部署后一定要 `curl -I` 走一遍 `/dl/pc`、`/dl/android`，**看 Location 指向的分享 ID 是否对应当前版本**（只 grep 页面版本文案抓不到这个错）。
 14. **about 线上校验要用真实路径**：应用挂在 `/about` 前缀下，页面里的相对链接 `dl/android` 从页面 URL `/app/{id}/about` 解析时会**丢掉 `about` 段** → 浏览器实际请求 `/app/{id}/dl/android`。所以校验必须用
     `https://qd.solutionx.top/app/{id}/dl/android` 与 `…/app/{id}/api/stats`；
     **不要**用 `…/app/{id}/about/dl/android`（必然 404，会误判成线上 bug）。同理 `/about` 无尾斜杠才对，`/about/` 是 404。
