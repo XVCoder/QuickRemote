@@ -13,12 +13,8 @@
 
 import http from 'node:http';
 import { readFile, stat, writeFile, rename, mkdir } from 'node:fs/promises';
-import { gzip as gzipCb } from 'node:zlib';
-import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-
-const gzipAsync = promisify(gzipCb);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -243,15 +239,20 @@ function buildStats(days) {
 /**
  * ⚠️ 平台反向代理对 /app/{id}/ 路径的响应体有 32KB（32768 字节）截断，
  * 超过部分直接丢弃且不报错 —— 页面从 29.7KB 涨到 39.4KB 后曾整页断尾。
- * 对策：文本类响应一律按需 gzip（正文缩到 ~1/4），同时 HTML/CSS/JS 拆分，
- * 保证任何单个响应都远低于该阈值。
+ * 对策：HTML/CSS/JS 拆分，保证任何单个响应都远低于该阈值
+ * （HTML 19.2K / CSS 15.7K / JS 4.5K）。
+ *
+ * ⚠️ 502 双故障模型（2026-09-13 实测，v1.0.111~115 排查全程）：
+ *   故障一（已修复，勿回退）：响应带 Content-Encoding: gzip 时，平台对落地页
+ *   响应做解压→注入→再压处理会失败并回 502，且按 Accept-Encoding 分变体缓存——
+ *   浏览器全带此头 → 浏览器全 502，curl 不带 → 正常。对策：Node 永不 gzip。
+ *   故障二（平台侧行为，无法代码修复）：每次蓝绿升级会清落地页缓存并立即回源，
+ *   若回源瞬间路由未收敛（新端口刚切换），拉到的 502 会被缓存，/about 由此持续
+ *   502（css/js 等普通路径不受影响、约 10 分钟内自行收敛）。
+ *   → 对策：①发版后等 ≥10 分钟再验证 /about；②若被投毒，用同一包再 upgrade 一次
+ *   可强制刷新缓存（回源时路由已收敛即成功）；③避免短时间内连续多次升级。
+ *   Vary 头保留（HTTP 语义正确），但实测并非 502 的开关。
  */
-const COMPRESSIBLE_EXT = new Set(['.html', '.css', '.js', '.json', '.svg', '.txt']);
-
-function acceptsGzip(req) {
-  const ae = req.headers['accept-encoding'];
-  return typeof ae === 'string' && /\bgzip\b/i.test(ae);
-}
 
 function resolvePath(urlPath) {
   const clean = urlPath.split('?')[0].split('#')[0];
@@ -262,17 +263,12 @@ function resolvePath(urlPath) {
 }
 
 async function sendJson(req, res, code, body) {
-  const raw = Buffer.from(JSON.stringify(body), 'utf8');
+  const payload = Buffer.from(JSON.stringify(body), 'utf8');
   const headers = {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-    Vary: 'Accept-Encoding',
+    Vary: 'Accept-Encoding', // 平台铁律②：响应必须带 Vary，缺失会导致 HTML 502（见上）
   };
-  let payload = raw;
-  if (acceptsGzip(req)) {
-    payload = await gzipAsync(raw);
-    headers['Content-Encoding'] = 'gzip';
-  }
   headers['Content-Length'] = payload.length;
   res.writeHead(code, headers);
   res.end(payload);
@@ -361,13 +357,9 @@ const server = http.createServer(async (req, res) => {
     const headers = {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
-      Vary: 'Accept-Encoding',
+      Vary: 'Accept-Encoding', // 平台铁律②：HTML 缺此头必 502（见文件头注释）
     };
-    let payload = data;
-    if (COMPRESSIBLE_EXT.has(ext) && acceptsGzip(req)) {
-      payload = await gzipAsync(data);
-      headers['Content-Encoding'] = 'gzip';
-    }
+    const payload = data;
     headers['Content-Length'] = payload.length;
     res.writeHead(200, headers);
     res.end(req.method === 'HEAD' ? undefined : payload);
