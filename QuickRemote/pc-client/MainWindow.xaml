@@ -30,7 +30,6 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- ============ 标题栏 ============ -->
@@ -80,7 +79,7 @@
             </Border>
 
             <!-- ============ 内容区 ============ -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,20,20,8"
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,20,20,16"
                           Style="{StaticResource DarkScrollBar}">
                 <StackPanel>
 
@@ -368,21 +367,6 @@
 
                 </StackPanel>
             </ScrollViewer>
-
-            <!-- ============ 底部按钮栏 ============ -->
-            <Border Grid.Row="2" Background="Transparent"
-                    CornerRadius="0,0,12,12" Padding="20,8,20,16">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" Content="更新记录" Style="{StaticResource ActionButton}"
-                            Padding="14,12" Margin="0,0,4,0" Command="{Binding ShowChangelogCommand}"/>
-                    <Button Grid.Column="1" Content="检查更新" Style="{StaticResource ActionButton}"
-                            Padding="14,12" Margin="4,0,0,0" Command="{Binding CheckUpdateCommand}"/>
-                </Grid>
-            </Border>
         </Grid>
     </Border>
 </Window>

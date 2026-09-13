@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 临时工作台：离屏渲染 SettingsWindow「版本更新」页，导出 PNG 供视觉校验。
+       仅用于开发期验证，不属于产品代码，验证后可整体删除。 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>SettingsShot</AssemblyName>
+    <RootNamespace>SettingsShot</RootNamespace>
+    <StartupObject>SettingsShot.Program</StartupObject>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QuickRemote\pc-client\QuickRemote.PCClient.csproj" />
+  </ItemGroup>
+
+</Project>

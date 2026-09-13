@@ -181,6 +181,32 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$
 
 上传时 `allowed_extensions` 留空（二进制无扩展名）。
 
+### 2.5 PC 端 UI 改动的视觉验证（离屏渲染工作台，强烈建议）
+
+本沙箱**无法截图**（`agent-browser` 二次调用必挂死、playwright chromium 的 `--headless --screenshot`
+同样挂死）。PC 端 WPF 改动改用**离屏渲染**出图，真实渲染产品 XAML，可肉眼核对：
+
+- 工作台：`tmp-settingshot/`（临时工程，引用 `QuickRemote/pc-client/QuickRemote.PCClient.csproj`）
+- 原理：`new App()` + `InitializeComponent()` 载入产品资源字典 → `new 目标Window()` → 离屏 `Show()`
+  → 注入桩数据 → `RenderTargetBitmap` + `PngBitmapEncoder` 出 PNG（192 DPI）
+
+```bash
+cd E:/000_AI/QuickRemote && bash .workbuddy/tools/dotnet-with-win-env.sh build \
+    tmp-settingshot/SettingsShot.csproj -c Debug -v q --nologo
+cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe \
+    "E:/000_AI/QuickRemote/QuickRemote/CHANGELOG.md" "E:/000_AI/QuickRemote/tmp-settingshot/out.png"
+```
+
+**必须遵守的三条（都踩过）：**
+
+1. **不要起消息泵等异步加载**。`Dispatcher.PushFrame` 循环在无 `Application.Run` 时会永久卡死
+   （日志停在最后一行 pump、进程不退且锁住 exe）。→ 断网/无异步：正文直接读**本地**文件注入
+   （`ChangelogRenderer.Render(md)`），一步到位。
+2. **进程锁 exe**：工作台崩溃/挂死会占住 `SettingsShot.exe`，下次 `build` 报 `MSB3027/MSB3021`
+   → 先 `taskkill /F /IM SettingsShot.exe`（注意 Git Bash 下要写成 `/F`，写 `//F` 会被当成参数报错）。
+3. **客观数据比肉眼更靠谱**：同时打印 `ContentScroll.ViewportHeight/ScrollableHeight`（0=无溢出）
+   与阅读区内部 `PART_ContentHost` 的 `ScrollableHeight`（>0=能内部滚动），比只看图更能判定"撑破/裁切"。
+
 ---
 
 ## 3. 上传（qdrl MCP）

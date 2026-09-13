@@ -13,7 +13,7 @@ namespace QuickRemote.PCClient.ViewModels;
 /// <summary>
 /// 主界面 ViewModel，管理所有状态与服务协调。
 /// </summary>
-public sealed class MainViewModel : BaseViewModel
+public sealed class MainViewModel : BaseViewModel, IChangelogSource
 {
     private readonly Logger _logger;
     private readonly ConfigService _configService;
@@ -51,6 +51,7 @@ public sealed class MainViewModel : BaseViewModel
     // 更新
     private bool _isUpdateAvailable;
     private string _latestVersion = string.Empty;
+    private string _updateStatusText = "尚未检查更新";
 
     public MainViewModel()
     {
@@ -71,7 +72,6 @@ public sealed class MainViewModel : BaseViewModel
         // 命令
         SaveSettingsCommand = new RelayCommand(SaveSettings);
         CheckUpdateCommand = new RelayCommand(async () => await CheckUpdateAsync());
-        ShowChangelogCommand = new RelayCommand(ShowChangelog);
         ViewLogsCommand = new RelayCommand(ViewLogs);
         ConnectDeviceCommand = new RelayCommand(ConnectDevice);
         SetDeviceRemarkCommand = new RelayCommand(SetDeviceRemark);
@@ -490,11 +490,20 @@ public sealed class MainViewModel : BaseViewModel
 
     public UpdateChecker UpdateChecker => _updateChecker;
 
+    /// <summary>设置中心「版本更新」页的最近一次检查结果提示。</summary>
+    public string UpdateStatusText
+    {
+        get => _updateStatusText;
+        private set => SetField(ref _updateStatusText, value);
+    }
+
+    /// <summary>更新记录（CHANGELOG.md）地址，供设置中心「版本更新」页拉取展示。</summary>
+    public string ChangelogUrl => _configService.Config.QuickDeploy.ChangelogUrl;
+
     // ========== 命令 ==========
 
     public ICommand SaveSettingsCommand { get; }
     public ICommand CheckUpdateCommand { get; }
-    public ICommand ShowChangelogCommand { get; }
     public ICommand ViewLogsCommand { get; }
 
     /// <summary>点击远程设备 → 打开远程查看窗口（参数：RemoteDeviceInfo）。</summary>
@@ -776,15 +785,18 @@ public sealed class MainViewModel : BaseViewModel
 
     private async Task CheckUpdateAsync()
     {
+        UpdateStatusText = "正在检查更新...";
         await _updateChecker.CheckAsync(_configService.Config.QuickDeploy.ManifestUrl);
 
         // 检查完成后弹出结果提示
         if (!string.IsNullOrEmpty(_updateChecker.LastErrorMessage))
         {
+            UpdateStatusText = $"检查失败：{_updateChecker.LastErrorMessage}";
             Views.DialogWindow.Show(_updateChecker.LastErrorMessage, "检查更新", Views.DialogWindow.DialogType.Warning);
         }
         else if (_updateChecker.IsUpdateAvailable)
         {
+            UpdateStatusText = $"发现新版本 v{_updateChecker.LatestVersion}";
             var result = Views.DialogWindow.Confirm(
                 $"发现新版本 v{_updateChecker.LatestVersion}\n当前版本 v{App.Version}\n\n是否立即下载并安装？",
                 "更新可用",
@@ -799,13 +811,9 @@ public sealed class MainViewModel : BaseViewModel
         }
         else
         {
+            UpdateStatusText = $"当前 v{App.Version} 已是最新版本";
             Views.DialogWindow.Show($"当前 v{App.Version} 已是最新版本", "检查更新", Views.DialogWindow.DialogType.Info);
         }
-    }
-
-    private void ShowChangelog()
-    {
-        Views.ChangelogWindow.Show(_configService.Config.QuickDeploy.ChangelogUrl, _logger);
     }
 
     // ========== 事件处理（需切换到 UI 线程）==========
