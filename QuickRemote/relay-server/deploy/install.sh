@@ -158,6 +158,16 @@ compare_versions() {
     else echo 0; fi
 }
 
+# 备份当前二进制（按版本号命名，仅保留最近 2 份，用于失败自动回滚与手动回滚）
+backup_binary() {
+    local bin="$INSTALL_DIR/quickremote-relay" ver
+    [ -f "$bin" ] || return 0
+    ver="$(get_current_version)"
+    [ "$ver" = "未知" ] && ver="unknown"
+    cp -f "$bin" "$INSTALL_DIR/quickremote-relay.bak.$ver"
+    ls -1t "$INSTALL_DIR"/quickremote-relay.bak.* 2>/dev/null | tail -n +3 | xargs -r rm -f
+}
+
 # 检查服务是否已安装
 is_installed() {
     systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}\.service" && return 0
@@ -300,8 +310,16 @@ do_install() {
     info "最新版本: $latest_version"
     info "更新说明: $(get_latest_changelog "$manifest_file")"
 
-    local listen_port
-    listen_port=$(prompt_with_default "请输入监听端口" "8443")
+    echo ""
+    info "端口说明:"
+    echo "  · HTTP/API 端口（默认 8443）: 仅 Android App 使用（登录认证/设备列表/隧道请求）"
+    echo "  · 控制连接端口（默认 8444）: 自动为 HTTP 端口 + 1，无需配置，仅 PC 端使用（远程控制连接）"
+    echo "  · 隧道数据端口（默认 8445）: PC 与 App 共用（远程画面/输入数据转发）"
+    echo ""
+
+    local listen_port tunnel_port
+    listen_port=$(prompt_with_default "请输入 HTTP/API 端口（Android 专用，控制连接自动 = 该端口+1）" "8443")
+    tunnel_port=$(prompt_with_default "请输入隧道数据端口" "8445")
 
     local pre_shared_key
     pre_shared_key="$(prompt_secret "请输入预共享密钥 [回车自动生成]: ")"
@@ -335,8 +353,8 @@ do_install() {
     # 创建配置文件
     cat > "$CONFIG_FILE" <<EOF
 server:
-  listen: ":$listen_port"
-  tunnel_listen: ":8445"
+  listen: "::$listen_port"
+  tunnel_listen: ":$tunnel_port"
 auth:
   pre_shared_key: "$pre_shared_key"
   jwt_secret: "$jwt_secret"
@@ -375,36 +393,47 @@ EOF
     else
         error "服务已启动但健康检查失败，请查看日志: journalctl -u $SERVICE_NAME -f"
     fi
-    info "服务器地址: http://$(get_server_ip):$listen_port"
+    local server_ip="$(get_server_ip)"
+    info "端口分配:"
+    info "  · HTTP/API: ${server_ip}:${listen_port} （仅 Android App：登录/设备列表/隧道请求）"
+    info "  · 控制连接: ${server_ip}:$((listen_port + 1)) （仅 PC 端：远程控制连接，自动 = HTTP + 1）"
+    info "  · 隧道数据: ${server_ip}:${tunnel_port} （PC 与 App 共用：画面/输入数据转发）"
+    warn "请确认防火墙/云安全组已放行以上三个端口"
     info "建议在 nginx 反向代理层配置 TLS 证书以启用 HTTPS"
     info "预共享密钥: $pre_shared_key"
     info "配置文件: $CONFIG_FILE"
     info "管理命令: sudo systemctl {start|stop|restart|status} $SERVICE_NAME"
 }
 
-# 已安装时在进入操作菜单前自动检查是否有可用更新（仅提示，不自动更新）。
-# 网络不可用或版本源不可达时静默跳过，不阻塞脚本运行。
+# 已安装时在进入操作菜单前检查更新：无论是否有新版本都打印线上最新版本。
+# 网络不可用或版本源不可达时提示后静默跳过，不阻塞脚本运行。
 check_update_notice() {
     local current_version latest_version cmp manifest_file changelog
     current_version="$(get_current_version)"
-    [ "$current_version" = "未知" ] && return 0
     manifest_file="$(fetch_manifest 2>/dev/null || true)"
-    [ -z "$manifest_file" ] && return 0
+    if [ -z "$manifest_file" ]; then
+        warn "无法获取线上版本信息（网络不可用或版本源不可达），跳过更新检查"
+        return 0
+    fi
     latest_version="$(get_latest_version "$manifest_file")"
     changelog="$(get_latest_changelog "$manifest_file")"
     rm -f "$manifest_file"
+    info "线上最新版本: $latest_version"
+    info "【更新说明】${changelog}"
+    if [ "$current_version" = "未知" ]; then
+        return 0
+    fi
     cmp="$(compare_versions "$current_version" "$latest_version")"
     if [ "$cmp" = 2 ]; then
         echo ""
         echo "=============================================================="
         echo "  有新版本可用：${current_version} → ${latest_version}"
         echo "=============================================================="
-        echo "【更新说明】"
-        echo "    · ${changelog}"
-        echo "=============================================================="
-        echo "  可进入菜单选择「1) 升级到最新版本」。"
+        echo "  可进入菜单选择「1) 升级到最新版本」；升级失败可回滚。"
         echo "=============================================================="
         echo ""
+    else
+        info "当前已是最新版本 ($current_version)"
     fi
 }
 
@@ -460,10 +489,10 @@ do_upgrade() {
 
     systemctl stop $SERVICE_NAME
 
-    # 备份现有二进制（用于失败回滚）
+    # 备份现有二进制（按版本号命名，用于失败自动回滚与手动回滚）
     if [ -f "$INSTALL_DIR/quickremote-relay" ]; then
-        info "备份现有二进制"
-        cp "$INSTALL_DIR/quickremote-relay" "$INSTALL_DIR/quickremote-relay.bak"
+        info "备份当前版本 $current_version"
+        backup_binary
     fi
 
     mv "$tmp_binary" "$INSTALL_DIR/quickremote-relay"
@@ -474,18 +503,55 @@ do_upgrade() {
 
     if health_check "$(get_listen_port)"; then
         info "升级完成: $current_version -> $latest_version"
-        rm -f "$INSTALL_DIR/quickremote-relay.bak"
+        info "已保留 $current_version 备份，如需回退可在菜单选择「3) 回滚到上一版本」"
     else
-        # 失败回滚到旧版本
+        # 失败自动回滚到旧版本
         error "健康检查失败，正在回滚到 $current_version"
         systemctl stop $SERVICE_NAME
-        if [ -f "$INSTALL_DIR/quickremote-relay.bak" ]; then
-            mv "$INSTALL_DIR/quickremote-relay.bak" "$INSTALL_DIR/quickremote-relay"
+        local rollback_bak
+        rollback_bak=$(ls -1t "$INSTALL_DIR"/quickremote-relay.bak.* 2>/dev/null | head -n 1)
+        if [ -n "$rollback_bak" ]; then
+            mv "$rollback_bak" "$INSTALL_DIR/quickremote-relay"
         fi
         echo "$current_version" > "$INSTALL_DIR/VERSION"
         fix_selinux_context
         systemctl start $SERVICE_NAME
         info "已回滚到 $current_version"
+    fi
+}
+
+# 回滚到上一版本（使用升级时保留的备份）
+do_rollback() {
+    local latest_bak bak_version current_version confirm
+    latest_bak=$(ls -1t "$INSTALL_DIR"/quickremote-relay.bak.* 2>/dev/null | head -n 1)
+    if [ -z "$latest_bak" ]; then
+        error "没有可用的版本备份（升级时会自动备份上一版本）"
+        return 1
+    fi
+    bak_version="${latest_bak##*.bak.}"
+    current_version="$(get_current_version)"
+    if [ "$bak_version" = "$current_version" ]; then
+        info "备份版本与当前版本相同 ($current_version)，无需回滚"
+        return 0
+    fi
+    info "当前版本: $current_version"
+    info "将回滚到: $bak_version"
+    prompt "确认回滚? [y/N]: "
+    read -r confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        info "已取消回滚"
+        return 0
+    fi
+
+    systemctl stop $SERVICE_NAME
+    mv "$latest_bak" "$INSTALL_DIR/quickremote-relay"
+    echo "$bak_version" > "$INSTALL_DIR/VERSION"
+    fix_selinux_context
+    systemctl start $SERVICE_NAME
+    if health_check "$(get_listen_port)"; then
+        info "已回滚到 $bak_version"
+    else
+        error "回滚后健康检查仍失败，请查看日志: journalctl -u $SERVICE_NAME -f"
     fi
 }
 
@@ -502,7 +568,10 @@ do_config() {
 
     local listen_port tunnel_port pre_shared_key jwt_secret base_url upload_token
 
-    listen_port=$(prompt_with_default "新的监听端口" "$(get_listen_port)")
+    echo ""
+    info "端口说明: HTTP/API（仅 Android：登录/设备列表/隧道请求，默认 8443）；控制连接自动为 HTTP+1（仅 PC，默认 8444），无需配置；隧道数据（PC 与 App 共用，默认 8445）"
+    echo ""
+    listen_port=$(prompt_with_default "新的 HTTP/API 端口" "$(get_listen_port)")
     tunnel_port=$(prompt_with_default "新的隧道数据端口" "$(read_yaml_block_field "$CONFIG_FILE" server tunnel_listen | sed 's/.*://')")
     prompt "新的预共享密钥 (回车保持不变): "
     read -r pre_shared_key
@@ -571,15 +640,17 @@ main() {
         echo "请选择操作:"
         echo "  1) 升级到最新版本"
         echo "  2) 修改配置"
-        echo "  3) 卸载"
+        echo "  3) 回滚到上一版本"
+        echo "  4) 卸载"
         echo ""
-        prompt "请输入选项序号 [1-3]: "
+        prompt "请输入选项序号 [1-4]: "
         read -r choice
 
         case "$choice" in
             1) do_upgrade ;;
             2) do_config ;;
-            3) do_uninstall ;;
+            3) do_rollback ;;
+            4) do_uninstall ;;
             *) error "无效选项"; exit 1 ;;
         esac
     else
