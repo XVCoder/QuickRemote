@@ -48,3 +48,9 @@ init-redirect.gradle
 # PC 端 UI 离屏渲染工作台的产物
 tmp-settingshot/*.png*
 tmp-settingshot/*.log
+
+# about 页本地调试产物 / 上传编码临时文件 / 平台对照探针
+*.b64
+.probe-app/
+QuickRemote-about/data/
+QuickRemote-about/.smoke.log

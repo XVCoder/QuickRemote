@@ -806,7 +806,7 @@ private fun openApkInstaller(context: Context, apk: File) {
         context.startActivity(intent)
     } catch (e: Exception) {
         // FileProvider 或安装器唤起失败（极老 ROM）：回退浏览器
-        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/about"))
+        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about"))
         fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(fallback)
     }

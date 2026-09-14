@@ -304,7 +304,7 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
    > ⚠️ **`volumes=["data"]` 必须带**：下载统计存在 `data/stats.json`，只有声明为持久化卷才能跨升级保留。
 8. `mcp__qdrl__get_app_status` 确认 running
 
-线上地址：`https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/about`
+线上地址：`https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`
 （`landing_path=/about`；该 URL 也硬编码在 Android 设置页「关于」的兜底 Intent 里）
 
 > ⚠️ **known blocker：about 应用容易变成"非当前 MCP Key 部署"**，
@@ -323,7 +323,7 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 **第 0 步：响应完整性（字节数比对，防 32KB 截断，见坑 16）**
 
 ```bash
-B="https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3"
+B="https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366"
 curl -sS "$B/about" | wc -c        # 期望 19275（本地 19201 + 平台注入 favicon 行 74B）
 curl -sS "$B/style.css" | wc -c    # 期望 15699
 curl -sS "$B/app.js" | wc -c       # 期望 4543
@@ -331,13 +331,13 @@ curl -sS "$B/about" | grep -c "</html>"   # 期望 1；为 0 ⇒ 被截断
 ```
 
 判据：**实际收到的字节数必须 == 本地文件大小（HTML 允许 +74B 平台注入），绝不能是 32768**。
-出现 32768 = 触发平台反向代理截断（坑 16），页面会"无法加载"，必须瘦身后再发（gzip + 拆外部资源）。
+出现 32768 = 触发平台反向代理截断（坑 16），页面会"无法加载"，必须拆分外部资源瘦身（**禁止 Node 侧 gzip**，见坑 18）。
 每次给页面加内容后都要重新比对——32KB 阈值是静默生效的，超了不报任何错。
 
 **版本号与下载链路：**
 
 ```bash
-curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/about" \
+curl -sS -L "https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about" \
   | grep -oE "1\.1\.[0-9]+|1\.0\.[0-9]+" | sort | uniq -c
 ```
 
@@ -350,7 +350,7 @@ curl -sS -L "https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3/a
 **下载链路校验（每次发版必做）：**
 
 ```bash
-B="https://qd.solutionx.top/app/94eb8acc-16f7-43b3-9577-496ba73126b3"
+B="https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366"
 curl -sS -o /dev/null -D - "$B/dl/pc"      | grep -i "^HTTP\|^location"   # 期望 302
 curl -sS -o /dev/null -D - "$B/dl/android" | grep -i "^HTTP\|^location"   # 期望 302
 curl -sS "$B/api/stats" | head -c 240                                     # 期望 JSON（total/clients/trend）
@@ -388,12 +388,14 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
 - pc-client **1.1.66**：`…/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6`（设置中心新增「版本更新」页，独立更新记录弹窗删除；commit `4b6cba8`）
 - android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
-- about **v1.0.112**：包 `…/d/p/3751e126-6b4d-4143-922c-0e9cf735bce0`（2026-09-13 已部署，端口 20120，data 统计卷延续）
+- about **v1.0.118**（2026-09-14 "真凶定案"版）
+  - URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`（public UUID 曾因重建变更，见坑 18）
+  - ⭐ **核心修复：静态响应不再设置 `Content-Length`**（改 chunked）——平台 502 的**唯一真凶**（坑 18 已用对照实验锁死）
+  - **进程存活加固**（v1.0.116）：`loadStats()` 全程 try/catch 降级（不再因卷不可写而顶层 await 抛错退出）、全局 `uncaughtException`/`unhandledRejection` 守门、新增 `/api/health` 存活探针（返回 `pid/uptimeSec/dataDir/buffered`）
   - 下载统计：`/api/stats` 统计接口 + `/dl/<id>` 计数 302；PC 目标 v1.1.66、Android 目标 v1.0.77
-  - **32KB 截断修复版**（坑 16）：server.js 加 gzip + 内联 CSS/JS 拆成 `public/style.css`、`public/app.js`
-  - **间歇 502 修复版**（2026-09-13 午后）：用户报 502 但实测 6/6 全 200、进程 running —— 判定为平台 nginx upstream keepalive 复用已关闭连接的竞态（Node 默认 keepAliveTimeout 仅 5s）。
-    修复：`server.keepAliveTimeout=72000; server.headersTimeout=76000`（必须 > 反代 upstream keepalive，且 headersTimeout > keepAliveTimeout）。
-    **判据特征：应用 running + 用户偶发 502 + 重试即好 + 探测全 200** → 优先查这条，别往进程崩溃方向排查
+  - **32KB 截断防线**（坑 16）：内联 CSS/JS 拆成 `public/style.css`、`public/app.js`
+  - ~~v1.0.111~113 曾对文本响应开 gzip~~：**v1.0.115 彻底移除**（保留，勿回退）
+  - ~~v1.0.112「keepalive 竞态」~~、~~「Vary 铁律」~~：**均为误诊**，见坑 18
   - v1.0.108 曾短暂上线（下载目标误留 v1.0.76），v1.0.109 已修正为 v1.0.77；v1.0.110 因页面超 32KB 触发平台截断"白屏"，v1.0.111 修复
   - ⚠️ updater 的 `publish -o` 相对路径不生效（2026-09-13 实测，产物落在默认 `bin/Release/.../win-x64/`）→
     **一律用 Windows 风格绝对路径** `-o "E:/.../pc-updater/bin/publish"`
@@ -414,7 +416,28 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
 > 铁律不变：**aapt 验证版本号必须在构建成功后做**——构建失败时 outputs 里仍是旧版 APK，
 > 切勿把旧包复制成新版本名上传。
 
-17. **「我通用户不通」先查用户侧代理，别盯着服务端**（2026-09-13 实测）：用户报 about 502，但服务端沙箱/直连/WebFetch 全 200、宿主机 `C:/Windows/System32/curl.exe --noproxy "*"` 直连也 200 → 根因是 X 开发机常驻 **ShadowsocksR PAC 模式**（127.0.0.1:54333，gfw_whitelist：海外 IP 全走代理），qd.solutionx.top 是海外 IP 被劫持进 SSR，节点抖动即 502（HTTP 502 是"合法响应"，浏览器不会 fallback DIRECT）。排查三板斧：①`curl.exe --noproxy` 直连区分服务器/链路；②PowerShell 读注册表 `AutoConfigURL` 找 PAC；③PAC 端口 `Get-NetTCPConnection -LocalPort <port>` 找进程。服务端无辜时不要重启/重发。
+17. **「我通用户不通」先查用户侧代理，别盯着服务端**（2026-09-13 实测）：用户报 about 502，但服务端沙箱/直连/WebFetch 全 200、宿主机 `C:/Windows/System32/curl.exe --noproxy "*"` 直连也 200 → 根因是 X 开发机常驻 **ShadowsocksR PAC 模式**（127.0.0.1:54333，gfw_whitelist：海外 IP 全走代理），qd.solutionx.top 是海外 IP 被劫持进 SSR，节点抖动即 502（HTTP 502 是"合法响应"，浏览器不会 fallback DIRECT）。排查三板斧：①`curl.exe --noproxy` 直连区分服务器/链路；②PowerShell 读注册表 `AutoConfigURL` 找 PAC；③PAC 端口 `Get-NetTCPConnection -LocalPort <port>` 找进程。服务端无辜时不要重启/重发。（⚠️ 补充：该坑只解释"宿主机/预览面板不通、外部探测正常"；**手机直连也 502 = 服务端问题**，走坑 18。）
+
+18. **⭐ qdrl 平台 502 真凶定案：静态响应带 `Content-Length` 必 502**（2026-09-14 用"同 app 逐项改响应头"对照实验锁死）：
+    - **真凶**：`/app/{id}/` 下**静态资源响应（HTML/CSS/JS）只要带 `Content-Length`，平台反向代理转发即 502**；改为 chunked（不设该头）立刻全绿。`/api/*` 的 JSON 分支带 `Content-Length` 也正常 → 平台只对"静态资源转发"这条链路敏感。
+    - **证据矩阵**（同一 app、同一时段，一次只改一个头；`/about`、`/style.css`、`/app.js` 表现一致）：
+
+      | 变体 | `Cache-Control` | `Vary` | `Content-Length` | 结果 |
+      |---|---|---|---|---|
+      | A | `no-cache` | ✓ | ✓ | 502 |
+      | B | `no-store` | ✓ | ✓ | 502 |
+      | C | `no-store` | ✗ | ✓ | 502 |
+      | **D** | `no-store` | ✗ | ✗（chunked） | **200 ✅** |
+
+    - **修复写法**：`res.writeHead(200, { 'Content-Type': …, 'Cache-Control': 'no-store' })` 然后直接 `res.end(data)` —— **不设 `Content-Length`**（见 `server.js` 静态分支注释）。⛔ 勿再给静态响应加 `Content-Length`；⛔ 大段内容勿内联回 HTML（另有 32KB 截断，坑 16）。
+    - **已证伪的旧结论（勿再复活）**：❌「`Vary` 缺失导致 HTML 502」（C 变体无 Vary 仍 502、D 变体无 Vary 却 200）；❌「`Cache-Control: no-cache` 是开关」（B/C 换成 `no-store` 仍 502）；❌「keepalive 竞态」（加固无害但非根因）；❌「操作风暴/配置下发积压」（停手 2 小时后仍 502，且同时刻对照探针全 200 → 证明平台健康）。
+    - **诊断纪律（本次实操验证有效的四步法）**：
+      1. **先分清"谁 502"**：`/d/p/<uuid>`（nginx 直出）200 + 平台 `/` 303 → `/login` 可达 ⇒ **平台本身健康**，问题在本应用。
+      2. **对照探针法（最有价值）**：新部署一个 ~10 行极简 app（只 `res.end('<h1>OK</h1>')`，**不设 `Content-Length`**，无 volume）→ 若它全 200，则平台无辜、问题在自家响应头；若它也 502，才是平台故障。本次正是靠它一步把嫌疑锁定到"响应头形态"。
+      3. **reqlog 取证**：`/api/reqlog` 返回的 `buffered` 是否增长，可判定"请求究竟有没有到达 Node"（本次据此排除"上游死端口"猜想）。
+      4. **同 app A/B 逐变量回退**：一次只改一个头再部署，才能收敛到唯一真凶（直接对照三变量只会得到"改了就好了"的黑盒结论）。
+    - **反模式（本次踩过的血泪）**：定位前就连续 `upgrade`/`stop`/`start`/`remove`/`deploy` —— 一天 ~10 次操作既没解决问题（真凶是响应头），又把 public UUID 改掉、连累 Android 端硬编码 URL。**先探针定位，再动生产**。
+    - **应用条目真坏掉时的重建流程（仅在探针证明"自家响应头无误"后才用）**：① `stop_app`（若 `remove_app` 报 `停止应用失败: pid 不存在` 先 stop 清状态）② `remove_app` ③ `deploy_app`（**同 app_id，但 public UUID 会重新生成 → URL 变**，必须同步改 `SettingsScreen.kt` 浏览器回落地址与本文档 URL）④ 部署后探测。教训：URL 会被重建改写，客户端里任何硬编码 about 链接都是隐性债。
 
 > ⚠️ 环境坑（2026-09-11 晚）：沙箱 bash PATH 可能整体损坏（`dirname`/`tail` not found、
 > MSYS 路径映射失效导致 `/e/...` 不可用，PowerShell stdout 被吞）。修复方式：bash 里
@@ -495,8 +518,9 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
 16. **qdrl 反向代理对 `/app/{id}/` 路径的响应体在 32768 字节（32KB）处静默截断**（2026-09-13 实测，v1.0.110 曾因此"线上无法加载"）：
     页面 HTML 一旦超过 32KB，`</body></html>` 与整个 `<script>` 块被切掉，reveal 动画全部停在 `opacity:0`，页面看起来"白屏/无法加载"。
     **本地同代码跑是好的**（Node 无辜），只在平台上复现，极难定位。
-    **两层防护（v1.0.111 起，已内置在 about 应用里，勿回退）**：
-    ① `server.js` 对文本响应做 gzip（`node:zlib`，按 `accept-encoding` 判断，压缩后 ~5.5KB）；
-    ② 内联 CSS/JS 已拆成 `public/style.css` + `public/app.js` 外部文件（HTML 19.2KB / CSS 15.7KB / JS 4.5KB，identity 编码下也远低于 32KB）。
+    **防护（v1.0.115 起，已内置在 about 应用里，勿回退）**：
+    ① 内联 CSS/JS 已拆成 `public/style.css` + `public/app.js` 外部文件（HTML 19.2KB / CSS 15.7KB / JS 4.5KB，identity 编码下也远低于 32KB）；
+    ② ~~v1.0.111~113 的 server.js gzip 防线~~ **已于 v1.0.115 移除**（勿回退）；资源拆分是 32KB 的第一道防线；
+    ③ **静态响应一律不设 `Content-Length`**（v1.0.118 起改 chunked）—— 这是平台 502 的根因修复，详见坑 18。
     **新增页面内容时注意**：别把大段内容重新内联回 HTML。校验判据见「部署后校验」的字节数比对——**实际收到的字节数 == 本地文件大小（+74B 平台注入 favicon 行），绝不能是 32768**。
     另：平台会向 HTML 注入 `<link rel="icon" href="/app/{id}/favicon">`（+74 字节），本地/线上 diff 只允许差这一行。

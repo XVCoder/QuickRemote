@@ -93,8 +93,18 @@ function mergeNums(base, src) {
   return out;
 }
 
+let dataDirOk = false;
+
 async function loadStats() {
-  await mkdir(DATA_DIR, { recursive: true });
+  // ⚠️ 重建应用（remove+deploy）会换系统用户 uid，旧卷目录可能不可读写。
+  // 本函数在模块顶层 await —— 一旦抛出即进程退出、端口不监听、整站 502（2026-09-14 事故）。
+  // 因此这里只能降级、绝不能抛。
+  try {
+    await mkdir(DATA_DIR, { recursive: true });
+    dataDirOk = true;
+  } catch (err) {
+    console.error('[stats] data 目录不可用，降级为内存统计:', err.message);
+  }
 
   // 1) 历史基数来自包内配置，每次启动都读，便于随发布流程修正
   try {
@@ -252,6 +262,18 @@ function buildStats(days) {
  *   → 对策：①发版后等 ≥10 分钟再验证 /about；②若被投毒，用同一包再 upgrade 一次
  *   可强制刷新缓存（回源时路由已收敛即成功）；③避免短时间内连续多次升级。
  *   Vary 头保留（HTTP 语义正确），但实测并非 502 的开关。
+ *   （⚠️ 2026-09-14 更正：Vary 与 Cache-Control 都不是开关，见下条"真凶定案"。）
+ *
+ * ⚠️ 502 真凶定案（2026-09-14，同一 app 逐项改响应头的对照实验）：
+ *   **静态响应只要带 Content-Length，平台反向代理转发即 502**；改为 chunked（不设该头）立刻全绿。
+ *   证据矩阵（/about、/style.css、/app.js 表现一致，均为页面级可见故障）：
+ *     Cache-Control: no-cache  | Vary ✓ | Content-Length ✓ → 502
+ *     Cache-Control: no-store  | Vary ✓ | Content-Length ✓ → 502
+ *     Cache-Control: no-store  | Vary ✗ | Content-Length ✓ → 502
+ *     Cache-Control: no-store  | Vary ✗ | Content-Length ✗（chunked）→ 200 ✅
+ *   已排除 Cache-Control 与 Vary。注意：/api/* 的 JSON 分支带 Content-Length 也正常，
+ *   说明平台只对"静态资源转发"这条链路敏感。
+ *   → 铁律：静态响应永不设 Content-Length（交由 chunked）。
  */
 
 function resolvePath(urlPath) {
@@ -336,6 +358,18 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // 存活探针（判断"进程是否活着"比 reqlog 更直接；不含敏感信息）
+    if (urlPath === '/api/health' || urlPath === '/api/health/') {
+      sendJson(req, res, 200, {
+        ok: true,
+        pid: process.pid,
+        uptimeSec: Math.round(process.uptime()),
+        dataDir: dataDirOk ? 'ok' : 'degraded',
+        buffered: reqlog.length,
+      });
+      return;
+    }
+
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('405 Method Not Allowed');
@@ -354,15 +388,24 @@ const server = http.createServer(async (req, res) => {
     const ext = path.extname(filePath).toLowerCase();
     const data = await readFile(filePath);
 
+    // ⚠️⚠️ 2026-09-14 平台 502 的真凶已用对照实验（同 app 逐项改头）锁死：
+    //   静态响应只要带 Content-Length，平台反向代理就在转发时 502；
+    //   去掉 Content-Length（改用 chunked）立刻全绿。
+    //   证据矩阵（/about /style.css /app.js 同表现）：
+    //     no-cache + Vary + Content-Length → 502
+    //     no-store + Vary + Content-Length → 502
+    //     no-store + 无 Vary + Content-Length → 502
+    //     no-store + 无 Vary + 无 Content-Length（chunked）→ 200 ✅
+    //   结论：Vary 与 Cache-Control 都不是开关（旧"Vary 铁律"为误判），唯 Content-Length 是。
+    //   /api/* 走 JSON 分支，带 Content-Length 也正常——本平台只对"静态资源转发"这条链路敏感。
+    //   ⛔ 勿再给静态响应加 Content-Length；大文件/长内容一律交给 chunked。
+    //   ⛔ 同理勿把大段内容内联回 HTML（32KB 截断另见文件头注释）。
     const headers = {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
-      Vary: 'Accept-Encoding', // 平台铁律②：HTML 缺此头必 502（见文件头注释）
+      'Cache-Control': 'no-store',
     };
-    const payload = data;
-    headers['Content-Length'] = payload.length;
     res.writeHead(200, headers);
-    res.end(req.method === 'HEAD' ? undefined : payload);
+    res.end(req.method === 'HEAD' ? undefined : data);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('404 Not Found');
@@ -380,6 +423,10 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
   });
 }
 
+// 反 502 硬化：任何未捕获异常/未处理拒绝都不许杀掉进程——页面必须始终可服务。
+process.on('uncaughtException', err => console.error('[fatal-guard] uncaughtException:', (err && err.stack) || err));
+process.on('unhandledRejection', err => console.error('[fatal-guard] unhandledRejection:', (err && err.stack) || err));
+
 await loadStats();
 
 // 反 502 硬化：平台 nginx 的 upstream keepalive（通常 60s）可能复用一条 Node 已关闭的连接 → 间歇 502。
@@ -389,6 +436,7 @@ server.keepAliveTimeout = 72000;
 server.headersTimeout = 76000;
 
 server.listen(PORT, () => {
-  console.log(`QuickRemote About 页面已启动: http://localhost:${PORT}/about`);
+  console.log(`QuickRemote About 页面已启动: http://localhost:${PORT}/about｜pid=${process.pid}｜data卷=${dataDirOk ? 'ok' : '降级(内存统计)'}`);
   console.log(`统计起始日 ${stats.since}｜累计 ${CLIENT_IDS.map(id => `${id}=${(baseline[id] || 0) + (stats.counted[id] || 0)}`).join(' ')}`);
 });
+server.on('error', err => console.error('[server] listen 失败:', err.message));
