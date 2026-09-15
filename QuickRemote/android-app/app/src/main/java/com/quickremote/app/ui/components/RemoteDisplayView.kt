@@ -28,6 +28,9 @@ import kotlin.math.sqrt
  * 手势：
  * - 单指轻点（位移小于触摸阈值）= 左键点击
  * - 单指拖动 = 平移画面（查看被裁掉的部分）
+ * - 快速双击后第二下按住滑动 = 按住左键拖动远程窗口（拖动标题栏移动窗口、
+ *   拖选文本、拖滑块等）——与空白区触摸板共用「双击拖动」开关；
+ *   判定窗口内第二下按下后位移超过触摸阈值才进入拖动，因此不影响普通单击/双击
  * - 长按 = 右键
  * - 双指捏合 = 画面缩放（锚点式相似变换 + EMA 平滑：以捏合判定时刻为锚，
  *   每帧从锚点直接计算终态，span/中心做 α=0.5 指数平滑压制触摸噪声——
@@ -66,6 +69,21 @@ class RemoteDisplayView(
     /** 滚轮（远程坐标 + 垂直滚动量 + 水平滚动量）。 */
     var onWheel: ((Int, Int, Int, Int) -> Unit)? = null
 
+    /** 左键按下（双击拖动触发时；远程坐标）。 */
+    var onLeftDown: ((Int, Int) -> Unit)? = null
+
+    /** 左键保持按下状态下的光标移动（拖动中，远程坐标）。 */
+    var onDragMove: ((Int, Int) -> Unit)? = null
+
+    /** 左键释放（拖动结束/被打断，远程坐标）。 */
+    var onLeftUp: ((Int, Int) -> Unit)? = null
+
+    /**
+     * 双击拖动开关（画面直接触控）：快速双击后第二下按住滑动 = 按住左键拖动。
+     * 与空白区触摸板的「双击拖动」共用同一设置项，默认开启。
+     */
+    var doubleTapDragEnabled: Boolean = true
+
     /**
      * 显示变换变化回调（scale, panX, panY）——画面拖动/缩放时触发，
      * 供上层叠加层（虚拟鼠标光标）换算远程坐标 → 屏幕坐标。
@@ -85,6 +103,9 @@ class RemoteDisplayView(
     // ============ 触摸状态 ============
     private val handler = Handler(Looper.getMainLooper())
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
+    /** 双击两下之间的最大位置偏移（与空白区触摸板一致；系统默认双击范围过宽易误判）。 */
+    private val doubleTapSlop = DOUBLE_TAP_SLOP_DP * context.resources.displayMetrics.density
     private var downRawX = 0f
     private var downRawY = 0f
     private var downLocalX = 0f
@@ -93,6 +114,19 @@ class RemoteDisplayView(
     private var lastRawY = 0f
     private var moved = false
     private var longPressFired = false
+
+    // ============ 双击拖动（画面直接触控）============
+    /** 上次有效轻点的抬指时间/位置（View 本地坐标）——双击拖动判定的锚点。 */
+    private var lastTapUpTime = 0L
+    private var lastTapLocalX = 0f
+    private var lastTapLocalY = 0f
+    /** 本次按下落在双击窗口内（第二下）→ 若随后滑动则转为拖动而非平移画面。 */
+    private var dragCandidate = false
+    /** 已进入拖动：远程左键按住中，单指位移全部转为光标移动。 */
+    private var dragActive = false
+    /** 拖动中最后发出的远程坐标（被双指/取消打断时用它释放左键）。 */
+    private var dragLastX = 0
+    private var dragLastY = 0
 
     // 本次触摸出现过双指（ACTION_UP 时抑制单指轻点左键；双指手势后剩余手指
     // 也不再接管单指平移，防误触/防抬指微动跳画面）
@@ -247,8 +281,16 @@ class RemoteDisplayView(
                 longPressFired = false
                 pinchActive = false
                 everTwoFingers = false
+                dragActive = false
+                // 双击拖动判定：距上次轻点双击窗口内、且落在轻点附近 → 本次是"第二下"。
+                // 只是候选：按下不动/直接抬起仍是普通双击第二击，滑动超过触摸阈值
+                // 才转为按住左键拖动
+                dragCandidate = doubleTapDragEnabled && lastTapUpTime > 0 &&
+                        event.eventTime - lastTapUpTime in 1L..DOUBLE_TAP_MS &&
+                        hypot(event.x - lastTapLocalX, event.y - lastTapLocalY) < doubleTapSlop
                 resetTwoFingerState()
-                handler.postDelayed(longPressRunnable, LONG_PRESS_MS)
+                // 第二下按下不判长按：双击后按住应视为按住左键，而不是弹右键
+                if (!dragCandidate) handler.postDelayed(longPressRunnable, LONG_PRESS_MS)
                 return true
             }
 
@@ -256,6 +298,11 @@ class RemoteDisplayView(
                 if (event.pointerCount == 2) {
                     handler.removeCallbacks(flingRunnable)
                     handler.removeCallbacks(longPressRunnable)
+                    // 双击拖动中落下第二指：立即释放左键（防远端一直按着），
+                    // 本手势不再接管任何单指操作
+                    endDrag()
+                    // 双指介入即作废双击锚点，避免双指手势后紧接着的按下被误判为第二下
+                    lastTapUpTime = 0L
                     pinchActive = true
                     everTwoFingers = true
                     // 双指轻点资格：首指落下后未拖动、长按未触发。拖动中无意落下
@@ -277,6 +324,13 @@ class RemoteDisplayView(
                 // !everTwoFingers：双指手势后剩余手指不再接管单指平移——
                 // 捏合/滚轮结束抬指时后抬手指的微动会被当成拖动导致画面跳动
                 if (event.pointerCount == 1 && !pinchActive && !everTwoFingers) {
+                    if (dragActive) {
+                        // 双击拖动进行中：左键保持按下，光标绝对跟手，画面不平移
+                        lastRawX = event.rawX
+                        lastRawY = event.rawY
+                        emitDragMove(event.x, event.y)
+                        return true
+                    }
                     val dx = event.rawX - lastRawX
                     val dy = event.rawY - lastRawY
                     lastRawX = event.rawX
@@ -286,6 +340,19 @@ class RemoteDisplayView(
                         // 超过触摸阈值：判定为拖动（平移画面），取消长按
                         handler.removeCallbacks(longPressRunnable)
                         moved = true
+                        if (dragCandidate) {
+                            // 双击后的第二下按住滑动 = 按住左键拖动远程窗口：
+                            // 按在双击落点（窗口标题栏位置）上，之后光标跟手移动，
+                            // 远端即为按住左键拖拽；本次不发左键点击
+                            dragActive = true
+                            lastTapUpTime = 0L
+                            val (rx, ry) = mapToRemote(downLocalX, downLocalY)
+                            dragLastX = rx
+                            dragLastY = ry
+                            onLeftDown?.invoke(rx, ry)
+                            emitDragMove(event.x, event.y)
+                            return true
+                        }
                     }
                     if (moved) {
                         // 单指拖动 = 平移画面（屏幕像素 1:1）
@@ -414,10 +481,24 @@ class RemoteDisplayView(
 
             MotionEvent.ACTION_UP -> {
                 handler.removeCallbacks(longPressRunnable)
+                if (dragActive) {
+                    // 拖动结束：把终点位置同步给远端再释放左键
+                    emitDragMove(event.x, event.y)
+                    endDrag()
+                    resetTouchState()
+                    return true
+                }
                 if (event.pointerCount == 1 && !moved && !longPressFired && !everTwoFingers) {
                     // 轻点（位移小于阈值且未长按）= 左键点击
                     val (rx, ry) = mapToRemote(event.x, event.y)
                     onLeftClick?.invoke(rx, ry)
+                    // 记作双击锚点：紧接其后的第二次按下若滑动即触发拖动
+                    lastTapUpTime = event.eventTime
+                    lastTapLocalX = event.x
+                    lastTapLocalY = event.y
+                } else {
+                    // 拖动/长按/双指结束：不再作为双击锚点
+                    lastTapUpTime = 0L
                 }
                 resetTouchState()
                 return true
@@ -426,10 +507,27 @@ class RemoteDisplayView(
             MotionEvent.ACTION_CANCEL -> {
                 handler.removeCallbacks(longPressRunnable)
                 handler.removeCallbacks(flingRunnable)
+                endDrag()
+                lastTapUpTime = 0L
                 resetTouchState()
             }
         }
         return true
+    }
+
+    /** 拖动中把手指位置映射为远程坐标发出（同时记录最后坐标，供中断时释放左键）。 */
+    private fun emitDragMove(localX: Float, localY: Float) {
+        val (rx, ry) = mapToRemote(localX, localY)
+        dragLastX = rx
+        dragLastY = ry
+        onDragMove?.invoke(rx, ry)
+    }
+
+    /** 结束双击拖动（释放左键，只在仍处于按下状态时发一次）。 */
+    private fun endDrag() {
+        if (!dragActive) return
+        dragActive = false
+        onLeftUp?.invoke(dragLastX, dragLastY)
     }
 
     private fun resetTwoFingerState() {
@@ -547,6 +645,12 @@ class RemoteDisplayView(
 
     companion object {
         private const val LONG_PRESS_MS = 550L
+
+        /** 双击拖动的时间窗口：第二次按下须落在上次轻点抬指后此毫秒数内（同系统双击超时）。 */
+        private const val DOUBLE_TAP_MS = 300L
+
+        /** 双击拖动的落点容差（dp）：两次按下位置超出此距离不算同一次双击（对齐空白区触摸板）。 */
+        private const val DOUBLE_TAP_SLOP_DP = 40f
 
         /** 捏合缩放 EMA 平滑系数（越大越跟手、越小越稳；0.5 ≈ 噪声减半、延迟约 1 帧）。 */
         private const val PINCH_SMOOTH_ALPHA = 0.5f

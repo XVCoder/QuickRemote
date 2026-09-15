@@ -744,6 +744,20 @@ fun RemoteSessionScreen(
                             viewPanX = px
                             viewPanY = py
                         }
+                        // 双击拖动（快速双击后第二下按住滑动 = 按住左键拖动远程窗口）
+                        onLeftDown = { x, y ->
+                            padCursorX = x.toFloat()
+                            padCursorY = y.toFloat()
+                            sendMouseAction(viewModel, 1, x, y)  // 左按下
+                        }
+                        onDragMove = { x, y ->
+                            padCursorX = x.toFloat()
+                            padCursorY = y.toFloat()
+                            sendMouseAction(viewModel, 0, x, y)  // 拖动中光标跟手
+                        }
+                        onLeftUp = { x, y ->
+                            sendMouseAction(viewModel, 2, x, y)  // 左释放
+                        }
                     }
                 },
                 update = { view ->
@@ -752,6 +766,8 @@ fun RemoteSessionScreen(
                     if (videoWidth > 0 && videoHeight > 0) {
                         view.setRemoteSize(videoWidth, videoHeight)
                     }
+                    // 双击拖动与空白区触摸板共用同一开关
+                    view.doubleTapDragEnabled = touchpadCfg.touchpadDoubleTapDrag
                 }
             )
 

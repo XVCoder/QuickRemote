@@ -306,7 +306,7 @@ fun SettingsScreen(
                     }
                 )
                 Text(
-                    "单指快速双击后按住拖动 = 按住左键拖动",
+                    "快速双击后第二下按住滑动 = 按住左键拖动：画面内直接拖动远程窗口（移动窗口、拖选、拖滑块），空白区触摸板同样生效",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
