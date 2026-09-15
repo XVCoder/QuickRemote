@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.66",
-    "changelog": "设置中心新增「版本更新」页：主窗口底部「检查更新/更新记录」按钮整体挪进设置页，独立更新记录弹窗删除，改为页内阅读区（内部滚动+可手动刷新）；检查结果实时回显；更新记录的 **粗体** 与 `代码` 标记此前裸露显示，现已正常渲染",
+    "latest_version": "1.1.67",
+    "changelog": "设置中心新增「意见反馈」页：填写反馈内容后一键提交，可选附带最近 1000 行运行日志；反馈不依赖中继是否在线，直传 QuickDeploy 的 feedback 目录，文件名 设备id_反馈时间.log，文件头自动带版本/设备/系统信息",
     "versions": {
+      "1.1.67": {
+        "zip": "https://qd.solutionx.top/d/p/60139f9c-66ea-4974-8b3e-bf45b6983a77"
+      },
       "1.1.66": {
         "zip": "https://qd.solutionx.top/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6"
       },
       "1.1.65": {
         "zip": "https://qd.solutionx.top/d/p/dd0c4345-2cc6-4c9f-b56b-09fb6e21fc8a"
-      },
-      "1.1.64": {
-        "zip": "https://qd.solutionx.top/d/p/d071d861-df1b-40c0-a9c7-c351f7c0a470"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.77",
-    "changelog": "新增设备备注（仅本机可见，最长 64 字符，清空即删除）、离线设备展示（列表分在线/离线两段，显示最后心跳时间）、移除离线设备（仅本机隐藏，设备上线自动恢复）；设备标题改用服务器下发的设备名",
+    "latest_version": "1.0.78",
+    "changelog": "设置页新增「意见反馈」：填写反馈内容后一键提交，可选附带最近 1000 行运行日志；不依赖中继是否在线，直传 QuickDeploy 的 feedback 目录，文件名 设备id_反馈时间.log",
     "versions": {
+      "1.0.78": {
+        "apk": "https://qd.solutionx.top/d/p/4bef3948-2708-4fcc-bff5-e309bf7a388f"
+      },
       "1.0.77": {
         "apk": "https://qd.solutionx.top/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36"
       },
       "1.0.76": {
         "apk": "https://qd.solutionx.top/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7"
-      },
-      "1.0.75": {
-        "apk": "https://qd.solutionx.top/d/p/69d559c2-abd5-4d2b-bd80-326408d08b35"
       }
     }
   }

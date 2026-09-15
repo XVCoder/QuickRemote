@@ -426,7 +426,14 @@ curl -sS -L "https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/a
 只出现 1 次 ⇒ 两处文案不同步（见第 9 条坑），必须补改后重新打包部署。
 
 > 注：沙箱里 `curl -o /tmp/x.html` 后再 grep 常报 "No such file or directory"
-> （写入路径与后续读取不在同一视图），改用**管道直接 grep** 一次成功。
+> （写入路径与后续读取不在同一视图；`curl` 直接写 /tmp 也会静默失败）。两个可行替代：
+> ①**管道直接 grep**（`curl … | grep -c '</html>'`）；②落盘到**工作区目录**
+> （如 `QuickRemote/verify-about-{ver}/`）再比对 —— 落工作区还能顺手做逐文件 diff。
+>
+> ⚠️ **别用「过滤 favicon 后 diff」判完整性**（2026-09-15 踩过）：平台注入行形如
+> `<link rel="icon" href="/app/{id}/favicon"></head>`，**favicon 与 `</head>` 在同一行**，
+> `grep -v favicon` 会连带把 `</head>` 一起删掉，diff 于是报"线上少一行 `</head>`"这种假差异。
+> 完整性只认两个硬指标：**实收 == 本地 +74 字节**、**`</html>` 恰好 1 次**。
 
 **下载链路校验（每次发版必做）：**
 
@@ -509,23 +516,23 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ## 当前线上版本（2026-09-14 晚）
 
-> 📦 **已实现待发版（等「发布吧」授权）**：pc-client **v1.1.67** + android-app **v1.0.78**（versionCode 78）
-> = 新增「意见反馈」（见 §7）。两端已本地编译通过、上传链路与日志截取均已实测；
-> 发版时记得同步：manifest.json 两个组件版本号 + about 页下载目标 + `assets/changelog.txt`（已写好 v1.0.78）。
+> ✅ **v1.1.67 / v1.0.78 已发布**（2026-09-15 13:00）= 新增「意见反馈」（见 §7）。
+> 同步项已全部完成：manifest.json 两组件 + about 页下载目标（v1.0.122）+ `assets/changelog.txt`。
 
 - relay-server **1.0.8**：amd64 `…/d/p/cfc52a23-36b5-464a-a626-8021538a381b`，arm64 `…/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191`
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
+- pc-client **1.1.67**：`…/d/p/60139f9c-66ea-4974-8b3e-bf45b6983a77`（设置中心新增「意见反馈」页）
 - pc-client **1.1.66**：`…/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6`（设置中心新增「版本更新」页，独立更新记录弹窗删除；commit `4b6cba8`）
+- android-app **1.0.78**（versionCode 78）：`…/d/p/4bef3948-2708-4fcc-bff5-e309bf7a388f`（设置页新增「意见反馈」，可选带 1000 行日志直传 qd）
 - android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
-- about **v1.0.121**（2026-09-15 中午上线，趋势图数值可视化）—— 线上 URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`；别名域名 `https://quickremote.solutionx.top/about` 同样可达；升级后端口 20006（20000 段递增）
-  - **v1.0.121 趋势图数值可视化**：旧版两个问题 —— ①`.col` 的 DOM 顺序是柱体在占位块前、且无 `justify-content`，柱子从**顶部向下垂**；②数值只在 hover 提示框里，移动端/扫一眼场景看不到。修法：柱体底部对齐 + 柱顶常驻数字（`.col .num`）+ Y 轴刻度与网格线 + 图表下方读数条 `#trend-readout`（默认读最近有下载的一天，点击柱子切换）。`niceTop()` 取整齐偶数上限避免 7.5 这类刻度，30 天视图 `.dense` 数值字号降 9px。上线实测 HTML 23111（= 本地 23037 **+74**）、CSS 18112、JS 7280，三者与本地逐字节一致
-  - **v1.0.120 修正 PC 端运行时描述**
+- about **v1.0.122**（2026-09-15 13:00 上线，下载目标更新至 PC v1.1.67 / Android v1.0.78）—— 线上 URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`；别名域名 `https://quickremote.solutionx.top/about` 同样可达；升级后端口 20007（20000 段递增）。上线实测 HTML 23111（= 本地 23037 **+74**）、CSS 18112、JS 7280，三者与本地逐字节一致
+  - **v1.0.121 趋势图数值可视化**：旧版两个问题 —— ①`.col` 的 DOM 顺序是柱体在占位块前、且无 `justify-content`，柱子从**顶部向下垂**；②数值只在 hover 提示框里，移动端/扫一眼场景看不到。修法：柱体底部对齐 + 柱顶常驻数字（`.col .num`）+ Y 轴刻度与网格线 + 图表下方读数条 `#trend-readout`（默认读最近有下载的一天，点击柱子切换）。`niceTop()` 取整齐偶数上限避免 7.5 这类刻度，30 天视图 `.dense` 数值字号降 9px
   - **v1.0.120 修正 PC 端运行时描述**：页面原写「包含 .NET 8 自包含运行时」是**错的** —— PC 客户端是**框架依赖模式**（ZIP 14 个条目 / 解压 3.1MB，`runtimeconfig.json` 声明 `Microsoft.NETCore.App` + `Microsoft.WindowsDesktop.App` 8.0.0，无 `includedFrameworks`），目标机必须预装 **.NET 8 桌面运行时（x64）**。实测自包含代价：164MB / 472 文件、ZIP 67.9MB，且产物带多语言子目录与扁平 ZIP 冲突，updater 也须一并自包含（合计约 130MB）→ 已决定不做，保持框架依赖。页面已加 note 块给出 `dotnet.microsoft.com/download/dotnet/8.0` 入口
   - **v1.0.119 页面文案按现实现全面重写**：移除 RDP / FreeRDP / NLA / 音频重定向 / 色深 16-32bit / 自适应分辨率 / 长按收藏 等过时描述，改为自研 H.264 屏幕流（PC 端 DXGI + Media Foundation 硬编、Android 端 MediaCodec 硬解）+ 局域网直连 8447 优先 / 公网中继回落。上线实测 HTML 22334B（= 本地 22260 + 74）、CSS 15699B、JS 4543B，线上 `grep -i "rdp"` 零命中
   - v1.0.118（2026-09-14 "真凶定案"版）沿用上述 URL（public UUID 曾因重建变更，见坑 18）
   - ⭐ **核心修复：静态响应不再设置 `Content-Length`**（改 chunked）——平台 502 的**唯一真凶**（坑 18 已用对照实验锁死）
   - **进程存活加固**（v1.0.116）：`loadStats()` 全程 try/catch 降级（不再因卷不可写而顶层 await 抛错退出）、全局 `uncaughtException`/`unhandledRejection` 守门、新增 `/api/health` 存活探针（返回 `pid/uptimeSec/dataDir/buffered`）
-  - 下载统计：`/api/stats` 统计接口 + `/dl/<id>` 计数 302；PC 目标 v1.1.66、Android 目标 v1.0.77
+  - 下载统计：`/api/stats` 统计接口 + `/dl/<id>` 计数 302；PC 目标 v1.1.67、Android 目标 v1.0.78
   - **32KB 截断防线**（坑 16）：内联 CSS/JS 拆成 `public/style.css`、`public/app.js`
   - ~~v1.0.111~113 曾对文本响应开 gzip~~：**v1.0.115 彻底移除**（保留，勿回退）
   - ~~v1.0.112「keepalive 竞态」~~、~~「Vary 铁律」~~：**均为误诊**，见坑 18
