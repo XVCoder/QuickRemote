@@ -2,14 +2,17 @@ using System.Net.Http;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace QuickRemote.PCClient.Views;
 
 /// <summary>
-/// 设置中心弹窗：左侧导航（基本配置/远程配置/被远程安全/版本更新）+ 右侧内容区。
+/// 设置中心弹窗：左侧导航（基本配置/远程配置/被远程安全/版本更新/意见反馈）+ 右侧内容区。
 /// DataContext 与主窗口共享 MainViewModel，保存按钮走 SaveSettingsCommand。
 /// 「版本更新」页承载原主窗口底部的「检查更新」按钮，以及原独立「更新记录」窗口的
 /// CHANGELOG.md 阅读区（Markdown → FlowDocument 渲染见 <see cref="ChangelogRenderer"/>）。
+/// 「意见反馈」页把用户反馈（可选附带最近 1000 行日志）上传到 QuickDeploy 的
+/// quickremote/feedback 目录，见 <see cref="Services.FeedbackService"/>。
 /// </summary>
 public partial class SettingsWindow : Window
 {
@@ -35,7 +38,10 @@ public partial class SettingsWindow : Window
     /// <summary>关闭按钮。</summary>
     private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
 
-    /// <summary>导航切换：显示对应配置面板并更新内容标题，进入更新页时按需拉取更新记录。</summary>
+    /// <summary>
+    /// 导航切换：显示对应面板并更新内容标题，进入更新页时按需拉取更新记录，
+    /// 进入反馈页时刷新设备 ID 并切换底部按钮。
+    /// </summary>
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (!IsInitialized) return;
@@ -43,19 +49,79 @@ public partial class SettingsWindow : Window
         var basic = NavBasic.IsChecked == true;
         var remote = NavRemote.IsChecked == true;
         var update = NavUpdate.IsChecked == true;
+        var feedback = NavFeedback.IsChecked == true;
 
         PanelBasic.Visibility = basic ? Visibility.Visible : Visibility.Collapsed;
         PanelRemote.Visibility = remote ? Visibility.Visible : Visibility.Collapsed;
-        PanelSecurity.Visibility = !basic && !remote && !update ? Visibility.Visible : Visibility.Collapsed;
+        PanelSecurity.Visibility = !basic && !remote && !update && !feedback
+            ? Visibility.Visible : Visibility.Collapsed;
         PanelUpdate.Visibility = update ? Visibility.Visible : Visibility.Collapsed;
+        PanelFeedback.Visibility = feedback ? Visibility.Visible : Visibility.Collapsed;
         SectionTitle.Text = basic ? "基本配置"
             : remote ? "远程配置"
             : update ? "版本更新"
+            : feedback ? "意见反馈"
             : "被远程安全";
+
+        // 反馈页不需要「保存设置」，改用「提交反馈」
+        SaveSettingsButton.Visibility = feedback ? Visibility.Collapsed : Visibility.Visible;
+        SubmitFeedbackButton.Visibility = feedback ? Visibility.Visible : Visibility.Collapsed;
+
+        if (feedback)
+        {
+            // 设备 ID = machine_id（与中继注册的 device_id 同源）；配置尚未就绪时给占位文案
+            var machineId = App.ConfigService?.Config?.MachineId ?? string.Empty;
+            FeedbackDeviceIdText.Text = string.IsNullOrWhiteSpace(machineId) ? "未生成" : machineId;
+        }
 
         if (update)
         {
             _ = LoadChangelogAsync(force: false);
+        }
+    }
+
+    // ========== 意见反馈 ==========
+
+    /// <summary>
+    /// 提交反馈：内容为空直接提示；上传成功后清空输入框，失败保留内容便于重试。
+    /// </summary>
+    private async void BtnSubmitFeedback_Click(object sender, RoutedEventArgs e)
+    {
+        var content = FeedbackBox.Text?.Trim() ?? string.Empty;
+        if (content.Length == 0)
+        {
+            DialogWindow.Show("请先填写反馈内容再提交。", "无法提交", DialogWindow.DialogType.Warning);
+            FeedbackBox.Focus();
+            return;
+        }
+
+        var includeLogs = FeedbackWithLogsToggle.IsChecked == true;
+        var deviceName = (DataContext as ViewModels.MainViewModel)?.DeviceNameInput?.Trim() ?? string.Empty;
+
+        SubmitFeedbackButton.IsEnabled = false;
+        SubmitFeedbackButton.Content = "提交中...";
+        FeedbackStatusText.Foreground = (Brush)FindResource("TextMutedBrush");
+        FeedbackStatusText.Text = includeLogs
+            ? $"正在上传（含最近 {Services.FeedbackService.LogTailLines} 行日志）..."
+            : "正在上传...";
+
+        try
+        {
+            var result = await Services.FeedbackService.SubmitAsync(
+                content, includeLogs, App.ConfigService?.Config?.MachineId ?? string.Empty, deviceName);
+
+            FeedbackStatusText.Foreground =
+                (Brush)FindResource(result.Success ? "SuccessBrush" : "DangerBrush");
+            FeedbackStatusText.Text = result.Success
+                ? $"{result.Message}（{result.FileName}）"
+                : result.Message;
+
+            if (result.Success) FeedbackBox.Clear();
+        }
+        finally
+        {
+            SubmitFeedbackButton.IsEnabled = true;
+            SubmitFeedbackButton.Content = "提交反馈";
         }
     }
 

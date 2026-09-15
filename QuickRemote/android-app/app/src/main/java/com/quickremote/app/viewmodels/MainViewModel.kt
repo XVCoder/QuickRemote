@@ -9,6 +9,7 @@ import com.quickremote.app.data.models.Device
 import com.quickremote.app.data.models.DeviceListResult
 import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.data.models.assembleDeviceList
+import com.quickremote.app.services.FeedbackUploader
 import com.quickremote.app.services.Logger
 import com.quickremote.app.services.RelayConnection
 import com.quickremote.app.services.UpdateChecker
@@ -28,6 +29,15 @@ data class UpdateInfo(
     val downloadUrl: String
 )
 
+/** 意见反馈提交状态。 */
+sealed interface FeedbackUiState {
+    /** 正在上传。 */
+    object Submitting : FeedbackUiState
+
+    /** 已结束：success=true 表示提交成功。 */
+    data class Done(val success: Boolean, val message: String) : FeedbackUiState
+}
+
 /**
  * 全局状态管理：服务器配置、设备列表、连接状态、设置。
  */
@@ -35,7 +45,8 @@ class MainViewModel(
     private val settingsStore: SettingsStore,
     private val relay: RelayConnection = RelayConnection(),
     private val logger: Logger = Logger(),
-    private val updateChecker: UpdateChecker = UpdateChecker(logger = logger)
+    private val updateChecker: UpdateChecker = UpdateChecker(logger = logger),
+    private val feedbackUploader: FeedbackUploader = FeedbackUploader(logger = logger)
 ) : ViewModel() {
 
     private val _serverConfig = MutableStateFlow(ServerConfig())
@@ -80,6 +91,14 @@ class MainViewModel(
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
     val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
 
+    /** 本机设备 ID（首次读取时生成并持久化，用于意见反馈文件命名）。 */
+    private val _localDeviceId = MutableStateFlow("")
+    val localDeviceId: StateFlow<String> = _localDeviceId.asStateFlow()
+
+    /** 意见反馈提交状态：null = 空闲；否则为进行中/结果提示。 */
+    private val _feedbackState = MutableStateFlow<FeedbackUiState?>(null)
+    val feedbackState: StateFlow<FeedbackUiState?> = _feedbackState.asStateFlow()
+
     init {
         // 加载已保存的服务器配置
         viewModelScope.launch {
@@ -90,6 +109,10 @@ class MainViewModel(
         }
         viewModelScope.launch {
             settingsStore.appSettings.collect { _appSettings.value = it }
+        }
+        // 本机设备 ID：首次生成后写入 DataStore，后续稳定不变
+        viewModelScope.launch {
+            _localDeviceId.value = settingsStore.ensureDeviceId()
         }
         // 本机私有状态（备注 / 软删除）变化 → 重算展示列表
         viewModelScope.launch {
@@ -267,6 +290,27 @@ class MainViewModel(
     fun clearLogs() {
         logger.clearAll()
         _toast.value = "日志已清空"
+    }
+
+    /**
+     * 提交意见反馈（内容上传到 QuickDeploy 的 quickremote/feedback 目录）。
+     *
+     * 结果写入 [feedbackState] 由反馈弹窗自行呈现，**不走 toast** —— 设置页的 toast
+     * 会驱动「更新/日志」卡片的状态文案，语义不同，混用会让提示出现在不相干的位置。
+     */
+    fun submitFeedback(content: String, includeLogs: Boolean) {
+        if (content.isBlank()) return
+        viewModelScope.launch {
+            _feedbackState.value = FeedbackUiState.Submitting
+            val deviceId = settingsStore.ensureDeviceId()
+            val result = feedbackUploader.submit(content, includeLogs, deviceId)
+            _feedbackState.value = FeedbackUiState.Done(result.success, result.message)
+        }
+    }
+
+    /** 清除反馈提交状态（反馈弹窗关闭时调用）。 */
+    fun consumeFeedbackState() {
+        _feedbackState.value = null
     }
 
     /**

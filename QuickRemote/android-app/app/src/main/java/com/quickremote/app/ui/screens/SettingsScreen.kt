@@ -74,6 +74,7 @@ import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
 import com.quickremote.app.ui.theme.TextSecondary
+import com.quickremote.app.viewmodels.FeedbackUiState
 import com.quickremote.app.viewmodels.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -104,6 +105,8 @@ fun SettingsScreen(
     var settings by remember(appSettings) { mutableStateOf(appSettings) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var isUploadingLogs by remember { mutableStateOf(false) }
+    // 意见反馈对话框
+    var showFeedback by remember { mutableStateOf(false) }
     // 重置预共享密钥确认对话框
     var showResetPsk by remember { mutableStateOf(false) }
     // 清空日志确认对话框
@@ -443,6 +446,27 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // 意见反馈
+            SectionTitle("意见反馈")
+            SettingCard {
+                Text(
+                    "遇到问题或有建议？写下来直接提交给我们。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { showFeedback = true },
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, BorderLight)
+                ) {
+                    Text("提交意见反馈", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // 关于
             SectionTitle("关于")
             SettingCard {
@@ -476,6 +500,17 @@ fun SettingsScreen(
                 Text("保存设置", fontWeight = FontWeight.SemiBold)
             }
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // 意见反馈对话框（内容上传到 QuickDeploy 的 quickremote/feedback 目录）
+        if (showFeedback) {
+            FeedbackDialog(
+                viewModel = viewModel,
+                onDismiss = {
+                    showFeedback = false
+                    viewModel.consumeFeedbackState()
+                }
+            )
         }
 
         // 更新记录对话框（从 APK 内置 assets/changelog.txt 读取）
@@ -706,6 +741,129 @@ fun SettingsScreen(
             )
         }
     }
+}
+
+/**
+ * 意见反馈对话框：多行输入 + 「附带运行日志」开关 + 提交。
+ *
+ * 反馈内容会以 `设备id_反馈时间.log` 上传到 QuickDeploy 的 quickremote/feedback 目录；
+ * 勾选附带日志时，把最近 1000 行运行日志拼在反馈内容下方一起提交。
+ * 提交结果在本对话框内呈现（成功后可继续提交下一条，失败保留正文便于重试）。
+ */
+@Composable
+private fun FeedbackDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
+    val feedbackState by viewModel.feedbackState.collectAsState()
+    val deviceId by viewModel.localDeviceId.collectAsState()
+
+    var content by remember { mutableStateOf("") }
+    var withLogs by remember { mutableStateOf(true) }
+
+    val submitting = feedbackState is FeedbackUiState.Submitting
+    val done = feedbackState as? FeedbackUiState.Done
+
+    // 提交成功后清空正文，方便继续提交下一条
+    LaunchedEffect(done) {
+        if (done?.success == true) content = ""
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        title = { Text("意见反馈", color = TextPrimary) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "请描述遇到的问题或你的建议（越具体越容易定位）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    modifier = Modifier.fillMaxWidth().height(160.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    enabled = !submitting,
+                    placeholder = {
+                        Text(
+                            "例如：手机连上电脑后画面偶尔卡住…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "附带运行日志",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                        Text(
+                            "勾选后把最近 1000 行日志附在反馈内容下方一并提交",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = withLogs,
+                        onCheckedChange = { withLogs = it },
+                        enabled = !submitting
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    "设备 ID：${deviceId.ifBlank { "生成中…" }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+                done?.let { result ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    val msgColor = if (result.success) Success else Danger
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(msgColor.copy(alpha = 0.08f))
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            result.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = msgColor
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { viewModel.submitFeedback(content, withLogs) },
+                enabled = content.isNotBlank() && !submitting
+            ) {
+                if (submitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Accent
+                    )
+                } else {
+                    Text(
+                        if (done?.success == true) "再提交一条" else "提交",
+                        color = if (content.isBlank()) TextMuted else Accent
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(if (done?.success == true) "完成" else "取消", color = TextSecondary)
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    )
 }
 
 @Composable

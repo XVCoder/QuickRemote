@@ -13,8 +13,8 @@ namespace SettingsShot;
 internal sealed class StubVm : IChangelogSource
 {
     public string ChangelogUrl { get; init; } = "";
-    public string Version => "1.1.66";
-    public string UpdateStatusText => "当前 v1.1.66 已是最新版本";
+    public string Version => "1.1.67";
+    public string UpdateStatusText => "当前 v1.1.67 已是最新版本";
     public string SaveSettingsText => "保存设置";
     public ICommand CheckUpdateCommand { get; } = new StubCommand();
     public ICommand SaveSettingsCommand { get; } = new StubCommand();
@@ -45,12 +45,47 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "--test-upload")
+            {
+                RunUploadTest();
+                return;
+            }
             Run(args);
         }
         catch (Exception ex)
         {
             Log("EXCEPTION: " + ex);
         }
+    }
+
+    /// <summary>
+    /// 直连产品代码 <see cref="QuickRemote.PCClient.Services.FeedbackService"/> 跑一次真实上传，
+    /// 验证客户端拼装内容 + multipart 提交链路（不只是 curl 探针）。
+    /// </summary>
+    private static void RunUploadTest()
+    {
+        _log = Path.Combine(AppContext.BaseDirectory, "upload-test.log");
+        try { File.Delete(_log); } catch { }
+
+        // App.Logger 由 OnStartup 初始化，本工作台不跑 OnStartup → 反射注入一个实例
+        var prop = typeof(QuickRemote.PCClient.App).GetProperty(
+            "Logger",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!;
+        prop.SetValue(null, new QuickRemote.PCClient.Services.Logger("UploadTest"));
+        Log("logger injected");
+
+        var result = QuickRemote.PCClient.Services.FeedbackService
+            .SubmitAsync(
+                "【工作台自动化验证】PC 端意见反馈上传链路自测，可忽略。\r\n" +
+                "本条由 tmp-settingshot 工作台调用产品 FeedbackService 生成。",
+                includeLogs: true,
+                deviceId: "pcselftest001",
+                deviceName: "自动化验证机")
+            .GetAwaiter().GetResult();
+
+        Log($"success = {result.Success}");
+        Log($"fileName = {result.FileName}");
+        Log($"message = {result.Message}");
     }
 
     private static void Run(string[] args)
@@ -107,7 +142,47 @@ internal static class Program
         Log($"changelogScroll: viewport={host?.ViewportHeight:F1} extent={host?.ExtentHeight:F1} " +
             $"scrollable={host?.ScrollableHeight:F1} (>0=内部可滚动)");
 
-        // ---- 导出 PNG ----
+        // ---- 导出 PNG（版本更新页）----
+        Export(win, outPath);
+        Log($"saved: {outPath}");
+
+        // ---- 第二张：意见反馈页 ----
+        if (win.FindName("NavFeedback") is RadioButton navFb) navFb.IsChecked = true;
+        win.UpdateLayout();
+
+        ((TextBlock)win.FindName("FeedbackDeviceIdText")!).Text = "de8919f22c5d42cdb4eed47dea3e5ebe";
+        ((TextBox)win.FindName("FeedbackBox")!).Text =
+            "手机连上电脑后画面偶尔卡住几秒，切到后台再回来就恢复正常。\r\n\r\n" +
+            "复现步骤：\r\n" +
+            "1. 手机连接 PC（局域网直连）\r\n" +
+            "2. 连续滑动屏幕约 30 秒\r\n" +
+            "3. 画面卡顿 2-3 秒后自行恢复";
+        win.UpdateLayout();
+
+        var fbScroll = (ScrollViewer)win.FindName("ContentScroll")!;
+        var fbPanel = (StackPanel)win.FindName("PanelFeedback")!;
+        var fbBox = (TextBox)win.FindName("FeedbackBox")!;
+        Log($"panelFeedback  : h={fbPanel.ActualHeight:F1}");
+        Log($"feedbackBox    : h={fbBox.ActualHeight:F1}");
+        Log($"fb contentScroll: viewport={fbScroll.ViewportHeight:F1} extent={fbScroll.ExtentHeight:F1} " +
+            $"scrollable={fbScroll.ScrollableHeight:F1} (0=无溢出)");
+        Log($"saveBtnVisible : {((Button)win.FindName("SaveSettingsButton")!).Visibility}");
+        Log($"submitBtnVisible: {((Button)win.FindName("SubmitFeedbackButton")!).Visibility}");
+        Log($"sectionTitle   : {((TextBlock)win.FindName("SectionTitle")!).Text}");
+
+        var fbOut = Path.Combine(
+            Path.GetDirectoryName(outPath)!,
+            Path.GetFileNameWithoutExtension(outPath) + "-feedback.png");
+        Export(win, fbOut);
+        Log($"saved: {fbOut}");
+
+        win.Close();
+        Log("done");
+    }
+
+    /// <summary>把窗口离屏渲染成 PNG（192 DPI）。</summary>
+    private static void Export(Window win, string path)
+    {
         const double dpi = 192.0;
         var rtb = new RenderTargetBitmap(
             (int)Math.Ceiling(win.ActualWidth * dpi / 96.0),
@@ -116,11 +191,8 @@ internal static class Program
         rtb.Render(win);
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(rtb));
-        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-        using (var fs = File.Create(outPath)) enc.Save(fs);
-        Log($"saved: {outPath}");
-
-        win.Close();
-        Log("done");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var fs = File.Create(path);
+        enc.Save(fs);
     }
 }

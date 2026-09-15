@@ -14,6 +14,7 @@ import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.data.models.snapToQualityPreset
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.util.UUID
 
 // 顶层 DataStore 实例
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "quickremote_settings")
@@ -47,6 +48,9 @@ class SettingsStore(private val context: Context) {
 
         /** 软删除（本机隐藏）的设备 ID 集合；设备再次上线时移除。 */
         val HIDDEN = stringSetPreferencesKey("hidden_devices")
+
+        /** 本机设备 ID（首次生成后持久化）：意见反馈文件名前缀与上报标识。 */
+        val DEVICE_ID = stringPreferencesKey("device_id")
     }
 
     val serverConfig: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
@@ -85,6 +89,24 @@ class SettingsStore(private val context: Context) {
     /** 被本机软删除的设备 ID 集合。 */
     val hiddenDevices: Flow<Set<String>> = context.dataStore.data.map { prefs ->
         prefs[DeviceKeys.HIDDEN].orEmpty()
+    }
+
+    /**
+     * 读取本机设备 ID；不存在时生成一个 32 位十六进制 UUID 并持久化（首次调用后保持稳定）。
+     * 用于意见反馈的文件命名与上报标识。
+     */
+    suspend fun ensureDeviceId(): String {
+        var result = ""
+        context.dataStore.edit { prefs ->
+            val existing = prefs[DeviceKeys.DEVICE_ID]
+            if (existing.isNullOrBlank()) {
+                result = UUID.randomUUID().toString().replace("-", "")
+                prefs[DeviceKeys.DEVICE_ID] = result
+            } else {
+                result = existing
+            }
+        }
+        return result
     }
 
     suspend fun saveServerConfig(config: ServerConfig) {

@@ -9,9 +9,13 @@ agent_created: true
 本 skill 封装 QuickRemote 项目三端组件的编译、上传、版本管理完整流程。
 
 > ⚠️ **2026-08-28 起发布管线已完全迁移到 qdrl**（`qd.solutionx.top`）。
-> 原 quickdeploy（`quickdeploy.solutionx.top`）**域名整体 403、MCP 已在 mcp.json 中 disabled**，
+> 原域名 `quickdeploy.solutionx.top` **整体 403、MCP 已在 mcp.json 中 disabled**，
 > 所有旧分享链接已失效。`release.py` 脚本同样失效，不要再使用。
 > **只存在一套 MCP：`qdrl`。** 任何提到 `mcp__quickdeploy__*` 的历史文档都已作废。
+>
+> 📌 **注意措辞**：`qd.solutionx.top` 上的这套服务**名字就叫 QuickDeploy**
+> （MCP 自述标题为「QuickDeploy MCP」）。所以 X 说「quickdeploy」时指的是 **qd 这个平台**，
+> 不是那个已作废的旧域名 —— 别把「quickdeploy 已下线」理解成平台没了。
 
 ---
 
@@ -106,7 +110,29 @@ bash ../.workbuddy/tools/dotnet-with-win-env.sh publish pc-client/QuickRemote.PC
     -c Release -r win-x64 --self-contained false -o pc-client/publish --nologo
 ```
 
+> ⚠️ **包装脚本可能静默吞掉全部输出**（2026-09-14 实测：连 `--version` 都无回显、`exit=0`
+> 也不报错，极易误判成「构建成功」，实际根本没编译 → 检查产物 mtime 才发现）。
+> 判断依据**不能只看 exit code**，必须核对产物时间戳或改用下面的直连写法：
+>
+> ```bash
+> export SystemRoot='C:\Windows' windir='C:\Windows' ProgramData='C:\ProgramData' \
+>        APPDATA='C:\Users\xiong\AppData\Roaming' LOCALAPPDATA='C:\Users\xiong\AppData\Local' \
+>        USERPROFILE='C:\Users\xiong' TEMP='C:\Users\xiong\AppData\Local\Temp' \
+>        TMP='C:\Users\xiong\AppData\Local\Temp' ProgramFiles='C:\Program Files'
+> dotnet build QuickRemote/pc-client/QuickRemote.PCClient.csproj -c Release -v m
+> ```
+>
+> 注意 `export 'ProgramFiles(x86)=…'` 在 bash 里是**非法赋值**（`not a valid identifier`）——
+> 该变量必须省略，缺它不影响 restore/build。
+
 ### 2.2 PC 打包（ZIP，扁平结构）
+
+> **分发形态：框架依赖（`SelfContained=false`）** —— ZIP 约 1.65MB，目标机必须预装
+> **.NET 8 桌面运行时（x64）**。主程序 `QuickRemote.PCClient.csproj` 里**没有**
+> RID/SelfContained/SingleFile 属性，发布时只传 `-r win-x64`，产物 14 个条目 / 解压 3.1MB。
+> ⚠️ **页面/文案一律不要写「自包含 / 免装运行时」**（v1.0.120 前 about 页写错，已修）。
+> 自包含实测：164MB / 472 文件、ZIP 67.9MB，且带多语言子目录（`*.resources.dll` 同名冲突）
+> 与扁平 ZIP 流程不兼容，updater 也须一并自包含 ⇒ 合计约 130MB，**已决定不做**。
 
 1. `pc-updater` 产出 `update.exe`，**必须打进 ZIP**，否则用户无法自动升级：
 
@@ -193,9 +219,16 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$
 ```bash
 cd E:/000_AI/QuickRemote && bash .workbuddy/tools/dotnet-with-win-env.sh build \
     tmp-settingshot/SettingsShot.csproj -c Debug -v q --nologo
+# 不带参数：渲染「版本更新」+「意见反馈」两页 PNG（out.png / out-feedback.png）
 cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe \
     "E:/000_AI/QuickRemote/QuickRemote/CHANGELOG.md" "E:/000_AI/QuickRemote/tmp-settingshot/out.png"
+
+# 带 --test-upload：反射注入 App.Logger 后直呼产品 FeedbackService 真发一次（见 §7）
+cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe --test-upload
 ```
+
+> ⚠️ 上面的 build 走包装脚本；**若看不到任何输出，先怀疑包装脚本吞了输出**（§2.1），
+> 别当成"构建成功" —— 用产物 mtime 或改直连写法确认。
 
 **必须遵守的三条（都踩过）：**
 
@@ -234,6 +267,25 @@ cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe \
 > 与 `Content-Disposition: attachment; filename*=UTF-8''<文件名>`。
 > 大文件用 `curl` 直传（`upload_file` 的 base64 内联会爆）；沙箱内 curl 写文件偶报 exit 23，
 > 用 `-I`（HEAD）或 `-o /dev/null` 即可绕过。
+
+### ⚠️ 上传链路的两个坑（2026-09-14 实测）
+
+1. **`create_upload_token` 会连续报 `ECONNRESET`（MCP 侧瞬时抖动，不是网络故障）**：
+   当时 `get_app_status` 正常、平台 `GET /d/p/<uuid>` 200、`POST /api/upload/<坏 token>` 也返回 404
+   ⇒ 平台与 POST 链路都健康，只有该 tool 的 POST 被重置。**直接重试**（本次第 4 次成功），
+   不要再去 remove/deploy 或怀疑 key 漂移。
+2. **失败的上传尝试会消耗令牌的 `max_uploads`**：`max_uploads=1` 的令牌在 curl 报
+   `schannel: server closed abruptly` 后即失效（再传返回 `{"error":"token invalid or expired"}`）。
+   → 申请时**给足次数**（5 次即可），上传用重试循环 + `--noproxy '*'`：
+
+   ```bash
+   for i in 1 2 3; do
+     R=$(curl -sS --noproxy '*' --max-time 120 -X POST -F "file=@<包>" "<upload_url>" 2>&1); echo "$R"
+     case "$R" in *file_id*) break;; esac
+   done
+   ```
+3. 上传成功后**记下返回的 `file_id`**，`upgrade_app` 用 `package_content="file://<file_id>"`。
+   `file_id` 与 `share_url` 不同：about 包走 upgrade 不需要永久分享，不必开 `permanent_share`。
 
 ---
 
@@ -287,6 +339,17 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
    待更新点：**下载卡片**（PC `.dl-version`、Android `.dl-version`）、
    **快速上手**步骤 1「点击下载 PC 客户端 vX」、步骤 2「点击下载 Android App vX」。
    > 历史坑：下载卡片与教程步骤是两处独立文案，只改一处会导致卡片长期停留在旧版本。
+
+   > ⛔ **页面文案已于 v1.0.119（2026-09-14）按现实现全面重写，勿再写回下列过时表述**
+   > （它们描述的是已被删除的 RDP/FreeRDP 方案，与当前代码不符）：
+   > `全量转发 RDP 流量` / `裸桥接 RDP 字节流` / `内置 FreeRDP` / `一键启用 RDP` /
+   > `3389 端口` / `NLA` / `音频重定向` / `颜色深度 16/32bit` / `自适应·原分辨率` /
+   > `长按收藏设备` / `PC 端信任所有证书`。
+   > 当前正确表述：PC 端 DXGI 采集 + Media Foundation H.264 硬编（失败回落 JPEG）、自研帧协议、
+   > Android MediaCodec 硬解零拷贝到 Surface、**局域网直连 8447 优先 + 公网中继回落**、
+   > 画质四档（流畅/标准/高清/原画）、访问验证码 / 断开自动锁屏 / 剪贴板同步。
+   > 改完自查：`grep -in "rdp\|freerdp\|3389\|nla\|音频\|16/32" public/index.html` 应零命中
+   > （`grep -c "局域网直连"` 应有若干命中）。
 2. 同步改 `server.js` 的 `CLIENTS[*].url` 与 `CLIENTS[*].version`
 3. `package.json` 的 `version` 递增
 4. （可选）`seed.json` 的 `baseline`：把「统计上线前已产生的下载量」计入总量（趋势图无历史明细）。
@@ -318,15 +381,33 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 > ✅ 2026-09-11 已实际发生一次并解除：用户换绑 key 后 `upgrade_app` 一次成功
 > （v1.0.99，蓝绿部署，端口 20105）。遇到同样报错直接让用户换绑，不要反复重试上传。
 
+### 本地校验（改了页面 HTML/CSS/JS 后必做，无需浏览器）
+
+本沙箱跑不了浏览器截图，但**可以用 jsdom 跑真实 `app.js`** 验证渲染逻辑与 DOM 结构 ——
+比截图更精确，能直接断言数值文本与几何属性：
+
+- jsdom 已装在 `C:/Users/xiong/.workbuddy/binaries/node/workspace`；
+  参考脚本 `workspace/trend-test.mjs`（趋势图 27 项断言：纵轴刻度值/位置、网格线、
+  柱子 DOM 顺序与 flex 比例、柱顶数值文本与 `bottom:calc()` 百分比、读数条、点击切换、7/14/30 天密度）。
+- 写法：`new JSDOM(html, { runScripts: 'outside-only' })` + `window.eval(appJs)`。
+  必须先补 **`window.IntersectionObserver`**（jsdom 未实现，否则报
+  `ReferenceError: IntersectionObserver is not defined` —— **这是误报，不是页面 bug**）与桩 `fetch`。
+- 要给 X 看效果时，用 `workspace/build-preview.mjs` 生成**内联桩数据的离线预览页**
+  （CSS / JS / 真实 `/api/stats` 数据全部内联）到 `tmp-trend-preview/`。
+  ⚠️ 静态预览里相对路径 `api/stats` 取不到 → **必须内联数据**才看得到图表，
+  否则页面只会显示「统计暂时不可用」。
+
 ### 部署后校验（必做）
 
 **第 0 步：响应完整性（字节数比对，防 32KB 截断，见坑 16）**
 
 ```bash
 B="https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366"
-curl -sS "$B/about" | wc -c        # 期望 19275（本地 19201 + 平台注入 favicon 行 74B）
-curl -sS "$B/style.css" | wc -c    # 期望 15699
-curl -sS "$B/app.js" | wc -c       # 期望 4543
+# ⚠️ 期望值不要写死 —— 每次改页面都会变。先在本地算出基准再比对：
+cd QuickRemote-about && for f in index.html style.css app.js; do echo "$f 本地 $(wc -c < public/$f)"; done
+curl -sS "$B/about"     | wc -c   # 期望 = 本地 index.html + 74（平台注入 favicon 行）
+curl -sS "$B/style.css" | wc -c   # 期望 = 本地 style.css
+curl -sS "$B/app.js"    | wc -c   # 期望 = 本地 app.js
 curl -sS "$B/about" | grep -c "</html>"   # 期望 1；为 0 ⇒ 被截断
 ```
 
@@ -379,17 +460,69 @@ curl -sS "$B/api/stats" | head -c 240                                     # 期�
 容易漏）。同样保留最近 3 个，`delete_file` 删更早的。
 > 删除是安全的：应用部署时平台已把包复制进版本目录，file 区的 tar.gz 只是升级时的来源。
 > 根目录另有 manifest.json / CHANGELOG.md / install.sh 三个文件**绝对不能删**。
+> `quickremote/feedback` 目录（客户端意见反馈收件箱，见 §7）**不能删**，删了反馈就传不上来。
 
 ---
 
-## 当前线上版本（2026-09-13 晚）
+## 7. 意见反馈收件箱（quickremote/feedback）
+
+PC 端与 Android 端的「意见反馈」功能直传 QuickDeploy，**不经过中继服务器** ——
+用户反馈的常见场景恰恰是「连不上」，所以不能依赖中继可用。
+
+| 项 | 值 |
+| --- | --- |
+| 目录 | `quickremote/feedback`（dir_id `2ff6932f-05e5-4f4a-87a4-a966d270c272`，父目录 `quickremote` = `5b681a68-…`） |
+| 上传接口 | `POST https://qd.solutionx.top/api/upload/<token>`，multipart，字段名 **`file`** |
+| 令牌 | `lJ7mTnJu0FHkNcx4gOET5NS6IDFDkgE3Ch7FDsN4TNk`（永久、不限次数、`allowed_extensions=log`、不允许覆盖） |
+| 文件命名 | `设备id_反馈时间.log`，时间格式 `yyyyMMdd_HHmmss`（例 `de8919f2…_20260915_073011.log`） |
+| 成功响应 | `{"file_id":"...","name":"...","size":N}` —— **判定成功必须看 `file_id` 是否存在**，不能只看 HTTP 200 |
+
+**客户端硬编码位置（令牌轮换时必须同改）**：
+
+- `pc-client/Services/FeedbackService.cs` 的 `UploadUrl` 常量
+- `android-app/.../services/FeedbackUploader.kt` 的 `UPLOAD_URL` 常量
+
+**设备 ID 来源**：PC 用 `appsettings.json` 的 `MachineId`（= 中继注册的 `device_id`，同源）；
+Android 用 `SettingsStore.ensureDeviceId()`（首次生成 32 位十六进制 UUID 存 DataStore）。
+
+**附带日志**：两端都取**最近 1000 行**（`Logger.ReadTail(1000)` / `Logger.readTail(1000)`），
+拼在反馈正文下方；PC 按文件名日期从新到旧读、凑满即停，Android 用环形缓冲逐行读，都不会全量载入。
+
+**验证上传链路（不启动 GUI，直接跑产品代码）**：
+
+```bash
+cd E:/000_AI/QuickRemote && bash .workbuddy/tools/dotnet-with-win-env.sh build \
+    tmp-settingshot/SettingsShot.csproj -c Debug -q --nologo
+cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe --test-upload
+cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
+```
+
+> `--test-upload` 是 `tmp-settingshot/Program.cs` 里的自测模式：反射注入 `App.Logger` 后
+> 直接调用产品 `FeedbackService.SubmitAsync`，验证的是**真实发送端代码**而非 curl 探针。
+> 不带参数运行则渲染「版本更新」+「意见反馈」两页 PNG 供视觉校验。
+
+**查看收到的反馈**：`mcp__qdrl__list_files(dir_id=2ff6932f-…)` 列目录；
+要读内容先 `create_share`，再用 **`/d/<token>/download`** 拿原始文件
+（`/d/<token>` 是 HTML 预览页、`/download/<token>` 是 404，只有前者是对的）。
+
+---
+
+## 当前线上版本（2026-09-14 晚）
+
+> 📦 **已实现待发版（等「发布吧」授权）**：pc-client **v1.1.67** + android-app **v1.0.78**（versionCode 78）
+> = 新增「意见反馈」（见 §7）。两端已本地编译通过、上传链路与日志截取均已实测；
+> 发版时记得同步：manifest.json 两个组件版本号 + about 页下载目标 + `assets/changelog.txt`（已写好 v1.0.78）。
 
 - relay-server **1.0.8**：amd64 `…/d/p/cfc52a23-36b5-464a-a626-8021538a381b`，arm64 `…/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191`
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
 - pc-client **1.1.66**：`…/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6`（设置中心新增「版本更新」页，独立更新记录弹窗删除；commit `4b6cba8`）
 - android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
-- about **v1.0.118**（2026-09-14 "真凶定案"版）
-  - URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`（public UUID 曾因重建变更，见坑 18）
+- about **v1.0.121**（2026-09-15 中午上线，趋势图数值可视化）—— 线上 URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`；别名域名 `https://quickremote.solutionx.top/about` 同样可达；升级后端口 20006（20000 段递增）
+  - **v1.0.121 趋势图数值可视化**：旧版两个问题 —— ①`.col` 的 DOM 顺序是柱体在占位块前、且无 `justify-content`，柱子从**顶部向下垂**；②数值只在 hover 提示框里，移动端/扫一眼场景看不到。修法：柱体底部对齐 + 柱顶常驻数字（`.col .num`）+ Y 轴刻度与网格线 + 图表下方读数条 `#trend-readout`（默认读最近有下载的一天，点击柱子切换）。`niceTop()` 取整齐偶数上限避免 7.5 这类刻度，30 天视图 `.dense` 数值字号降 9px。上线实测 HTML 23111（= 本地 23037 **+74**）、CSS 18112、JS 7280，三者与本地逐字节一致
+  - **v1.0.120 修正 PC 端运行时描述**
+  - **v1.0.120 修正 PC 端运行时描述**：页面原写「包含 .NET 8 自包含运行时」是**错的** —— PC 客户端是**框架依赖模式**（ZIP 14 个条目 / 解压 3.1MB，`runtimeconfig.json` 声明 `Microsoft.NETCore.App` + `Microsoft.WindowsDesktop.App` 8.0.0，无 `includedFrameworks`），目标机必须预装 **.NET 8 桌面运行时（x64）**。实测自包含代价：164MB / 472 文件、ZIP 67.9MB，且产物带多语言子目录与扁平 ZIP 冲突，updater 也须一并自包含（合计约 130MB）→ 已决定不做，保持框架依赖。页面已加 note 块给出 `dotnet.microsoft.com/download/dotnet/8.0` 入口
+  - **v1.0.119 页面文案按现实现全面重写**：移除 RDP / FreeRDP / NLA / 音频重定向 / 色深 16-32bit / 自适应分辨率 / 长按收藏 等过时描述，改为自研 H.264 屏幕流（PC 端 DXGI + Media Foundation 硬编、Android 端 MediaCodec 硬解）+ 局域网直连 8447 优先 / 公网中继回落。上线实测 HTML 22334B（= 本地 22260 + 74）、CSS 15699B、JS 4543B，线上 `grep -i "rdp"` 零命中
+  - v1.0.118（2026-09-14 "真凶定案"版）沿用上述 URL（public UUID 曾因重建变更，见坑 18）
   - ⭐ **核心修复：静态响应不再设置 `Content-Length`**（改 chunked）——平台 502 的**唯一真凶**（坑 18 已用对照实验锁死）
   - **进程存活加固**（v1.0.116）：`loadStats()` 全程 try/catch 降级（不再因卷不可写而顶层 await 抛错退出）、全局 `uncaughtException`/`unhandledRejection` 守门、新增 `/api/health` 存活探针（返回 `pid/uptimeSec/dataDir/buffered`）
   - 下载统计：`/api/stats` 统计接口 + `/dl/<id>` 计数 302；PC 目标 v1.1.66、Android 目标 v1.0.77

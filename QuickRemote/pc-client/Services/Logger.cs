@@ -80,6 +80,41 @@ public sealed class Logger : IDisposable
     /// <summary>获取日志目录。</summary>
     public static string GetLogDirectory() => LogDir;
 
+    /// <summary>
+    /// 读取最近 <paramref name="maxLines"/> 行日志（用于意见反馈附带日志）。
+    /// 按文件名（即日期）从新到旧读取，凑满行数即停止，不会把 7 天日志全量载入内存。
+    /// </summary>
+    public static string ReadTail(int maxLines)
+    {
+        if (maxLines <= 0) return string.Empty;
+
+        try
+        {
+            var files = GetLogFiles()
+                .OrderByDescending(f => Path.GetFileName(f), StringComparer.Ordinal);
+
+            var tail = new List<string>();
+            foreach (var file in files)
+            {
+                List<string> dayLines;
+                try { dayLines = File.ReadAllLines(file).ToList(); }
+                catch { continue; }
+
+                if (tail.Count == 0) tail.AddRange(dayLines);
+                else tail.InsertRange(0, dayLines);   // 更早的一天插到前面，保持时间升序
+
+                if (tail.Count >= maxLines) break;
+            }
+
+            if (tail.Count > maxLines) tail = tail.GetRange(tail.Count - maxLines, maxLines);
+            return string.Join(Environment.NewLine, tail);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     /// <summary>清空全部日志文件（下次写入时自动重建当天文件）。</summary>
     public static void ClearLogs()
     {

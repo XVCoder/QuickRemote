@@ -54,6 +54,34 @@ class Logger {
         return Base64.encodeToString(content.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
     }
 
+    /**
+     * 返回最近 [maxLines] 行日志（用于意见反馈附带日志）。
+     *
+     * 按文件名（即日期）从旧到新逐行读入，环形缓冲只保留尾部 [maxLines] 行，
+     * 不会把 7 天日志全量载入内存；单日文件含换行用 forEachLine 兼容 CRLF。
+     */
+    fun readTail(maxLines: Int = 1000): String {
+        if (maxLines <= 0) return ""
+        return try {
+            val files = dir.listFiles { f -> f.name.endsWith(".log") }?.sortedBy { it.name }
+                ?: return ""
+            val tail = ArrayDeque<String>()
+            for (file in files) {
+                try {
+                    file.forEachLine { line ->
+                        tail.addLast(line)
+                        if (tail.size > maxLines) tail.removeFirst()
+                    }
+                } catch (_: Exception) {
+                    // 单个文件读失败不影响其它文件
+                }
+            }
+            tail.joinToString("\n")
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
     /** 清理 7 天前的日志文件。 */
     fun cleanupOldLogs() {
         try {

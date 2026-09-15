@@ -54,3 +54,6 @@ tmp-settingshot/*.log
 .probe-app/
 QuickRemote-about/data/
 QuickRemote-about/.smoke.log
+
+# about 页离线预览产物（node workspace/build-preview.mjs 生成）
+tmp-trend-preview/
