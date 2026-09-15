@@ -29,6 +29,12 @@ agent_created: true
 5. 更新并部署 about 页面
 6. 清理旧版本（各目录只留最近 3 个）+ Git 提交
 
+> **单端发版（裁剪，2026-09-15 v1.0.79 实操）**：只有一端有改动时，其余端**不重编、不重传**——
+> 例如只发 Android：跳过 §2.1/§2.2 的 PC 编译打包与 pc-updater 重发，manifest 只动
+> `android-app` 一个组件，about 只改版本号三处（`server.js` 的 `CLIENTS.android` +
+> `public/index.html` 下载卡片与教程步骤），校验与清理照做。about 页面**不含**手势/交互细节文案，
+> 纯功能类发版无需改页面结构 ⇒ 字节数与上一版完全相同属正常。
+
 ---
 
 ## 0. 强制 Git 提交（发布前置检查，不可跳过）
@@ -514,18 +520,23 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-14 晚）
+## 当前线上版本（2026-09-15 晚）
 
-> ✅ **v1.1.67 / v1.0.78 已发布**（2026-09-15 13:00）= 新增「意见反馈」（见 §7）。
-> 同步项已全部完成：manifest.json 两组件 + about 页下载目标（v1.0.122）+ `assets/changelog.txt`。
+> ✅ **Android v1.0.79 已发布**（2026-09-15 23:36）= 画面内「双击拖动」（按住左键拖动远程窗口）。
+> 本次**只发 Android 一路**：PC / relay / pc-updater 均无改动，无需重编。
+> 同步项：APK + manifest.json + CHANGELOG.md + about v1.0.123（下载目标）；`assets/changelog.txt` 已随之。
+> 上一版：PC v1.1.67 / Android v1.0.78（意见反馈，2026-09-15 13:00）。
 
+- android-app **1.0.79**（versionCode 79）：`…/d/p/73432404-3a82-4d51-93b7-fb561a524b64`（画面内双击拖动 = 快速双击后第二下按住滑动即按住左键拖拽；复用 `touchpadDoubleTapDrag` 开关；PC 端零改动）
 - relay-server **1.0.8**：amd64 `…/d/p/cfc52a23-36b5-464a-a626-8021538a381b`，arm64 `…/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191`
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
 - pc-client **1.1.67**：`…/d/p/60139f9c-66ea-4974-8b3e-bf45b6983a77`（设置中心新增「意见反馈」页）
 - pc-client **1.1.66**：`…/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6`（设置中心新增「版本更新」页，独立更新记录弹窗删除；commit `4b6cba8`）
 - android-app **1.0.78**（versionCode 78）：`…/d/p/4bef3948-2708-4fcc-bff5-e309bf7a388f`（设置页新增「意见反馈」，可选带 1000 行日志直传 qd）
 - android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
-- about **v1.0.122**（2026-09-15 13:00 上线，下载目标更新至 PC v1.1.67 / Android v1.0.78）—— 线上 URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`；别名域名 `https://quickremote.solutionx.top/about` 同样可达；升级后端口 20007（20000 段递增）。上线实测 HTML 23111（= 本地 23037 **+74**）、CSS 18112、JS 7280，三者与本地逐字节一致
+- about **v1.0.123**（2026-09-15 23:36 上线，下载目标更新至 Android v1.0.79；PC 仍 v1.1.67）—— 线上 URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`；别名域名 `https://quickremote.solutionx.top/about` 同样可达；升级后端口 20008（20000 段递增）。上线实测 HTML 23111（= 本地 23037 **+74**）、CSS 18112、JS 7280，三者与本地逐字节一致；`/dl/android` 302→73432404、`/dl/pc` 302→60139f9c；`/api/stats` 客户端版本 v1.1.67 / v1.0.79，统计未清零
+  - **v1.0.123 仅改版本号与下载目标**（`public/index.html` 两处 + `server.js` 的 `CLIENTS.android`），页面结构/文案未动，字节数与 v1.0.122 完全一致（23,037 / 18,112 / 7,280）
+  - **v1.0.122**（2026-09-15 13:00 上线，下载目标更新至 PC v1.1.67 / Android v1.0.78）
   - **v1.0.121 趋势图数值可视化**：旧版两个问题 —— ①`.col` 的 DOM 顺序是柱体在占位块前、且无 `justify-content`，柱子从**顶部向下垂**；②数值只在 hover 提示框里，移动端/扫一眼场景看不到。修法：柱体底部对齐 + 柱顶常驻数字（`.col .num`）+ Y 轴刻度与网格线 + 图表下方读数条 `#trend-readout`（默认读最近有下载的一天，点击柱子切换）。`niceTop()` 取整齐偶数上限避免 7.5 这类刻度，30 天视图 `.dense` 数值字号降 9px
   - **v1.0.120 修正 PC 端运行时描述**：页面原写「包含 .NET 8 自包含运行时」是**错的** —— PC 客户端是**框架依赖模式**（ZIP 14 个条目 / 解压 3.1MB，`runtimeconfig.json` 声明 `Microsoft.NETCore.App` + `Microsoft.WindowsDesktop.App` 8.0.0，无 `includedFrameworks`），目标机必须预装 **.NET 8 桌面运行时（x64）**。实测自包含代价：164MB / 472 文件、ZIP 67.9MB，且产物带多语言子目录与扁平 ZIP 冲突，updater 也须一并自包含（合计约 130MB）→ 已决定不做，保持框架依赖。页面已加 note 块给出 `dotnet.microsoft.com/download/dotnet/8.0` 入口
   - **v1.0.119 页面文案按现实现全面重写**：移除 RDP / FreeRDP / NLA / 音频重定向 / 色深 16-32bit / 自适应分辨率 / 长按收藏 等过时描述，改为自研 H.264 屏幕流（PC 端 DXGI + Media Foundation 硬编、Android 端 MediaCodec 硬解）+ 局域网直连 8447 优先 / 公网中继回落。上线实测 HTML 22334B（= 本地 22260 + 74）、CSS 15699B、JS 4543B，线上 `grep -i "rdp"` 零命中

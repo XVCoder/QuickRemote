@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.78",
-    "changelog": "设置页新增「意见反馈」：填写反馈内容后一键提交，可选附带最近 1000 行运行日志；不依赖中继是否在线，直传 QuickDeploy 的 feedback 目录，文件名 设备id_反馈时间.log",
+    "latest_version": "1.0.79",
+    "changelog": "画面内新增「双击拖动」：快速双击后第二下按住滑动即按住左键拖动，可直接拖动远程窗口（拖标题栏移动窗口、拖选文本、拖滑块）；第二下不滑动仍是普通双击，单击/双击原有操作不受影响；复用设置页「双击拖动」开关，无需 PC 端升级",
     "versions": {
+      "1.0.79": {
+        "apk": "https://qd.solutionx.top/d/p/73432404-3a82-4d51-93b7-fb561a524b64"
+      },
       "1.0.78": {
         "apk": "https://qd.solutionx.top/d/p/4bef3948-2708-4fcc-bff5-e309bf7a388f"
       },
       "1.0.77": {
         "apk": "https://qd.solutionx.top/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36"
-      },
-      "1.0.76": {
-        "apk": "https://qd.solutionx.top/d/p/01981b77-ef82-45ee-84ed-ab94b78f96f7"
       }
     }
   }
