@@ -1,2 +1,0 @@
-dumpheap -stat
-exit

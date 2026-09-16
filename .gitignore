@@ -57,3 +57,9 @@ QuickRemote-about/.smoke.log
 
 # about 页离线预览产物（node workspace/build-preview.mjs 生成）
 tmp-trend-preview/
+
+# 一次性排查残留（2026-09-16 从版本库移出，保留本地）
+/h264test/
+/verify-*/
+*.obj
+qr-crash-check.txt

@@ -1,3 +1,0 @@
-Loading core dump: C:\Users\xiong\AppData\Local\CrashDumps\QuickRemote.PCClient.exe.2228.dmp ...
-OS Thread Id: 0xdde4 (46)
-          SP/REG           Object Name
