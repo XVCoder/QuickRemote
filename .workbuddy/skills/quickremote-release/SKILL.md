@@ -64,6 +64,11 @@ git status --porcelain
 3. **`git rm -r <子目录>` 会连带删掉整个工作区父目录**（safe-delete 钩子异常）。
    删除一律逐文件 `rm -f` + `git add -A`。
 
+4. **`git commit -m "多行消息"` 不要跟 `&&` 串在一条命令里**（2026-09-16 实测）：提交其实成功了
+   （`git log` 能看到新 commit），但链式输出却回显 `nothing to commit, working tree clean` 并
+   exit 1，让后面的 `git push` 整段被跳过，容易误判成"提交失败"。
+   → 提交与推送**分两条命令**执行，或消息写成单行；提交后用 `git log --oneline -1` 复核。
+
 ---
 
 ## 1. 版本号与文档
@@ -436,6 +441,31 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
   ⚠️ 静态预览里相对路径 `api/stats` 取不到 → **必须内联数据**才看得到图表，
   否则页面只会显示「统计暂时不可用」。
 
+- **想走真实 server.js 又要让 X 在预览面板里看**（2026-09-16 实测可用）：
+  `server.js` 是 ESM（`type: module`）+ top-level await，**没法 `require()` 包一层**；
+  直接跑又会 `listen(PORT)` 绑到全网卡（禁止对外暴露）。用 `--import` 预加载一个回环补丁：
+
+  ```bash
+  # 补丁放在仓库外，避免污染版本库
+  cat > /e/000_AI/_preview-harness/force-localhost.mjs <<'EOF'
+  import http from 'node:http';
+  const orig = http.Server.prototype.listen;
+  http.Server.prototype.listen = function (...args) {
+    if (typeof args[0] === 'number') return orig.call(this, args[0], '127.0.0.1', ...args.slice(1));
+    return orig.apply(this, args);
+  };
+  EOF
+
+  cd QuickRemote-about && PORT=8099 node --import "file:///E:/000_AI/_preview-harness/force-localhost.mjs" server.js
+  ```
+
+  然后 `present_files("http://127.0.0.1:8099/about")` 直接把改造后的页面开在宿主预览面板里
+  （CDN 字体/图标与真实 `/api/stats` 都正常）。收工记得 kill 掉后台任务。
+
+- **`curl -o /dev/null` 在 Windows 原生 curl 下会报 `(23) client returned ERROR on write`
+  并以 exit 23 结束**，夹在 `&&` 链里会把后续命令整段掐掉（表现为"后面什么都没输出"）。
+  → 用 `-o NUL`，或把命令用 `;` 串联，别用 `&&`。`-I`（HEAD）不受影响。
+
 ### 部署后校验（必做）
 
 **第 0 步：响应完整性（字节数比对，防 32KB 截断，见坑 16）**
@@ -553,7 +583,14 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-16 下午）
+## 当前线上版本（2026-09-16 晚）
+
+> ✅ **about v1.0.125 已发布**（2026-09-16 20:54，蓝绿端口 20010）= 开源版关于页：
+> 导航常驻 GitHub 按钮 + Hero「查看源码」+ 新增「开源」区块（仓库地址 / AGPL-3.0 / 反馈渠道）
+> + 页脚 GitHub 链接，title/meta 改为「开源的安卓远程控制 Windows 桌面工具」。
+> **本次只发 about 一路**：PC / Android / relay / pc-updater 零改动，manifest.json 无需动
+> （下载目标仍是 PC v1.1.67 / Android v1.0.80）。提交 `6cb9c88`。
+> 上一版：about v1.0.124（2026-09-16 13:38，下载目标更新）。
 
 > ✅ **Android v1.0.80 已发布**（2026-09-16 13:44）= 修复「切到其他应用就断线」（新增会话前台服务）。
 > 本次**只发 Android 一路**：PC / relay / pc-updater 均无改动，无需重编。
