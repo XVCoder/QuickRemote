@@ -269,6 +269,31 @@ cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe --test-upload
 **关键：manifest.json / CHANGELOG.md 必须用 `allow_overwrite=true` 覆盖上传**——
 客户端内置的是固定分享链接，覆盖后 file_id 与 share_id 都不变，链接永不失效。
 
+### ⚠️ qdrl MCP 未注册时的直连兜底（2026-09-16 v1.0.80 实测走通全程）
+
+当 `mcp__qdrl__*` 在会话里不可用（`ToolSearch` 搜不到、`~/.workbuddy/mcp.json` 里
+**没有** qdrl 条目、只剩 disabled 的 quickdeploy）时，**平台本身是健康的**，
+不要因此判定"发不了版"：
+
+1. 先验证平台活着：`curl.exe -sS --noproxy '*' -I -L "https://qd.solutionx.top/d/p/<任一固定分享ID>"`
+   → 200 + 正确 `Content-Disposition`。
+2. 用仓库内工具直连 MCP 的 JSON-RPC 端点（等价 `mcp__qdrl__*`）：
+
+   ```bash
+   python .workbuddy/tools/qd-mcp.py tools/list
+   python .workbuddy/tools/qd-mcp.py call <tool_name> '<params-json>'
+   ```
+
+   18 个工具与 MCP 侧完全一致（create_upload_token / list_files / delete_file /
+   upgrade_app / get_app_status …）。**Bearer 由脚本运行期从 `~/.workbuddy/mcp.json`
+   里任一 solutionx.top 服务读取（也可用环境变量 `QD_MCP_KEY` 覆盖），不硬编码入库** ——
+   这是平台级密钥（可上传/删除/部署），本仓库已推 GitHub，绝不能提交进版本库。
+3. **必须握 session**：initialize（从响应头取 `Mcp-Session-Id`）→ `notifications/initialized`
+   → tools/call。跳过握手直接 `tools/list` 会得到 `HTTP 404 + "Invalid session ID"`，
+   看着像"平台没有这些工具"，实为没握手（脚本已内置握手）。
+4. 文件传输仍走 `curl.exe -sS --noproxy '*' -X POST .../api/upload/<token> -F "file=@<win路径>"`，
+   重试循环 + 判据 `响应含 file_id`。
+
 > 上传后校验：`curl -sS -I -L "<share_url>"` 应返回 `HTTP 200` + 正确的 `Content-Length`
 > 与 `Content-Disposition: attachment; filename*=UTF-8''<文件名>`。
 > 大文件用 `curl` 直传（`upload_file` 的 base64 内联会爆）；沙箱内 curl 写文件偶报 exit 23，
@@ -363,8 +388,16 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
 5. 打包（不含 node_modules 与 `data/`；平台会自动 `npm install --omit=dev`）：
 
    ```bash
-   tar -czf QuickRemote-about-v{ver}.tar.gz public server.js package.json seed.json
+   python .workbuddy/tools/pack-about.py 1.0.124     # 参数 = about 版本号（不带 v）
    ```
+
+   > ⚠️ **不要直接用 `tar -czf` 打工作区文件（2026-09-16 踩过）**：仓库 `core.autocrlf=true`，
+   > 工作区是 CRLF、git 里是 LF。上一版包用的是 LF（index.html 23,037B），
+   > 直接 tar 会打出 CRLF 版（+333B，每行 +1 字节），功能无害但会让
+   > 「本地字节数 == 线上字节数」的校验基线整体漂移、逐文件 diff 出现"假差异"。
+   > `pack-about.py` 会强制归一为 LF 并打印每个文件归一的字节数，产出到
+   > `E:/000_AI/QuickRemote/QuickRemote-about-v{ver}.tar.gz`。
+   > 打包后照坑 14 做「包内 vs 工作副本」比对（比对时对工作副本做 CRLF→LF 归一，否则必然假差异）。
 
    > ⚠️ **不要打 `data/`** —— 那是运行时计数目录，打进去会污染（且升级时卷优先，包内内容会被丢弃）。
 6. 上传到 qdrl 根目录（`target_dir_id = 5b681a68-...`，`allowed_extensions="tar.gz"`），拿到 `file_id`
@@ -520,13 +553,15 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-15 晚）
+## 当前线上版本（2026-09-16 下午）
 
-> ✅ **Android v1.0.79 已发布**（2026-09-15 23:36）= 画面内「双击拖动」（按住左键拖动远程窗口）。
+> ✅ **Android v1.0.80 已发布**（2026-09-16 13:44）= 修复「切到其他应用就断线」（新增会话前台服务）。
 > 本次**只发 Android 一路**：PC / relay / pc-updater 均无改动，无需重编。
-> 同步项：APK + manifest.json + CHANGELOG.md + about v1.0.123（下载目标）；`assets/changelog.txt` 已随之。
-> 上一版：PC v1.1.67 / Android v1.0.78（意见反馈，2026-09-15 13:00）。
+> 同步项：APK + manifest.json + CHANGELOG.md + about v1.0.124（下载目标）；`assets/changelog.txt` 已随之。
+> ⚠️ 本轮 qdrl MCP **未注册**在 WorkBuddy 侧，全程走 `.workbuddy/tools/qd-mcp.py` 直连平台 MCP（见 §3）。
+> 上一版：Android v1.0.79（画面内双击拖动，2026-09-15 23:36）。
 
+- android-app **1.0.80**（versionCode 80）：`…/d/p/b6e62638-78bc-4c9d-86a4-63b061103000`（会话前台服务保活：切到其他应用/回桌面不断线；通知栏一条静默通知；覆盖 CONNECTING/CONNECTED/重连退避三态；PC 端零改动）
 - android-app **1.0.79**（versionCode 79）：`…/d/p/73432404-3a82-4d51-93b7-fb561a524b64`（画面内双击拖动 = 快速双击后第二下按住滑动即按住左键拖拽；复用 `touchpadDoubleTapDrag` 开关；PC 端零改动）
 - relay-server **1.0.8**：amd64 `…/d/p/cfc52a23-36b5-464a-a626-8021538a381b`，arm64 `…/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191`
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
