@@ -91,6 +91,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.quickremote.app.data.models.Device
 import com.quickremote.app.data.models.ImeToggle
 import com.quickremote.app.data.models.ModKeyState
@@ -206,6 +210,25 @@ fun RemoteSessionScreen(
     // 会话页沉浸模式：非全屏仅隐藏底部导航栏（保留顶部状态栏：时间/电量/网络可见），
     // 全屏完全沉浸（状态栏+导航栏都隐藏，滑动临时浮现）。退出页面时恢复。
     val activity = LocalContext.current.findActivity()
+
+    // Android 13+ 通知权限：会话保活用的前台服务需要通知才直观（未授权不影响保活本身，
+    // 只是用户在通知栏看不到"会话正在跑"）。在进入会话页这个时机申请最自然 ——
+    // 用户此刻正要开始远程控制，能理解"为什么常驻一条通知"。
+    // 系统对同一权限最多弹两次，之后自动静默返回拒绝，不会反复打扰。
+    LaunchedEffect(activity) {
+        val act = activity ?: return@LaunchedEffect
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@LaunchedEffect
+        val granted = ContextCompat.checkSelfPermission(
+            act, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            ActivityCompat.requestPermissions(
+                act,
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_PERMISSION_REQUEST
+            )
+        }
+    }
 
     // 当前屏幕方向（manifest 已配置 orientation 不重建 Activity，旋转时此值实时更新）
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
@@ -1601,6 +1624,9 @@ private fun sendKey(
         .array()
     viewModel.sendInput(RemoteFrameProtocol.TYPE_INPUT_KEY, data)
 }
+
+// Android 13+ 通知权限申请码（会话保活前台服务的通知需要）
+private const val NOTIFICATION_PERMISSION_REQUEST = 8801
 
 // Win11 触摸板手势 → Windows 组合键（VK 码）
 private const val VK_TAB = 0x09

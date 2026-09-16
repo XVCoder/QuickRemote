@@ -20,9 +20,15 @@
     <!-- 远程会话 -->
     <string name="remote_session_title">远程会话</string>
     <string name="disconnect">断开连接</string>
-    <string name="connecting_rdp">RDP 连接中…</string>
     <string name="keyboard_toggle">键盘</string>
     <string name="fullscreen_toggle">全屏</string>
+
+    <!-- 会话前台服务通知（切后台保活用，静默、无声音） -->
+    <string name="notify_channel_session_name">远程会话</string>
+    <string name="notify_channel_session_desc">远程会话进行中，保持连接不被系统中断</string>
+    <string name="notify_session_title">正在远程控制</string>
+    <string name="notify_session_title_unknown">远程会话进行中</string>
+    <string name="notify_session_text">切到其他应用不会断开</string>
 
     <!-- 设置 -->
     <string name="settings_server">服务器</string>

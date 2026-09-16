@@ -1,0 +1,24 @@
+<!--
+    会话前台服务的通知小图标。
+    通知小图标必须是「白色 + 透明」的单色图形（系统会自己着色），
+    所以这里不用启动图标，单独画一个显示器轮廓。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 显示器外框：evenOdd 挖空屏幕区域 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M3,4h18a1,1 0 0 1 1,1v10a1,1 0 0 1 -1,1H3a1,1 0 0 1 -1,-1V5a1,1 0 0 1 1,-1zM4,6v8h16V6H4z" />
+    <!-- 支颈 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11,16h2v2h-2z" />
+    <!-- 底座 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8,18h8v1.6H8z" />
+</vector>

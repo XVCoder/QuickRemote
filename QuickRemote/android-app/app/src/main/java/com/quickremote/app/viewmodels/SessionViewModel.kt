@@ -13,6 +13,7 @@ import com.quickremote.app.data.models.Device
 import com.quickremote.app.services.Logger
 import com.quickremote.app.services.ReconnectPolicy
 import com.quickremote.app.services.RemoteSessionManager
+import com.quickremote.app.services.RemoteSessionService
 import com.quickremote.app.services.SessionKeepAlive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,12 +38,23 @@ class SessionViewModel(
     private val sessionManager: RemoteSessionManager = RemoteSessionManager(logger = Logger())
 ) : AndroidViewModel(app) {
 
+    private val appContext = app.applicationContext
+
     /**
-     * 会话期间的 CPU 保活锁：仅在已连接时持有，断线/退出立即释放。
-     * 没有它时，App 切后台/锁屏会被系统冻结，隧道 socket 收不到心跳而被判超时 ——
-     * 即「一进后台就断线」。
+     * 会话保活资源之一：CPU 保活锁（屏幕熄灭后 CPU 不被挂起，隧道 socket 持续收发）。
+     *
+     * ⚠️ 它**不能**防止进程被系统冻结 —— Android 14 起 cached 应用 10 秒后即被冻结，
+     * 且系统会掐掉被冻结应用的全部 TCP socket，而 wakelock 不在冻结豁免清单内。
+     * 「切到其他应用不断开」靠的是 [RemoteSessionService] 前台服务（把进程 adj 提到 200），
+     * 两者一起构成会话期保活，由 [syncSessionHolders] 统一启停。
      */
     private val keepAlive = SessionKeepAlive(app)
+
+    /**
+     * 保活资源当前是否已启动。与 [isSessionActive] 的判据配合做幂等切换，
+     * 避免在状态高频变化时反复 acquire/release（手机端每次都是跨进程调用）。
+     */
+    private var holdersActive = false
 
     /** 用户主动断开过：回到前台时不应自动重连（尊重用户意图）。 */
     private var userDisconnected = false
@@ -138,9 +150,8 @@ class SessionViewModel(
                 _tunnel.value = sessionManager.tunnel
             }
 
-            // 保活锁只在会话建立后持有：连接中/失败/断开一律释放，避免无谓耗电
-            if (state == RemoteSessionManager.SessionState.CONNECTED) keepAlive.acquire()
-            else keepAlive.release()
+            // 保活资源随会话活跃状态启停（连接中就启动，避免握手期间被冻结；断开即释放）
+            syncSessionHolders()
 
             when (state) {
                 RemoteSessionManager.SessionState.FAILED -> onSessionFailed()
@@ -243,6 +254,9 @@ class SessionViewModel(
         _pcLocked.value = false
         _authRequired.value = false
         _authError.value = null
+        // 立刻启动保活：此刻还确定处于前台（用户就点在会话页上），
+        // 前台服务只能在应用可见时启动；等握手期间被切后台再启动就晚了
+        syncSessionHolders()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 val config = settingsStore.serverConfig.first()
@@ -291,6 +305,7 @@ class SessionViewModel(
         if (authPending || !ReconnectPolicy.shouldAutoReconnect(reason)) {
             _reconnecting.value = null
             reconnectAttempt = 0
+            syncSessionHolders()
             return
         }
 
@@ -300,12 +315,16 @@ class SessionViewModel(
             reconnectAttempt = 0
             _errorMessage.value =
                 "重连失败（已尝试 ${ReconnectPolicy.MAX_ATTEMPTS} 次），请手动重新连接"
+            syncSessionHolders()
             return
         }
 
         val attempt = reconnectAttempt
         reconnectAttempt = attempt + 1
         _reconnecting.value = ReconnectState(attempt, System.currentTimeMillis() + delayMs)
+        // 退避等待期间也算「活跃」：保活不能断，否则 App 切到后台时进程被冻结，
+        // 重连退避直接停摆（用户回来看到的仍是断开）
+        syncSessionHolders()
 
         reconnectJob?.cancel()
         reconnectJob = viewModelScope.launch {
@@ -342,6 +361,7 @@ class SessionViewModel(
         reconnectJob = null
         reconnectAttempt = 0
         _reconnecting.value = null
+        syncSessionHolders()
     }
 
     /** 断开当前会话。 */
@@ -417,9 +437,49 @@ class SessionViewModel(
         _isKeyboardVisible.value = visible
     }
 
+    /**
+     * 会话是否处于「活跃」阶段：连接中 / 已连接 / 断线后自动重连退避中。
+     *
+     * 三者都需要保活：
+     * - 连接中：relay 隧道建立 + 访问验证码等待可能要数秒，此时被冻结会白跑一轮；
+     * - 已连接：维持 socket 与心跳，这是「切到其他应用不断开」的主场景；
+     * - 重连退避中：退避最长 15 秒一轮、合计 75 秒，冻结会让重连停摆。
+     *
+     * 反例（不保活）：IDLE / DISCONNECTED / FAILED 且无重连计划 —— 会话已结束，保活纯耗电。
+     */
+    private fun isSessionActive(): Boolean {
+        val s = _state.value
+        return s == RemoteSessionManager.SessionState.CONNECTING ||
+            s == RemoteSessionManager.SessionState.CONNECTED ||
+            _reconnecting.value != null
+    }
+
+    /**
+     * 按活跃状态幂等启停保活资源（CPU 保活锁 + 会话前台服务）。
+     *
+     * 前台服务是「切到其他应用不断开」的关键：Android 14 起 cached 应用 10 秒后即被冻结，
+     * 且系统会终止被冻结应用的全部 TCP socket（详见 [RemoteSessionService] 顶部注释）。
+     */
+    @Synchronized
+    private fun syncSessionHolders() {
+        val active = isSessionActive()
+        if (active == holdersActive) return
+        holdersActive = active
+        if (active) {
+            keepAlive.acquire()
+            RemoteSessionService.start(appContext, _device.value?.displayTitle.orEmpty())
+        } else {
+            keepAlive.release()
+            RemoteSessionService.stop(appContext)
+        }
+    }
+
     override fun onCleared() {
-        // 保活锁必须显式释放：ViewModel 销毁后没人再持有引用，漏放会一直耗电
+        // 保活必须显式释放：ViewModel 销毁后没人再持有引用，
+        // 漏放 wakelock / 漏停前台服务会一直耗电，并在通知栏留一条僵尸通知
+        holdersActive = false
         keepAlive.release()
+        RemoteSessionService.stop(appContext)
         sessionManager.reset()
         super.onCleared()
     }

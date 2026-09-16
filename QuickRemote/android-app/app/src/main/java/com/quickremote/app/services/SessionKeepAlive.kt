@@ -6,16 +6,25 @@ import android.os.PowerManager
 /**
  * 远程会话期间的 CPU 保活锁（PARTIAL_WAKE_LOCK）。
  *
- * 为什么需要：远程会话是一个长连接的纯后台 I/O 场景，但 App 里**没有**前台服务 ——
- * 一旦用户切到后台或锁屏，进程很快进入 cached 状态被冻结（Android 12+ 直接冻结进程，
- * 更早版本进 Doze）。此时：
- * - 接收线程停摆 → 隧道 socket 不再读到 PC 每 5 秒一次的心跳 → 看门狗判定"无数据"断开；
- * - Wi-Fi 进入省电态，回前台后 socket 可能已成半开连接（对端已走，本端 read 永远阻塞）。
- * 用户感知就是「一进后台就断线，锁屏后经常连不回来」。
+ * ## 为什么需要
  *
- * 持有 PARTIAL_WAKE_LOCK 会让本进程脱离 cached 判定，从而不被冻结、Doze 也不限制其网络，
- * 同时 CPU 保持可运行。**只在 CONNECTED 期间持有**，断线/会话结束/ViewModel 销毁立即释放 ——
- * 常驻持有会明显耗电，绝不可取。
+ * 远程会话是一个长连接的纯后台 I/O 场景。屏幕熄灭后 CPU 会进入省电状态，
+ * socket 收发被显著延迟，容易连续漏掉 PC 每 5 秒一次的心跳而被判超时。
+ * 持有 PARTIAL_WAKE_LOCK 让 CPU 在屏幕熄灭时仍可运行，链路吞吐与心跳判定保持稳定。
+ *
+ * ## ⚠️ 澄清一个曾经的错误结论（2026-09-16 查证修正）
+ *
+ * 本类早期注释写着「持有 PARTIAL_WAKE_LOCK 会让进程脱离 cached 判定，从而不被冻结」——
+ * **这是错的**。Android 11 起系统有「缓存应用冻结器」：应用进入 cached 状态即被迁入
+ * 冻结 cgroup、所有线程挂起；Android 14 起进入 cached **10 秒后**就冻结，且
+ * **系统会终止被冻结应用的全部 TCP socket**。官方给出的冻结豁免只有「阻塞他人的文件锁」
+ * 与 `BIND_WAIVE_PRIORITY` 绑定两种，**wakelock 不在其中**。
+ *
+ * 因此：防冻结、防 socket 被掐断靠的是 [RemoteSessionService] 前台服务
+ * （把进程 adj 提到 PERCEPTIBLE_APP_ADJ 200，根本进不了 cached 状态）；
+ * 本类只负责「屏幕熄灭后 CPU 不被挂起」这一件事。两者互补，缺一不可。
+ *
+ * 仍然**只在会话活跃期间持有**，会话结束/ViewModel 销毁立即释放 —— 常驻持有会明显耗电。
  */
 class SessionKeepAlive(context: Context, private val logger: Logger = Logger()) {
 

@@ -5,11 +5,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!--
-        远程会话期间的 CPU 保活锁：App 切到后台或锁屏后，系统会冻结进程 / 进入 Doze，
-        导致隧道 socket 收不到数据而被判超时断开。持有 PARTIAL_WAKE_LOCK 可让本进程
-        脱离 cached 状态、维持网络收发，会话结束立即释放（不会常驻耗电）。
+        远程会话期间的 CPU 保活锁：屏幕熄灭后 CPU 不被挂起，隧道 socket 才能持续收发。
+        ⚠️ 它**不能**防止进程被系统冻结 —— 防冻结靠下面的前台服务（见 RemoteSessionService 注释）。
     -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!--
+        会话前台服务：「切到其他应用不断开」的唯一可靠手段。
+        Android 14 起，cached 应用 10 秒后即被冻结，且系统会掐掉被冻结应用的全部 TCP socket；
+        wakelock 不在冻结豁免清单内。前台服务把进程 adj 提到 200（可感知），根本进不了 cached。
+        connectedDevice 类型对应「与外部设备的网络长连接」语义。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Android 13+ 前台服务的通知需用户授权才可见（未授权不影响保活，但用户看不到会话在跑） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- App 内下载更新包并唤起系统安装器（Android 8+ 需声明才能触发"允许安装未知应用"引导） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -48,6 +57,17 @@
                 <data android:scheme="quickremote" android:host="pair" />
             </intent-filter>
         </activity>
+
+        <!--
+            会话前台服务：会话活跃期间常驻，把进程 adj 提到可感知级别（200），
+            使 App 切到其他应用后不被冻结、TCP socket 不被系统掐断。
+            stopWithTask=true：用户从最近任务划掉 App 视为明确关闭，会话随之结束。
+        -->
+        <service
+            android:name=".services.RemoteSessionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="true" />
 
         <!-- App 内更新：把下载到私有目录的 APK 经 content:// 授权给系统安装器 -->
         <provider
