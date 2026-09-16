@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QuickRemote — 安卓远程控制 Windows 桌面的自建中转工具</title>
-<meta name="description" content="QuickRemote 把 Windows 桌面实时推到安卓手机上：同网段局域网直连、跨网络走自建中转，屏幕画面由 H.264 硬件编解码承载，触摸与键盘操作实时回传。">
+<title>QuickRemote — 开源的安卓远程控制 Windows 桌面工具</title>
+<meta name="description" content="QuickRemote 已开源（AGPL-3.0）：把 Windows 桌面实时推到安卓手机上，同网段局域网直连、跨网络走自建中转，屏幕画面由 H.264 硬件编解码承载，触摸与键盘操作实时回传。源码见 GitHub。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a0a0a'/%3E%3Cpath d='M8 12h16v8H8z' fill='none' stroke='%236799fe' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M13 16l14-4 2 8-14 4z' fill='%236799fe'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,22 +22,25 @@
     </div>
     <div class="nav-links">
       <a class="nav-item" href="#intro">介绍</a>
+      <a class="nav-item" href="#opensource">开源</a>
       <a class="nav-item" href="#download">下载</a>
       <a class="nav-item" href="#stats">统计</a>
       <a class="nav-item" href="#deploy">部署</a>
       <a class="nav-item" href="#usage">使用</a>
       <a class="nav-item" href="#security">安全</a>
     </div>
+    <a class="nav-gh" href="https://github.com/XVCoder/QuickRemote" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub</a>
   </div>
 </nav>
 
 <main>
   <!-- Hero -->
   <div class="hero">
-    <div class="badge"><span class="dot"></span> 局域网直连 · 自建中转</div>
+    <div class="badge"><span class="dot"></span> 已开源 · 局域网直连 · 自建中转</div>
     <h1>QuickRemote</h1>
-    <p class="sub">把 Windows 桌面实时推到手机上的远程控制工具：同网段自动直连、跨网络走自建中转，画面经 H.264 硬件编解码，触摸与键盘实时回传。</p>
+    <p class="sub">把 Windows 桌面实时推到手机上的远程控制工具：同网段自动直连、跨网络走自建中转，画面经 H.264 硬件编解码，触摸与键盘实时回传。<b>全部源码已在 GitHub 开源。</b></p>
     <div class="tags">
+      <span class="tag">开源 · AGPL-3.0</span>
       <span class="tag">Android</span>
       <span class="tag">Windows</span>
       <span class="tag">局域网直连</span>
@@ -47,6 +50,7 @@
     </div>
     <div class="cta">
       <a class="btn btn-primary" href="#download"><i class="fa-solid fa-download"></i> 下载客户端</a>
+      <a class="btn btn-ghost" href="https://github.com/XVCoder/QuickRemote" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> 查看源码</a>
       <a class="btn btn-ghost" href="#deploy"><i class="fa-solid fa-rocket"></i> 一键部署</a>
       <a class="btn btn-ghost" href="#usage"><i class="fa-solid fa-book"></i> 使用说明</a>
     </div>
@@ -88,6 +92,27 @@
         <h3>版本更新</h3>
         <p>manifest.json 统一版本清单，客户端与中继安装脚本自动感知最新版本并升级。</p>
       </div>
+    </div>
+  </section>
+
+  <!-- 开源 -->
+  <section id="opensource" class="reveal">
+    <h2 class="section-title"><span class="bar"></span>开源</h2>
+    <div class="card oss">
+      <div class="oss-head">
+        <div class="oss-icon"><i class="fa-brands fa-github"></i></div>
+        <div class="oss-text">
+          <h3>QuickRemote 已完全开源</h3>
+          <p>PC 客户端（C# / .NET 8 WPF）、Android App（Kotlin + Jetpack Compose）、Go 中继服务器与本站关于页的全部源码都放在 GitHub 上，仓库地址见下。欢迎提 Issue 反馈问题、提 Pull Request 一起改进。</p>
+        </div>
+        <a class="btn btn-primary oss-btn" href="https://github.com/XVCoder/QuickRemote" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> 前往 GitHub</a>
+      </div>
+      <div class="oss-meta">
+        <div class="oss-item"><span class="oss-k">仓库地址</span><a href="https://github.com/XVCoder/QuickRemote" target="_blank" rel="noopener">github.com/XVCoder/QuickRemote</a></div>
+        <div class="oss-item"><span class="oss-k">许可协议</span><span>AGPL-3.0（GNU Affero General Public License v3）</span></div>
+        <div class="oss-item"><span class="oss-k">反馈渠道</span><span>GitHub Issues，或使用客户端内置的日志上传</span></div>
+      </div>
+      <div class="note" style="margin-top:16px;"><i class="fa-solid fa-circle-info"></i><div>AGPL-3.0 要点：可自由使用、修改与再分发；若把修改后的版本作为网络服务提供给他人使用，需要一并公开你修改后的源码。个人或团队自建自用（不对外提供服务）不受影响。</div></div>
     </div>
   </section>
 
@@ -319,12 +344,14 @@
 </main>
 
 <footer>
-  <div>QuickRemote · 自建远程控制 · 局域网直连 / 公网中继</div>
+  <div>QuickRemote · 开源自建远程控制 · 局域网直连 / 公网中继 · AGPL-3.0</div>
   <div class="links">
     <a href="#intro">项目介绍</a>
+    <a href="#opensource">开源</a>
     <a href="#download">下载客户端</a>
     <a href="#deploy">部署方法</a>
     <a href="#usage">使用说明</a>
+    <a href="https://github.com/XVCoder/QuickRemote" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub</a>
   </div>
 </footer>
 

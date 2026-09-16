@@ -338,6 +338,35 @@
   footer .links { margin-top: 10px; display: flex; gap: 18px; justify-content: center; }
   footer .links a { color: var(--text-2); }
 
+  /* 导航上的 GitHub 按钮：移动端 .nav-links 会隐藏，它需要常显 */
+  .nav-gh {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 13px; font-weight: 500; white-space: nowrap;
+    color: var(--text); background: var(--card); border: 1px solid var(--border);
+    border-radius: 100px; padding: 6px 14px;
+  }
+  .nav-gh:hover { background: var(--card-hover); border-color: var(--border-strong); opacity: 1; }
+  .nav-gh i { font-size: 14px; }
+
+  /* 开源区块 */
+  .oss-head { display: flex; align-items: flex-start; gap: 16px; }
+  .oss-icon {
+    flex: 0 0 44px; width: 44px; height: 44px; border-radius: 12px;
+    background: var(--primary-soft); border: 1px solid var(--border);
+    display: grid; place-items: center; font-size: 20px; color: var(--primary);
+  }
+  .oss-text { flex: 1 1 auto; min-width: 0; }
+  .oss-text h3 { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+  .oss-text p { font-size: 14px; color: var(--text-2); }
+  .oss-btn { flex: 0 0 auto; }
+  .oss-meta {
+    margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .oss-item { display: flex; gap: 12px; font-size: 14px; flex-wrap: wrap; }
+  .oss-k { flex: 0 0 76px; font-size: 13px; color: var(--text-3); }
+  .oss-item > a, .oss-item > span:last-child { color: var(--text-2); word-break: break-all; }
+
   /* 入场动画 */
   .reveal { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
   .reveal.in { opacity: 1; transform: none; }
@@ -354,4 +383,7 @@
     .arch { flex-direction: column; gap: 8px; }
     .arch-link { transform: rotate(90deg); padding: 6px 0; }
     .nav-links { display: none; }
+    .oss-head { flex-direction: column; gap: 12px; }
+    .oss-btn { width: 100%; justify-content: center; }
+    .oss-k { flex: 0 0 100%; }
   }
