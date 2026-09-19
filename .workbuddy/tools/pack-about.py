@@ -34,6 +34,15 @@ FILES = [
     ("seed.json", "seed.json"),
 ]
 
+# v1.0.126 起页面带截图：二进制文件按原样打包，严禁做 CRLF->LF 归一（会损坏 JPEG）
+# pc-1/pc-2 = tmp-settingshot 离屏渲染的真实 WPF 界面；android-1/2 = 真机运行截图
+BINARY_FILES = [
+    ("public/img/pc-1.jpg", "public/img/pc-1.jpg"),
+    ("public/img/pc-2.jpg", "public/img/pc-2.jpg"),
+    ("public/img/android-1.jpg", "public/img/android-1.jpg"),
+    ("public/img/android-2.jpg", "public/img/android-2.jpg"),
+]
+
 
 def main():
     if len(sys.argv) < 2:
@@ -51,6 +60,12 @@ def main():
         data = data.replace(b"\r\n", b"\n")
         staged[arc] = data
         print("%-22s 磁盘 %6dB (CRLF %3d) -> 包内 %6dB" % (rel, os.path.getsize(p), crlf, len(data)))
+
+    for rel, arc in BINARY_FILES:
+        p = os.path.join(SRC, rel)
+        with open(p, "rb") as f:
+            staged[arc] = f.read()
+        print("%-22s 磁盘 %6dB (binary, 原样)  -> 包内 %6dB" % (rel, os.path.getsize(p), len(staged[arc])))
 
     with tarfile.open(out, "w:gz") as tar:
         for arc, data in staged.items():

@@ -144,6 +144,26 @@
   .arch-link { display: flex; align-items: center; color: var(--text-3); font-size: 13px; padding: 0 10px; }
   .arch-link i { font-size: 15px; }
 
+  /* 产品预览 */
+  .shot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .shots-phone { display: flex; justify-content: center; gap: 22px; margin-top: 14px; flex-wrap: wrap; }
+  .shot {
+    margin: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .shot:hover { transform: translateY(-3px); border-color: var(--border-strong); box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shot figcaption {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 12px; font-size: 12.5px; color: var(--text-2); border-top: 1px solid var(--border);
+  }
+  .shot figcaption i { color: var(--primary); font-size: 12px; }
+  /* 手机竖图（20:9 真机截图）：居中成对 + 内衬留白模拟机身 */
+  .shot.phone { width: min(300px, 46%); border-radius: 20px; padding: 7px 7px 0; }
+  .shot.phone img { border-radius: 14px 14px 0 0; }
+  .shot.phone figcaption { border-top: none; padding-bottom: 11px; }
+  .shot-note { margin-top: 12px; font-size: 12.5px; color: var(--text-3); text-align: center; }
+
   /* 代码块 */
   .code-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--bg-2); border: 1px solid var(--border); border-bottom: none; border-radius: 10px 10px 0 0; }
   .code-head .lang { font-size: 12px; color: var(--text-3); font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; }
@@ -309,11 +329,15 @@
     .chart .col:nth-last-child(-n+2)::after { left: auto; right: 0; transform: translateY(4px); }
     .chart .col:nth-last-child(-n+2):hover::after { transform: translateY(0); }
   }
-  .chart-axis { display: flex; gap: 5px; margin-top: 9px; }
+  /* 横轴：标签按列中心绝对定位（JS 计算），不裁切；l/r 为首末端钳位 */
+  .chart-axis { position: relative; height: 14px; margin-top: 9px; }
   .chart-axis span {
-    flex: 1 1 0; min-width: 0; text-align: center; font-size: 10.5px; color: var(--text-3);
-    white-space: nowrap; overflow: hidden;
+    position: absolute; top: 0; transform: translateX(-50%);
+    font-size: 10.5px; line-height: 14px; color: var(--text-3);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
   }
+  .chart-axis span.l { transform: none; }
+  .chart-axis span.r { left: auto !important; transform: none; }
   /* 选中日读数：把「那一天的具体数量」固定在图表下方，移动端无 hover 也能看 */
   .trend-readout {
     margin-top: 14px; padding: 9px 14px; min-height: 38px;
@@ -381,7 +405,12 @@
     .stat-value { font-size: 22px; }
     .trend-legend { margin-left: 0; width: 100%; }
     .arch { flex-direction: column; gap: 8px; }
-    .arch-link { transform: rotate(90deg); padding: 6px 0; }
+    /* 连接箭头：容器居中（勿整体旋转——容器被拉伸为全宽矮条，旋转后图标会偏离中线），只转图标 */
+    .arch-link { justify-content: center; padding: 4px 0; }
+    .arch-link i { transform: rotate(90deg); }
+    .shot-grid { grid-template-columns: 1fr; }
+    .shots-phone { gap: 14px; }
+    .shot.phone { width: min(300px, 88%); }
     .nav-links { display: none; }
     .oss-head { flex-direction: column; gap: 12px; }
     .oss-btn { width: 100%; justify-content: center; }

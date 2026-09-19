@@ -62,7 +62,6 @@
     // 柱高自底部向上生长（旧版把柱子画在顶部，等于倒挂），柱顶标合计值
     function renderChart() {
       const last = trend.length - 1;
-      const step = trend.length <= 7 ? 1 : trend.length <= 14 ? 2 : 5;
       const ticks = ticksOf(top);
       const pctOf = v => `${((1 - v / top) * 100).toFixed(2)}%`;
 
@@ -83,10 +82,26 @@
       }).join('');
 
       const grid = `<div class="chart-grid">${ticks.map(v => `<i style="top:${pctOf(v)}"></i>`).join('')}</div>`;
-      const axis = trend.map((t, i) =>
-        `<span>${(last - i) % step === 0 ? shortDate(t.date) : ''}</span>`).join('');
 
-      host.innerHTML = `<div class="chart${trend.length > 14 ? ' dense' : ''}">${grid}${cols}</div>`
+      // 横轴：标签按列中心绝对定位（不再等分裁切），窄屏下日期放不下时自动加大步长
+      const n = trend.length;
+      const w = host.clientWidth || 0;
+      const g = 5; // 与 .chart 的列间距一致
+      const colW = w > 0 ? (w - (n - 1) * g) / n : 0;
+      const byLen = n <= 7 ? 1 : n <= 14 ? 2 : 5;
+      const byWidth = colW > 0 ? Math.ceil(n * 30 / Math.max(w, 1)) : byLen; // 每个标签约占 30px
+      const step = Math.max(byLen, byWidth, 1);
+
+      const axis = trend.map((t, i) => {
+        if ((last - i) % step !== 0) return '';
+        const cx = i * (colW + g) + colW / 2;
+        let pos = `left:${cx.toFixed(1)}px`, cls = '';
+        if (cx - 15 < 0) { pos = 'left:0'; cls = ' l'; }              // 首端钳位
+        else if (cx + 15 > w) { pos = 'right:0'; cls = ' r'; }        // 末端钳位
+        return `<span class="${cls.trim()}" style="${pos}">${shortDate(t.date)}</span>`;
+      }).join('');
+
+      host.innerHTML = `<div class="chart${n > 14 ? ' dense' : ''}">${grid}${cols}</div>`
         + `<div class="chart-axis">${axis}</div>`;
     }
 
@@ -144,6 +159,13 @@
       sel = i;
       renderChart();
       renderReadout();
+    });
+
+    // 宽度变化（旋转手机、缩放窗口）时按新宽度重排横轴
+    let rT;
+    window.addEventListener('resize', () => {
+      clearTimeout(rT);
+      rT = setTimeout(() => { if (trend.length) renderChart(); }, 150);
     });
 
     async function load() {

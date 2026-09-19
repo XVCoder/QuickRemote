@@ -251,6 +251,19 @@ cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe --test-upload
 3. **客观数据比肉眼更靠谱**：同时打印 `ContentScroll.ViewportHeight/ScrollableHeight`（0=无溢出）
    与阅读区内部 `PART_ContentHost` 的 `ScrollableHeight`（>0=能内部滚动），比只看图更能判定"撑破/裁切"。
 
+**渲染 MainWindow 的四条（2026-09-17 `--main` 模式踩过）：**
+
+1. **未 `Show()` 的窗口 RTB 出空白图**（只有几 KB）→ 必须 `Show()` 离屏（Left/Top=-4000 +
+   ShowActivated=false）。但 Show 会触发 `OnContentRendered` → `InitTray`+`Initialize()`——
+   工作台 config 是仓库默认假值（relay.example.com）所以连接必失败、无真实副作用。
+2. **Show 之后严禁 `Dispatcher.Invoke(…, ContextIdle/Loaded)` 泵队列**：`MainViewModel` 构造函数
+   启动了 1s `DispatcherTimer`，队列永不空闲 → 永久卡死（坑 1 的变体）。直接 `Show()` +
+   `UpdateLayout()` + 注入桩数据 + `UpdateLayout()` + Export 即可（ContentRendered 无泵不执行，正合适）。
+3. **未 Show/未完成布局的窗口 `ActualWidth/Height` 为 0** → `RenderTargetBitmap` 构造直接抛
+   ArgumentOutOfRange。Export 里回退显式 `win.Width/Height`。
+4. **MainWindow OnClosing 是「隐藏到托盘」**→ 工作台收尾用 `Environment.Exit(0)`，别指望 Close 退进程。
+   桩数据（会话/设备/状态）经反射写 VM 私有属性 + `Raise(nameof(HasSessions))`；敏感值一律用虚构演示值。
+
 ---
 
 ## 3. 上传（qdrl MCP）
