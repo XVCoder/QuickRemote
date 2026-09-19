@@ -94,6 +94,16 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    // 内置扫码器：系统相机/第三方扫码器不认 quickremote:// 自定义 scheme，扫了不会拉起本 App，
+    // 所以扫 PC 端配对二维码必须自己实现。CameraX 负责取景与逐帧回调。
+    val cameraX = "1.3.4"
+    implementation("androidx.camera:camera-core:$cameraX")
+    implementation("androidx.camera:camera-camera2:$cameraX")
+    implementation("androidx.camera:camera-lifecycle:$cameraX")
+    implementation("androidx.camera:camera-view:$cameraX")
+    // QR 解码：ZXing core 纯 Java、不依赖 Google Play 服务（国产 ROM 普遍无 GMS，ML Kit 会直接失效）
+    implementation("com.google.zxing:core:3.5.3")
+
     // OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 

@@ -8,8 +8,10 @@ namespace QuickRemote.PCClient.Views;
 /// <summary>
 /// 手机配对弹窗：展示配对二维码与明文配置串。
 ///
-/// 二维码内容就是明文配置串本身（quickremote://pair?d=...），
-/// 手机用系统相机扫即可通过深链拉起 App 并写入配置，无需 App 内置扫码器。
+/// 二维码内容就是明文配置串本身（quickremote://pair?d=...）。
+/// ⚠️ 必须用 QuickRemote 安卓端 App 内的「扫码导入」扫描：系统相机与第三方扫码器
+/// 都不处理自定义 scheme，扫了不会有任何反应。App 内置扫码器解出文本后，
+/// 交给与「粘贴配置导入」完全相同的解析路径写入配置。
 /// </summary>
 public partial class PairingWindow : Window
 {

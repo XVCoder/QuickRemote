@@ -92,6 +92,9 @@ import java.net.URL
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
+    scannedPairText: String?,
+    onScannedConsumed: () -> Unit,
+    onScanClick: () -> Unit,
     onBack: () -> Unit
 ) {
     val appSettings by viewModel.appSettings.collectAsState()
@@ -121,6 +124,49 @@ fun SettingsScreen(
     // 本地保存最近一次操作结果消息（独立于 toast 的即时消费）
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
+    // 配对导入结果：就近显示在服务器卡片的导入按钮下方。
+    // 不走 statusMessage —— 那块渲染在「版本更新」卡片里，导入反馈出现在那里会让人找不到。
+    var importNotice by remember { mutableStateOf<String?>(null) }
+    var importFailed by remember { mutableStateOf(false) }
+
+    // 导入提示 4 秒后自动消失
+    LaunchedEffect(importNotice) {
+        if (importNotice != null) {
+            kotlinx.coroutines.delay(4000)
+            importNotice = null
+        }
+    }
+
+    /**
+     * 解析配对文本（二维码内容 / 剪贴板配置串）→ 写入服务器地址与密钥。
+     * 扫码与粘贴共用这一条路径，避免两条入口的行为逐渐漂移。
+     */
+    fun importPairingText(text: String) {
+        PairingPayload.parse(text)
+            .onSuccess { info ->
+                // 同步输入框显示（服务器地址/密钥已随导入变更）
+                serverAddress = info.addr
+                pskInput = info.psk
+                viewModel.importServerConfig(
+                    ServerConfig(address = info.addr, preSharedKey = info.psk)
+                )
+                importFailed = false
+                importNotice = if (info.name.isBlank()) "已导入配置" else "已导入配置：${info.name}"
+            }
+            .onFailure {
+                importFailed = true
+                importNotice = "导入失败：${it.message ?: "内容无效"}"
+            }
+    }
+
+    // 扫码页回传的载荷：消费掉再应用，避免返回本页重建时重复导入
+    LaunchedEffect(scannedPairText) {
+        val text = scannedPairText
+        if (text != null) {
+            onScannedConsumed()
+            importPairingText(text)
+        }
+    }
 
     // toast 变化时：保存消息到本地状态、重置 loading、延迟清除消息
     LaunchedEffect(toast) {
@@ -196,40 +242,44 @@ fun SettingsScreen(
                     placeholder = { Text("未设置，请输入", style = MaterialTheme.typography.bodyMedium, color = TextMuted) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = {
-                        val clip = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                            as android.content.ClipboardManager
-                        val text = clip.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
-                        if (text.isNullOrBlank()) {
-                            isError = true
-                            statusMessage = "剪贴板为空"
-                        } else {
-                            PairingPayload.parse(text)
-                                .onSuccess { info ->
-                                    // 同步输入框显示（服务器地址/密钥已随导入变更）
-                                    serverAddress = info.addr
-                                    pskInput = info.psk
-                                    viewModel.importServerConfig(
-                                        ServerConfig(address = info.addr, preSharedKey = info.psk)
-                                    )
-                                    isError = false
-                                    statusMessage = if (info.name.isBlank()) {
-                                        "已导入配置"
-                                    } else {
-                                        "已导入配置：${info.name}"
-                                    }
-                                }
-                                .onFailure {
-                                    isError = true
-                                    statusMessage = "导入失败：${it.message ?: "内容无效"}"
-                                }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(40.dp),
-                    shape = RoundedCornerShape(4.dp)
+                // 扫码 / 粘贴导入：两条入口共用 importPairingText
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("粘贴配置导入", style = MaterialTheme.typography.labelMedium)
+                    OutlinedButton(
+                        onClick = onScanClick,
+                        modifier = Modifier.weight(1f).height(40.dp),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text("扫码导入", style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val clip = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                as android.content.ClipboardManager
+                            val text = clip.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                            if (text.isNullOrBlank()) {
+                                importFailed = true
+                                importNotice = "剪贴板为空"
+                            } else {
+                                importPairingText(text)
+                            }
+                        },
+                        modifier = Modifier.weight(1f).height(40.dp),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text("粘贴配置导入", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                val notice = importNotice
+                if (notice != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        notice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (importFailed) Danger else Success
+                    )
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(

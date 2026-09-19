@@ -56,7 +56,7 @@
                            RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                 </Border>
 
-                <TextBlock Text="用手机相机扫描二维码，或复制配置串后在 App 设置页「粘贴配置导入」"
+                <TextBlock Text="用 QuickRemote 安卓端 App 的「扫码导入」扫描此二维码；也可复制配置串后在 App 内「粘贴配置导入」"
                            FontSize="11.5" TextWrapping="Wrap" Margin="0,12,0,8"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
 

@@ -69,6 +69,9 @@ import com.quickremote.app.viewmodels.MainViewModel
 @Composable
 fun ServerConfigScreen(
     viewModel: MainViewModel,
+    scannedPairText: String?,
+    onScannedConsumed: () -> Unit,
+    onScanClick: () -> Unit,
     onContinue: () -> Unit
 ) {
     val savedConfig by viewModel.serverConfig.collectAsState()
@@ -94,6 +97,43 @@ fun ServerConfigScreen(
     val isTesting = connectionState == ConnectionState.CONNECTING
     val config = ServerConfig(address = address.trim(), preSharedKey = preSharedKey)
     val canSubmit = config.address.isNotBlank() && config.preSharedKey.isNotBlank() && !isTesting
+
+    /**
+     * 解析配对文本（二维码内容 / 剪贴板配置串）→ 写入配置 → 进入设备列表。
+     * 扫码与粘贴共用这一条路径，避免两条入口的行为逐渐漂移。
+     */
+    fun applyPairingText(text: String) {
+        PairingPayload.parse(text)
+            .onSuccess { info ->
+                // 同步输入框显示（服务器地址/密钥已随导入变更）
+                address = info.addr
+                preSharedKey = info.psk
+                importFailed = false
+                // 与扫码深链一致：导入即完成配置，直接进入设备列表
+                viewModel.importServerConfig(
+                    ServerConfig(address = info.addr, preSharedKey = info.psk)
+                )
+                Toast.makeText(
+                    context,
+                    if (info.name.isBlank()) "已导入配置" else "已导入配置：${info.name}",
+                    Toast.LENGTH_SHORT
+                ).show()
+                onContinue()
+            }
+            .onFailure {
+                importFailed = true
+                importNotice = "导入失败：${it.message ?: "内容无效"}"
+            }
+    }
+
+    // 扫码页回传的载荷：消费掉再应用，避免返回本页重建时重复导入
+    LaunchedEffect(scannedPairText) {
+        val text = scannedPairText
+        if (text != null) {
+            onScannedConsumed()
+            applyPairingText(text)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -177,49 +217,47 @@ fun ServerConfigScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 粘贴配置导入：剪贴板里的 quickremote://pair 配置串一步写入地址与密钥。
-        // 首次启动没有设置页入口，这里必须能直接导入，否则只能手抄地址与密钥。
-        OutlinedButton(
-            onClick = {
-                val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val text = clip.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
-                if (text.isNullOrBlank()) {
-                    importFailed = true
-                    importNotice = "剪贴板为空"
-                } else {
-                    PairingPayload.parse(text)
-                        .onSuccess { info ->
-                            // 同步输入框显示（服务器地址/密钥已随导入变更）
-                            address = info.addr
-                            preSharedKey = info.psk
-                            importFailed = false
-                            // 与扫码深链一致：导入即完成配置，直接进入设备列表
-                            viewModel.importServerConfig(
-                                ServerConfig(address = info.addr, preSharedKey = info.psk)
-                            )
-                            Toast.makeText(
-                                context,
-                                if (info.name.isBlank()) "已导入配置" else "已导入配置：${info.name}",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            onContinue()
-                        }
-                        .onFailure {
-                            importFailed = true
-                            importNotice = "导入失败：${it.message ?: "内容无效"}"
-                        }
-                }
-            },
-            enabled = !isTesting,
-            modifier = Modifier.fillMaxWidth().height(46.dp),
-            shape = RoundedCornerShape(4.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = TextPrimary,
-                containerColor = BgCard
-            )
+        // 扫码 / 粘贴导入：首次启动没有设置页入口，这里必须能导入，否则只能手抄地址与密钥。
+        // 两条入口最终都走 applyPairingText，行为完全一致。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("粘贴配置导入", fontWeight = FontWeight.Medium)
+            OutlinedButton(
+                onClick = onScanClick,
+                enabled = !isTesting,
+                modifier = Modifier.weight(1f).height(46.dp),
+                shape = RoundedCornerShape(4.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = TextPrimary,
+                    containerColor = BgCard
+                )
+            ) {
+                Text("扫码导入", fontWeight = FontWeight.Medium)
+            }
+            OutlinedButton(
+                onClick = {
+                    val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val text = clip.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                    if (text.isNullOrBlank()) {
+                        importFailed = true
+                        importNotice = "剪贴板为空"
+                    } else {
+                        applyPairingText(text)
+                    }
+                },
+                enabled = !isTesting,
+                modifier = Modifier.weight(1f).height(46.dp),
+                shape = RoundedCornerShape(4.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = TextPrimary,
+                    containerColor = BgCard
+                )
+            ) {
+                Text("粘贴配置导入", fontWeight = FontWeight.Medium)
+            }
         }
 
         val notice = importNotice

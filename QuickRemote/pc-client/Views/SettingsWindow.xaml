@@ -272,7 +272,7 @@
                                            Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Content="生成二维码" MinWidth="100"
                                         Click="BtnPairing_Click"
-                                        ToolTip="生成配对二维码，手机扫码即可自动填入服务器地址与密钥"
+                                        ToolTip="生成配对二维码，用 QuickRemote 安卓端 App 扫码即可自动填入服务器地址与密钥"
                                         Style="{StaticResource ActionButton}"/>
                             </Grid>
                         </StackPanel>

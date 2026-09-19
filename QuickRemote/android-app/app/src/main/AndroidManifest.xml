@@ -19,6 +19,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- Android 13+ 前台服务的通知需用户授权才可见（未授权不影响保活，但用户看不到会话在跑） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        App 内的「扫码导入」需要相机。仅在扫码页使用，不申请麦克风等无关权限。
+        required=false：没有摄像头的设备（极少数）仍可安装，用「粘贴配置导入」完成配置。
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <!-- App 内下载更新包并唤起系统安装器（Android 8+ 需声明才能触发"允许安装未知应用"引导） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -46,9 +53,10 @@
             </intent-filter>
 
             <!--
-                手机配对深链：PC 端生成二维码（内容 quickremote://pair?d=...），
-                手机用系统相机扫即可拉起本 App 并自动写入服务器地址与密钥，
-                无需引入相机/扫码库，也无需相机权限。
+                手机配对深链：PC 端生成二维码（内容 quickremote://pair?d=...）。
+                ⚠️ 系统相机与第三方扫码器不处理自定义 scheme，扫了不会拉起本 App，
+                所以扫二维码的主路径是 App 内置的「扫码导入」页（CameraX + ZXing）。
+                这个 intent-filter 只作为补充：浏览器等能打开 quickremote:// 的 App 仍可唤起。
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
