@@ -168,6 +168,13 @@ cd QuickRemote/android-app && ./gradlew :app:assembleRelease --console=plain
 
 产物 `app/build/outputs/apk/release/app-release.apk`（已签名，复用 `~/.android/debug.keystore`）。
 
+> 📦 **v1.0.81 起新增依赖**：CameraX 1.3.4（camera-core/camera2/lifecycle/view）+ `com.google.zxing:core:3.5.3`
+> （App 内置扫码导入）。google maven 与 maven central 本机可直连（`curl.exe` 实测 200，走代理或 `--noproxy` 均通），
+> 但**新增依赖后的首次构建需要联网**，构建时间会明显变长；此后走本地缓存。
+> 预期 release APK 增大 ~2MB 量级（CameraX ~1.5MB + ZXing ~0.5MB），发布时顺手记一下实际体积。
+> 另：`AndroidManifest` 已新增 `CAMERA` 权限 + `camera.any`（required=false），
+> 应用市场/权限说明若需填写，类别为「相机（仅扫码时使用，不申请麦克风）」。
+
 **常见故障与处置：**
 
 - `AccessDeniedException` on `app/build/intermediates/project_dex_archive/.../*.dex`

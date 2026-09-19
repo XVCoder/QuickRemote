@@ -24,7 +24,13 @@
         required=false：没有摄像头的设备（极少数）仍可安装，用「粘贴配置导入」完成配置。
     -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!--
+        ⚠️ 这两条 feature 显式声明 required=false 不能省：只要申请了 CAMERA 权限，
+        aapt 会**隐式**补一条 `android.hardware.camera`(required=true)，导致无摄像头设备
+        在应用商店/Play 被过滤掉。显式声明（含 camera.any）才会覆盖为「非必需」。
+    -->
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- App 内下载更新包并唤起系统安装器（Android 8+ 需声明才能触发"允许安装未知应用"引导） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

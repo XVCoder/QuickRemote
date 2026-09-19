@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.67",
-    "changelog": "设置中心新增「意见反馈」页：填写反馈内容后一键提交，可选附带最近 1000 行运行日志；反馈不依赖中继是否在线，直传 QuickDeploy 的 feedback 目录，文件名 设备id_反馈时间.log，文件头自动带版本/设备/系统信息",
+    "latest_version": "1.1.68",
+    "changelog": "「手机配对」弹窗及其提示文案改为：用 QuickRemote 安卓端 App 内置的「扫码导入」扫描二维码（二维码内容是 quickremote:// 自定义协议，系统相机与第三方扫码器都不会拉起 App）；「生成二维码」按钮的悬浮提示同步更新。协议与载荷格式未变，旧版 App 仍可用配置串导入",
     "versions": {
+      "1.1.68": {
+        "zip": "https://qd.solutionx.top/d/p/1409df2b-879e-4432-bb30-0ddae247b3fe"
+      },
       "1.1.67": {
         "zip": "https://qd.solutionx.top/d/p/60139f9c-66ea-4974-8b3e-bf45b6983a77"
       },
       "1.1.66": {
         "zip": "https://qd.solutionx.top/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6"
-      },
-      "1.1.65": {
-        "zip": "https://qd.solutionx.top/d/p/dd0c4345-2cc6-4c9f-b56b-09fb6e21fc8a"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.80",
-    "changelog": "修复「切到其他应用就断线」：Android 14 起缓存应用 10 秒后会被系统冻结并终止其全部 TCP 连接，原 WakeLock 保活挡不住；新增会话前台服务（连接中/已连接/断线重连期间均生效），切到其他应用、回到桌面都不会断线；通知栏一条静默通知「正在远程控制 <设备名>」，无声音无振动、锁屏不显示；无需 PC 端升级",
+    "latest_version": "1.0.81",
+    "changelog": "扫描配对二维码改为 App 内置：新增全屏扫码页，用相机直接扫 PC 端「手机配对」的二维码，识别后自动填入服务器地址与预共享密钥并进入设备列表（此前依赖系统相机，而二维码是 quickremote:// 自定义协议，系统相机与第三方扫码器都不会拉起本 App）；首次启动页新增「扫码导入」「粘贴配置导入」，新装用户不必再手抄地址与密钥；首次扫码会请求相机权限，拒绝也可改用粘贴导入。需 PC 端 v1.1.68+ 才有新提示文案",
     "versions": {
+      "1.0.81": {
+        "apk": "https://qd.solutionx.top/d/p/a3f1e3ac-8481-427a-89fd-598ba5383289"
+      },
       "1.0.80": {
         "apk": "https://qd.solutionx.top/d/p/b6e62638-78bc-4c9d-86a4-63b061103000"
       },
       "1.0.79": {
         "apk": "https://qd.solutionx.top/d/p/73432404-3a82-4d51-93b7-fb561a524b64"
-      },
-      "1.0.78": {
-        "apk": "https://qd.solutionx.top/d/p/4bef3948-2708-4fcc-bff5-e309bf7a388f"
       }
     }
   }
