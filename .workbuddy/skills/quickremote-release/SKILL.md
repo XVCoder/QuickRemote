@@ -423,6 +423,20 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
    `auto_start=true`、**`volumes=["data"]`**）
    > ⚠️ **`volumes=["data"]` 必须带**：下载统计存在 `data/stats.json`，只有声明为持久化卷才能跨升级保留。
 8. `mcp__qdrl__get_app_status` 确认 running
+9. **入库（易漏，2026-09-17 踩过）**：about 只有「打包→上传→upgrade_app」三步也能上线成功，
+   **完全不碰 git** —— v1.0.126 就是这么上线后，工作区 8 改 + 4 新图一直裸着躺到两天后才被发现。
+   所以本节的收尾必须显式做：
+
+   ```bash
+   git add QuickRemote-about/public/ .workbuddy/ tmp-settingshot/    # 图像目录也要加（未被 gitignore）
+   git commit -F <工作区内的消息文件>   # 多行信息写文件再 -F；/tmp/... 原生 git 读不到（MSYS 路径不通）
+   git push origin main
+   git status --short          # 必须为空；非空说明还有残留没入库
+   ```
+
+   > 提交信息建议前缀 `release: about vX.Y.Z — <要点>`（与历史一致）。
+   > **判据：`git status --short` 干净 + `git rev-list --left-right --count origin/main...HEAD` = `0 0`**。
+   > 发布流程结束时这两条必须成立，否则等同"上线了但源码没跟上"。
 
 线上地址：`https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`
 （`landing_path=/about`；该 URL 也硬编码在 Android 设置页「关于」的兜底 Intent 里）
