@@ -1,5 +1,8 @@
 package com.quickremote.app.ui.screens
 
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,11 +41,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.quickremote.app.data.PairingPayload
 import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.ui.components.LogViewerDialog
 import com.quickremote.app.ui.theme.Accent
@@ -73,6 +78,18 @@ fun ServerConfigScreen(
     var address by remember(savedConfig.address) { mutableStateOf(savedConfig.address) }
     var preSharedKey by remember(savedConfig.preSharedKey) { mutableStateOf(savedConfig.preSharedKey) }
     var keyVisible by remember { mutableStateOf(false) }
+    // 粘贴导入结果提示：成功即跳转设备列表，故这里主要承载失败 / 剪贴板为空
+    var importNotice by remember { mutableStateOf<String?>(null) }
+    var importFailed by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    // 提示 4 秒后自动消失
+    LaunchedEffect(importNotice) {
+        if (importNotice != null) {
+            kotlinx.coroutines.delay(4000)
+            importNotice = null
+        }
+    }
 
     val isTesting = connectionState == ConnectionState.CONNECTING
     val config = ServerConfig(address = address.trim(), preSharedKey = preSharedKey)
@@ -155,6 +172,63 @@ fun ServerConfigScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(4.dp),
                 colors = textFieldColors()
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 粘贴配置导入：剪贴板里的 quickremote://pair 配置串一步写入地址与密钥。
+        // 首次启动没有设置页入口，这里必须能直接导入，否则只能手抄地址与密钥。
+        OutlinedButton(
+            onClick = {
+                val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val text = clip.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                if (text.isNullOrBlank()) {
+                    importFailed = true
+                    importNotice = "剪贴板为空"
+                } else {
+                    PairingPayload.parse(text)
+                        .onSuccess { info ->
+                            // 同步输入框显示（服务器地址/密钥已随导入变更）
+                            address = info.addr
+                            preSharedKey = info.psk
+                            importFailed = false
+                            // 与扫码深链一致：导入即完成配置，直接进入设备列表
+                            viewModel.importServerConfig(
+                                ServerConfig(address = info.addr, preSharedKey = info.psk)
+                            )
+                            Toast.makeText(
+                                context,
+                                if (info.name.isBlank()) "已导入配置" else "已导入配置：${info.name}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            onContinue()
+                        }
+                        .onFailure {
+                            importFailed = true
+                            importNotice = "导入失败：${it.message ?: "内容无效"}"
+                        }
+                }
+            },
+            enabled = !isTesting,
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            shape = RoundedCornerShape(4.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = TextPrimary,
+                containerColor = BgCard
+            )
+        ) {
+            Text("粘贴配置导入", fontWeight = FontWeight.Medium)
+        }
+
+        val notice = importNotice
+        if (notice != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                notice,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (importFailed) Danger else Success
             )
         }
 
