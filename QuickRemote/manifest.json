@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.68",
-    "changelog": "「手机配对」弹窗及其提示文案改为：用 QuickRemote 安卓端 App 内置的「扫码导入」扫描二维码（二维码内容是 quickremote:// 自定义协议，系统相机与第三方扫码器都不会拉起 App）；「生成二维码」按钮的悬浮提示同步更新。协议与载荷格式未变，旧版 App 仍可用配置串导入",
+    "latest_version": "1.1.69",
+    "changelog": "「手机配对」生成的二维码地址改为固定携带 PC 的控制连接端口（如 relay.example.com:8444）：修掉「PC 只填主机名 → 二维码里没有端口 → 安卓端判定『服务器地址无效』」这条路径；显式写了 https:// 则保留前缀。地址解析统一收敛到 Interop/RelayAddress，附单元测试",
     "versions": {
+      "1.1.69": {
+        "zip": "https://qd.solutionx.top/d/p/5c879f6b-76d8-4819-9e32-2f8b351d0e3d"
+      },
       "1.1.68": {
         "zip": "https://qd.solutionx.top/d/p/1409df2b-879e-4432-bb30-0ddae247b3fe"
       },
       "1.1.67": {
         "zip": "https://qd.solutionx.top/d/p/60139f9c-66ea-4974-8b3e-bf45b6983a77"
-      },
-      "1.1.66": {
-        "zip": "https://qd.solutionx.top/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.81",
-    "changelog": "扫描配对二维码改为 App 内置：新增全屏扫码页，用相机直接扫 PC 端「手机配对」的二维码，识别后自动填入服务器地址与预共享密钥并进入设备列表（此前依赖系统相机，而二维码是 quickremote:// 自定义协议，系统相机与第三方扫码器都不会拉起本 App）；首次启动页新增「扫码导入」「粘贴配置导入」，新装用户不必再手抄地址与密钥；首次扫码会请求相机权限，拒绝也可改用粘贴导入。需 PC 端 v1.1.68+ 才有新提示文案",
+    "latest_version": "1.0.82",
+    "changelog": "修复扫码 / 粘贴导入配置后连不上：配对二维码里的地址是 PC 的控制连接端口（默认 8444），而 App 走 HTTP/API 端口（默认 8443），导入时现按服务端契约「控制端口 = HTTP 端口 + 1」自动换算，PC 端旧版本生成的二维码同样换算正确；服务器地址不再强制写 http:// 前缀（无前缀一律按明文 HTTP 处理，只填 host:port 甚至只填 host 都能连接），地址解析统一收敛到 RelayAddress",
     "versions": {
+      "1.0.82": {
+        "apk": "https://qd.solutionx.top/d/p/8436d1fa-d00b-4279-bc2b-a03aa2518cf2"
+      },
       "1.0.81": {
         "apk": "https://qd.solutionx.top/d/p/a3f1e3ac-8481-427a-89fd-598ba5383289"
       },
       "1.0.80": {
         "apk": "https://qd.solutionx.top/d/p/b6e62638-78bc-4c9d-86a4-63b061103000"
-      },
-      "1.0.79": {
-        "apk": "https://qd.solutionx.top/d/p/73432404-3a82-4d51-93b7-fb561a524b64"
       }
     }
   }
