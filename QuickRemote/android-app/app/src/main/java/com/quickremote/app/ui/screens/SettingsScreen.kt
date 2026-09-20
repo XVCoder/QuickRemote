@@ -62,6 +62,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.content.FileProvider
 import com.quickremote.app.BuildConfig
 import com.quickremote.app.data.PairingPayload
+import com.quickremote.app.data.RelayAddress
 import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.QUALITY_PRESETS
 import com.quickremote.app.data.models.ServerConfig
@@ -140,15 +141,19 @@ fun SettingsScreen(
     /**
      * 解析配对文本（二维码内容 / 剪贴板配置串）→ 写入服务器地址与密钥。
      * 扫码与粘贴共用这一条路径，避免两条入口的行为逐渐漂移。
+     *
+     * 载荷里的地址是 **PC 端的控制连接端口**（如 `host:8444`），Android 走的是 HTTP/API
+     * 端口（8443），必须换算后再落库，否则扫码导入后必然连不上。
      */
     fun importPairingText(text: String) {
         PairingPayload.parse(text)
             .onSuccess { info ->
+                val androidAddr = RelayAddress.forAndroid(info.addr)
                 // 同步输入框显示（服务器地址/密钥已随导入变更）
-                serverAddress = info.addr
+                serverAddress = androidAddr
                 pskInput = info.psk
                 viewModel.importServerConfig(
-                    ServerConfig(address = info.addr, preSharedKey = info.psk)
+                    ServerConfig(address = androidAddr, preSharedKey = info.psk)
                 )
                 importFailed = false
                 importNotice = if (info.name.isBlank()) "已导入配置" else "已导入配置：${info.name}"

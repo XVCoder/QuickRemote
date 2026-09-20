@@ -493,32 +493,12 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     /// https://  → TLS，默认 8444
     /// http://   → 明文，默认 8444
     /// 无 scheme → 明文，默认 8444
+    ///
+    /// 实现已迁到 <see cref="Interop.RelayAddress.ParseAddress"/>（纯逻辑、可单测），
+    /// 这里仅保留旧签名转发，避免调用点被迫改名。
     /// </summary>
     public static (string host, int port, bool useTls) ParseAddress(string address)
-    {
-        var addr = address.Trim();
-        var useTls = false;
-
-        if (addr.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            useTls = true;
-            addr = addr[8..];
-        }
-        else if (addr.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-        {
-            addr = addr[7..];
-        }
-        addr = addr.TrimEnd('/');
-
-        var idx = addr.LastIndexOf(':');
-        if (idx > 0 && int.TryParse(addr[(idx + 1)..], out var port))
-        {
-            return (addr[..idx], port, useTls);
-        }
-
-        // PC 客户端连接控制连接端口（8444），不是 HTTP API 端口（8443）
-        return (addr, 8444, useTls);
-    }
+        => Interop.RelayAddress.ParseAddress(address);
 
     /// <summary>指数退避等待。</summary>
     private static async Task DelayBackoff(CancellationToken ct, int backoffIndex)

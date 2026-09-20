@@ -1,5 +1,6 @@
 package com.quickremote.app.data.api
 
+import com.quickremote.app.data.RelayAddress
 import com.quickremote.app.data.models.AuthRequest
 import com.quickremote.app.data.models.AuthResponse
 import com.quickremote.app.data.models.DeviceListResponse
@@ -48,15 +49,13 @@ class RelayApi {
         return digest.joinToString("") { "%02x".format(it) }
     }
 
-    /** 规范化服务器地址，返回带 scheme 的 base URL。 */
-    private fun baseUrl(address: String): String {
-        var addr = address.trim().trimEnd('/')
-        if (addr.isEmpty()) return ""
-        if (!addr.startsWith("http://") && !addr.startsWith("https://")) {
-            addr = "https://$addr"
-        }
-        return addr
-    }
+    /**
+     * 规范化服务器地址，返回带 scheme 的 base URL。
+     *
+     * 规则集中在 [RelayAddress.baseUrl]：无 scheme → `http://`（中继 API 是明文 HTTP，
+     * 不再要求用户手写前缀，也不会被错误地补成 `https://`）；无端口 → 8443。
+     */
+    private fun baseUrl(address: String): String = RelayAddress.baseUrl(address)
 
     /** 认证获取 JWT token。 */
     fun authenticate(serverAddress: String, preSharedKey: String): AuthResponse {

@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
 import com.quickremote.app.data.PairingPayload
+import com.quickremote.app.data.RelayAddress
 import com.quickremote.app.data.local.SettingsStore
 import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.ui.navigation.NavGraph
@@ -59,6 +60,9 @@ class MainActivity : ComponentActivity() {
     /**
      * 处理 quickremote://pair 深链：解析载荷 → 写入服务器地址与密钥 → 重建界面。
      * 解析失败同样给出明确提示，不静默失败。
+     *
+     * 载荷里的地址是 PC 端的控制连接端口，需换算成 Android 的 HTTP/API 端口
+     * （见 [RelayAddress.forAndroid]），与扫码/粘贴导入保持同一套换算规则。
      */
     private fun handlePairIntent(intent: Intent?) {
         val data = intent?.data?.toString() ?: return
@@ -68,8 +72,9 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             PairingPayload.parse(data)
                 .onSuccess { info ->
+                    val androidAddr = RelayAddress.forAndroid(info.addr)
                     store.saveServerConfig(
-                        ServerConfig(address = info.addr, preSharedKey = info.psk)
+                        ServerConfig(address = androidAddr, preSharedKey = info.psk)
                     )
                     // 地址/密钥变了，旧认证令牌作废
                     store.clearToken()

@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Include="../pc-client/Interop/PairingPayload.cs" Link="Interop/PairingPayload.cs" />
     <Compile Include="../pc-client/Interop/ClipboardChunker.cs" Link="Interop/ClipboardChunker.cs" />
+    <Compile Include="../pc-client/Interop/RelayAddress.cs" Link="Interop/RelayAddress.cs" />
   </ItemGroup>
 
 </Project>

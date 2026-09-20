@@ -146,7 +146,9 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var addr = vm.ServerAddressInput?.Trim() ?? string.Empty;
+        // 规范化成 `host:8444` 再编码：载荷固定携带 PC 的控制连接端口，
+        // 由 Android 端导入时换算成它自己的 HTTP/API 端口。
+        var addr = Interop.RelayAddress.NormalizeForPairing(vm.ServerAddressInput ?? string.Empty);
         var psk = vm.PreSharedKeyInput?.Trim() ?? string.Empty;
 
         if (addr.Length == 0 || psk.Length == 0)

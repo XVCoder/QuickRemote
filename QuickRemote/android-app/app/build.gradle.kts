@@ -12,8 +12,8 @@ android {
         applicationId = "com.quickremote.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 81
-        versionName = "1.0.81"
+        versionCode = 82
+        versionName = "1.0.82"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

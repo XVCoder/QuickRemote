@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.quickremote.app.data.PairingPayload
+import com.quickremote.app.data.RelayAddress
 import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.ui.components.LogViewerDialog
 import com.quickremote.app.ui.theme.Accent
@@ -101,17 +102,21 @@ fun ServerConfigScreen(
     /**
      * 解析配对文本（二维码内容 / 剪贴板配置串）→ 写入配置 → 进入设备列表。
      * 扫码与粘贴共用这一条路径，避免两条入口的行为逐渐漂移。
+     *
+     * 载荷里的地址是 **PC 端的控制连接端口**（如 `host:8444`），Android 走的是 HTTP/API
+     * 端口（8443），必须换算后再落库，否则扫码导入后必然连不上。
      */
     fun applyPairingText(text: String) {
         PairingPayload.parse(text)
             .onSuccess { info ->
+                val androidAddr = RelayAddress.forAndroid(info.addr)
                 // 同步输入框显示（服务器地址/密钥已随导入变更）
-                address = info.addr
+                address = androidAddr
                 preSharedKey = info.psk
                 importFailed = false
                 // 与扫码深链一致：导入即完成配置，直接进入设备列表
                 viewModel.importServerConfig(
-                    ServerConfig(address = info.addr, preSharedKey = info.psk)
+                    ServerConfig(address = androidAddr, preSharedKey = info.psk)
                 )
                 Toast.makeText(
                     context,
