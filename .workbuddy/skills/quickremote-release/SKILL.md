@@ -149,6 +149,12 @@ bash ../.workbuddy/tools/dotnet-with-win-env.sh publish pc-client/QuickRemote.PC
 >
 > 注意 `export 'ProgramFiles(x86)=…'` 在 bash 里是**非法赋值**（`not a valid identifier`）——
 > 该变量必须省略，缺它不影响 restore/build。
+>
+> ⏱️ **本沙箱里 `dotnet publish -r win-x64` 极慢（2026-09-23 实测 15 分 33 秒）**，
+> 且输出要等进程结束才吐（管道 `| tail` 会全程无输出）—— **看起来完全像卡死，但它在正常推进**。
+> 判据不要看 stdout，改看中间产物：`bin/Release/net8.0-windows/win-x64/QuickRemote.PCClient.exe`
+> 是否出现/更新。**确认前千万不要 kill**（本次误杀重来，白等 40 分钟）。
+> 想边跑边看就 `| tee <工作区外日志>`，别用 `| tail`。
 
 ### 2.2 PC 打包（ZIP，扁平结构）
 
@@ -188,6 +194,13 @@ cd QuickRemote/android-app && ./gradlew :app:assembleRelease --console=plain
 > 预期 release APK 增大 ~2MB 量级（CameraX ~1.5MB + ZXing ~0.5MB），发布时顺手记一下实际体积。
 > 另：`AndroidManifest` 已新增 `CAMERA` 权限 + `camera.any`（required=false），
 > 应用市场/权限说明若需填写，类别为「相机（仅扫码时使用，不申请麦克风）」。
+
+> ⏱️ **本沙箱里 `:app:mergeReleaseResources` 单步就要十几分钟（2026-09-23 实测）**：
+> 换了 `mipmap-*/ic_launcher*.png` 等资源后该任务是全量合并，沙箱 IO 慢（Defender 逐文件扫描）。
+> 日志停在 `> Task :app:mergeReleaseResources` 且长时间不动 **属于正常**，
+> 判据看 `app/build` 下文件是否在变 + `app/build/outputs/apk/release/` 是否出现 APK；
+> **别因为"十分钟没输出"就 kill**（本次误杀一次，白等 40 分钟）。
+> 想观察进度务必 `| tee <日志>` 而不是 `| tail`（tail 会缓冲到进程结束才吐）。
 
 **常见故障与处置：**
 
@@ -651,7 +664,21 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-20）
+## 当前线上版本（2026-09-23）
+
+> ✅ **PC v1.1.70 + Android v1.0.83 + about v1.0.129 已发布**（2026-09-23 23:26）= 全端应用图标统一：
+> 以安卓自适应矢量为唯一真源（蓝 `#3B82F6` + 绿 `#10B981` + 底 `#0F1117`，即三端主题令牌）导出四端图标，
+> 剔除早期那套带「AI生成」水印的青绿「显示器 + WiFi」位图；PC `app.ico` 由单一 256 补成 7 档尺寸、
+> `app.png` 803KB→8KB 并修掉四角不透明的白角；about 页换成 `favicon.ico` + `icon.png` + `apple-touch-icon.png`。
+> - PC ZIP `955,139B`（14 条目，**比上版小 784KB** —— `app.png` 瘦身）→ `/d/p/33a258fb-7dd4-48dd-be19-a80e62bd9734`
+>   （embedded `1.1.70+0653816`）；新增 `.workbuddy/tools/pack-pc.py` 负责打扁平 ZIP
+> - Android APK `13,797,695B`（versionCode 83）→ `/d/p/5372c30b-6ae4-4185-bc9f-cb913cfce893`
+> - about 蓝绿端口 **20006**，持久化卷 `data`；HTML 27234（本地 27160 **+74**）/ CSS 21400 / JS 8286
+> - manifest 线上 `{relay 1.0.8, pc 1.1.70, android 1.0.83}`；清理 pc 1.1.67 / android 1.0.80 / about 1.0.126
+> - ⚠️ 本轮踩到一个新的耗时坑：**清掉 `android-app/.gradle` + `app/build` 后用 `--offline --no-build-cache`
+>   全量重建才通**（此前 `mergeReleaseResources` 会空转阻塞 20+ 分钟，守护进程 CPU 几乎为 0 就是被阻塞的特征，
+>   `wmic` 不可用，可用 `Get-Process java | Select CPU` 两次采样判断）。详见 §2.3。
+> 上一版：PC v1.1.69 / Android v1.0.82 / about v1.0.128（2026-09-20 09:16，配对导入按端换算端口）。
 
 > ✅ **PC v1.1.69 + Android v1.0.82 + about v1.0.128 已发布**（2026-09-20 09:16）= 配对导入按端换算端口 +
 > 服务器地址不再强制 `http://` 前缀（两端各自新增 `Interop/RelayAddress.cs` / `data/RelayAddress.kt`）。

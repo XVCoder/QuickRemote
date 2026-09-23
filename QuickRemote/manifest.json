@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.69",
-    "changelog": "「手机配对」生成的二维码地址改为固定携带 PC 的控制连接端口（如 relay.example.com:8444）：修掉「PC 只填主机名 → 二维码里没有端口 → 安卓端判定『服务器地址无效』」这条路径；显式写了 https:// 则保留前缀。地址解析统一收敛到 Interop/RelayAddress，附单元测试",
+    "latest_version": "1.1.70",
+    "changelog": "应用图标统一到安卓端：以安卓自适应矢量（蓝 #3B82F6 + 绿 #10B981 + 底 #0F1117，即三端主题令牌）为唯一真源重新导出 exe 图标，尺寸从单一 256 补齐到 16~256 共 7 档，标题栏/任务栏/资源管理器不再发虚；窗口与托盘图标从 803KB 精简到 8KB，并修掉旧图四角不透明导致窗口图标露白方块的问题",
     "versions": {
+      "1.1.70": {
+        "zip": "https://qd.solutionx.top/d/p/33a258fb-7dd4-48dd-be19-a80e62bd9734"
+      },
       "1.1.69": {
         "zip": "https://qd.solutionx.top/d/p/5c879f6b-76d8-4819-9e32-2f8b351d0e3d"
       },
       "1.1.68": {
         "zip": "https://qd.solutionx.top/d/p/1409df2b-879e-4432-bb30-0ddae247b3fe"
-      },
-      "1.1.67": {
-        "zip": "https://qd.solutionx.top/d/p/60139f9c-66ea-4974-8b3e-bf45b6983a77"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.82",
-    "changelog": "修复扫码 / 粘贴导入配置后连不上：配对二维码里的地址是 PC 的控制连接端口（默认 8444），而 App 走 HTTP/API 端口（默认 8443），导入时现按服务端契约「控制端口 = HTTP 端口 + 1」自动换算，PC 端旧版本生成的二维码同样换算正确；服务器地址不再强制写 http:// 前缀（无前缀一律按明文 HTTP 处理，只填 host:port 甚至只填 host 都能连接），地址解析统一收敛到 RelayAddress",
+    "latest_version": "1.0.83",
+    "changelog": "图标资源统一：把 APK 内残留的旧版「青绿显示器」图标（图源带 AI 生成水印）换成与启动器实际显示一致的同源图标，第三方启动器/文件管理器读取传统图标时不再出现两副面孔（Android 8+ 桌面外观不变，无功能改动）",
     "versions": {
+      "1.0.83": {
+        "apk": "https://qd.solutionx.top/d/p/5372c30b-6ae4-4185-bc9f-cb913cfce893"
+      },
       "1.0.82": {
         "apk": "https://qd.solutionx.top/d/p/8436d1fa-d00b-4279-bc2b-a03aa2518cf2"
       },
       "1.0.81": {
         "apk": "https://qd.solutionx.top/d/p/a3f1e3ac-8481-427a-89fd-598ba5383289"
-      },
-      "1.0.80": {
-        "apk": "https://qd.solutionx.top/d/p/b6e62638-78bc-4c9d-86a4-63b061103000"
       }
     }
   }

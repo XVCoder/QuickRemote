@@ -32,13 +32,13 @@ const TZ = 'Asia/Shanghai';
 const CLIENTS = {
   pc: {
     name: 'PC 客户端',
-    version: 'v1.1.69',
-    url: 'https://qd.solutionx.top/d/p/5c879f6b-76d8-4819-9e32-2f8b351d0e3d',
+    version: 'v1.1.70',
+    url: 'https://qd.solutionx.top/d/p/33a258fb-7dd4-48dd-be19-a80e62bd9734',
   },
   android: {
     name: 'Android App',
-    version: 'v1.0.82',
-    url: 'https://qd.solutionx.top/d/p/8436d1fa-d00b-4279-bc2b-a03aa2518cf2',
+    version: 'v1.0.83',
+    url: 'https://qd.solutionx.top/d/p/5372c30b-6ae4-4185-bc9f-cb913cfce893',
   },
 };
 const CLIENT_IDS = Object.keys(CLIENTS);
