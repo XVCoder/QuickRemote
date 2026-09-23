@@ -80,6 +80,19 @@ git status --porcelain
    git log --oneline -1 origin/main                       # 必须是本次新提交
    ```
 
+   > ⚠️ **本环境里 `origin/main` 引用存不住，上面两条会报
+   > `unknown revision or path not in the working tree`**（`git fetch` 明明回显
+   > `[new branch] main -> origin/main`，下一条命令就找不到，实测 2026-09-23）——
+   > 与 §0 坑 1「`.git/refs/heads/<a>/<b>` 子目录被环境清理」是同一个毛病，只是发生在
+   > `refs/remotes/origin/`。**改用不依赖本地引用的判据**（同样要提权）：
+   >
+   > ```bash
+   > git rev-parse HEAD                     # 本地 HEAD
+   > git ls-remote origin refs/heads/main   # 远端实际 SHA，两者必须完全相同
+   > ```
+   >
+   > `git push` 的回显（`dd59521..faeead3  main -> main`）只能当参考，不能当判据。
+
    > 该坑潜伏了两轮：`d9b27dd`（v1.0.81 发版）与 `cf63ff8` 都以为推上去了，实际远端一直停在
    > `1d00c0a`（v1.0.126），直到本次核对 `rev-list` 才暴露。**每次发布收尾都要核这两条。**
 
