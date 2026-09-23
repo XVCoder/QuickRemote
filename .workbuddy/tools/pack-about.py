@@ -34,13 +34,18 @@ FILES = [
     ("seed.json", "seed.json"),
 ]
 
-# v1.0.126 起页面带截图：二进制文件按原样打包，严禁做 CRLF->LF 归一（会损坏 JPEG）
+# v1.0.126 起页面带截图：二进制文件按原样打包，严禁做 CRLF->LF 归一（会损坏 JPEG/PNG/ICO）
 # pc-1/pc-2 = tmp-settingshot 离屏渲染的真实 WPF 界面；android-1/2 = 真机运行截图
+# icon/apple-touch-icon/favicon = 应用图标（v1.0.129 起与安卓端同源，由 .workbuddy/tools/gen-icons.py 导出）
+#   ⛔ 新增任何静态资源都必须加进这张表，否则线上 404（打包脚本是硬编码清单，不会自动扫描 public/）
 BINARY_FILES = [
     ("public/img/pc-1.jpg", "public/img/pc-1.jpg"),
     ("public/img/pc-2.jpg", "public/img/pc-2.jpg"),
     ("public/img/android-1.jpg", "public/img/android-1.jpg"),
     ("public/img/android-2.jpg", "public/img/android-2.jpg"),
+    ("public/icon.png", "public/icon.png"),
+    ("public/apple-touch-icon.png", "public/apple-touch-icon.png"),
+    ("public/favicon.ico", "public/favicon.ico"),
 ]
 
 

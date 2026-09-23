@@ -69,6 +69,20 @@ git status --porcelain
    exit 1，让后面的 `git push` 整段被跳过，容易误判成"提交失败"。
    → 提交与推送**分两条命令**执行，或消息写成单行；提交后用 `git log --oneline -1` 复核。
 
+5. ⚠️ **`git push` 在沙箱内会静默失败（2026-09-20 实测，最阴的一条）**：命令返回**完全空的输出**、
+   看不出 exit code，`git status --short` 也照旧干净，`git log` 本地能看到新提交
+   —— 一切迹象都像"推送成功"，实际远端纹丝未动。
+   → **push（以及 `git ls-remote`）一律提权 / 关闭沙箱执行**。
+   → **判据绝不能只看 push 的回显**，必须同时成立：
+
+   ```bash
+   git rev-list --left-right --count origin/main...HEAD   # 必须 0	0
+   git log --oneline -1 origin/main                       # 必须是本次新提交
+   ```
+
+   > 该坑潜伏了两轮：`d9b27dd`（v1.0.81 发版）与 `cf63ff8` 都以为推上去了，实际远端一直停在
+   > `1d00c0a`（v1.0.126），直到本次核对 `rev-list` 才暴露。**每次发布收尾都要核这两条。**
+
 ---
 
 ## 1. 版本号与文档
@@ -319,6 +333,20 @@ cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe --test-upload
 4. 文件传输仍走 `curl.exe -sS --noproxy '*' -X POST .../api/upload/<token> -F "file=@<win路径>"`，
    重试循环 + 判据 `响应含 file_id`。
 
+> ⚠️ **用 `qd-mcp.py` 时 token 必须用 python 解析 JSON 再取，别用 shell 正则（2026-09-20 踩过）**：
+> 脚本输出是 JSON，`result.content[0].text` 里的 `\n` 是**转义后的字面字符**而非换行，
+> `grep -o '令牌: \S+'` 会把紧随其后的中文一起吞进 token（得到 `…K2g\n上传`），
+> 上传直接返回 `{"error":"token invalid or expired"}`，**看着像令牌过期，实为解析错误**。
+>
+> ```bash
+> T=$(python .workbuddy/tools/qd-mcp.py call create_upload_token '<json>' \
+>   | python -c "import sys,json,re; d=json.load(sys.stdin); \
+>       print(re.search(r'令牌: ([A-Za-z0-9_\-]+)', d['result']['content'][0]['text']).group(1))")
+> ```
+>
+> 同理，凡是要从 `qd-mcp.py` 输出里取字段，**一律 `json.load` 后再取**（`list_files` 的返回是
+> `result.content[0].text` 里的纯文本列表，用 `print(...)` 直接打印即可）。
+
 > 上传后校验：`curl -sS -I -L "<share_url>"` 应返回 `HTTP 200` + 正确的 `Content-Length`
 > 与 `Content-Disposition: attachment; filename*=UTF-8''<文件名>`。
 > 大文件用 `curl` 直传（`upload_file` 的 base64 内联会爆）；沙箱内 curl 写文件偶报 exit 23，
@@ -422,6 +450,12 @@ python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print
    > 「本地字节数 == 线上字节数」的校验基线整体漂移、逐文件 diff 出现"假差异"。
    > `pack-about.py` 会强制归一为 LF 并打印每个文件归一的字节数，产出到
    > `E:/000_AI/QuickRemote/QuickRemote-about-v{ver}.tar.gz`。
+
+   > ⚠️ **`pack-about.py` 是硬编码文件清单，不会自动扫描 `public/`**：新增任何静态资源
+   > （图标、截图、字体…）必须同步加进它的 `BINARY_FILES`，否则线上 404。
+   > 应用图标（`favicon.ico` / `icon.png` / `apple-touch-icon.png`）由
+   > `.workbuddy/tools/gen-icons.py` 统一导出，改图标**只跑那个脚本**，别手改四端文件
+   > （真源是安卓自适应矢量；ICO 里 <256 必须用 DIB，PNG 帧只对 256 可靠）。
    > 打包后照坑 14 做「包内 vs 工作副本」比对（比对时对工作副本做 CRLF→LF 归一，否则必然假差异）。
 
    > ⚠️ **不要打 `data/`** —— 那是运行时计数目录，打进去会污染（且升级时卷优先，包内内容会被丢弃）。
@@ -617,7 +651,17 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-16 晚）
+## 当前线上版本（2026-09-20）
+
+> ✅ **PC v1.1.69 + Android v1.0.82 + about v1.0.128 已发布**（2026-09-20 09:16）= 配对导入按端换算端口 +
+> 服务器地址不再强制 `http://` 前缀（两端各自新增 `Interop/RelayAddress.cs` / `data/RelayAddress.kt`）。
+> - PC ZIP `1,739,570B`（14 条目）→ `/d/p/5c879f6b-76d8-4819-9e32-2f8b351d0e3d`（embedded `1.1.69+cf63ff8`）
+> - Android APK `13,883,231B`（versionCode 82）→ `/d/p/8436d1fa-d00b-4279-bc2b-a03aa2518cf2`
+> - about 蓝绿端口 **20007**，持久化卷 `data`；HTML 27333（本地 27259 **+74**）/ CSS 21495 / JS 8286
+> - manifest 线上 `{relay 1.0.8, pc 1.1.69, android 1.0.82}`；清理 pc 1.1.66 / android 1.0.79 / about 1.0.125
+> - ⚠️ 本轮 `git push` **两次静默失败**（见 §0 坑 5）：远端直到收尾核对 `rev-list` 才发现仍停在 `1d00c0a`，
+>   补提权推送后 `dd59521` 才真正上线；上一轮的 `d9b27dd` / `cf63ff8` 也一并补推。
+> 上一版：PC v1.1.68 / Android v1.0.81 / about v1.0.127（2026-09-19，内置扫码导入）。
 
 > ✅ **about v1.0.125 已发布**（2026-09-16 20:54，蓝绿端口 20010）= 开源版关于页：
 > 导航常驻 GitHub 按钮 + Hero「查看源码」+ 新增「开源」区块（仓库地址 / AGPL-3.0 / 反馈渠道）
@@ -632,14 +676,19 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 > ⚠️ 本轮 qdrl MCP **未注册**在 WorkBuddy 侧，全程走 `.workbuddy/tools/qd-mcp.py` 直连平台 MCP（见 §3）。
 > 上一版：Android v1.0.79（画面内双击拖动，2026-09-15 23:36）。
 
+- pc-client **1.1.69**：`…/d/p/5c879f6b-76d8-4819-9e32-2f8b351d0e3d`（配对二维码地址固定携带控制端口 8444，修「只填主机名 → 无端口 → App 判地址无效」）
+- android-app **1.0.82**（versionCode 82）：`…/d/p/8436d1fa-d00b-4279-bc2b-a03aa2518cf2`（导入时控制端口 −1 换算为 HTTP 端口；地址免 `http://` 前缀）
+- pc-client **1.1.68**：`…/d/p/1409df2b-879e-4432-bb30-0ddae247b3fe`（配对提示改为用 App 内置扫码）
+- android-app **1.0.81**（versionCode 81）：`…/d/p/a3f1e3ac-8481-427a-89fd-598ba5383289`（App 内置扫码导入 + 首启页粘贴导入）
 - android-app **1.0.80**（versionCode 80）：`…/d/p/b6e62638-78bc-4c9d-86a4-63b061103000`（会话前台服务保活：切到其他应用/回桌面不断线；通知栏一条静默通知；覆盖 CONNECTING/CONNECTED/重连退避三态；PC 端零改动）
 - android-app **1.0.79**（versionCode 79）：`…/d/p/73432404-3a82-4d51-93b7-fb561a524b64`（画面内双击拖动 = 快速双击后第二下按住滑动即按住左键拖拽；复用 `touchpadDoubleTapDrag` 开关；PC 端零改动）
 - relay-server **1.0.8**：amd64 `…/d/p/cfc52a23-36b5-464a-a626-8021538a381b`，arm64 `…/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191`
   （`GET /api/devices` 新增可选 `all=1` 返回全量含离线设备；不带参数时行为与 1.0.7 完全一致，旧客户端零影响）
 - pc-client **1.1.67**：`…/d/p/60139f9c-66ea-4974-8b3e-bf45b6983a77`（设置中心新增「意见反馈」页）
-- pc-client **1.1.66**：`…/d/p/4f1d707d-aaa6-4829-9712-4a8bad3719a6`（设置中心新增「版本更新」页，独立更新记录弹窗删除；commit `4b6cba8`）
-- android-app **1.0.78**（versionCode 78）：`…/d/p/4bef3948-2708-4fcc-bff5-e309bf7a388f`（设置页新增「意见反馈」，可选带 1000 行日志直传 qd）
-- android-app **1.0.77**（versionCode 77）：`…/d/p/861db269-1076-4ac4-aba4-233fdfcb7a36`（设备备注 / 离线设备展示 / 移除离线设备）
+  > 以下条目对应的包**已从文件区删除**（各目录只留最近 3 个），链接已失效，仅作历史留档：
+  > ~~pc-client 1.1.66~~（`4f1d707d`，设置中心「版本更新」页，commit `4b6cba8`）、
+  > ~~android-app 1.0.78~~（`4bef3948`，设置页「意见反馈」）、
+  > ~~android-app 1.0.77~~（`861db269`，设备备注 / 离线设备展示 / 移除离线设备）
 - about **v1.0.123**（2026-09-15 23:36 上线，下载目标更新至 Android v1.0.79；PC 仍 v1.1.67）—— 线上 URL `https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about`；别名域名 `https://quickremote.solutionx.top/about` 同样可达；升级后端口 20008（20000 段递增）。上线实测 HTML 23111（= 本地 23037 **+74**）、CSS 18112、JS 7280，三者与本地逐字节一致；`/dl/android` 302→73432404、`/dl/pc` 302→60139f9c；`/api/stats` 客户端版本 v1.1.67 / v1.0.79，统计未清零
   - **v1.0.123 仅改版本号与下载目标**（`public/index.html` 两处 + `server.js` 的 `CLIENTS.android`），页面结构/文案未动，字节数与 v1.0.122 完全一致（23,037 / 18,112 / 7,280）
   - **v1.0.122**（2026-09-15 13:00 上线，下载目标更新至 PC v1.1.67 / Android v1.0.78）
