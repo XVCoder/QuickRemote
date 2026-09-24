@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.70",
-    "changelog": "应用图标统一到安卓端：以安卓自适应矢量（蓝 #3B82F6 + 绿 #10B981 + 底 #0F1117，即三端主题令牌）为唯一真源重新导出 exe 图标，尺寸从单一 256 补齐到 16~256 共 7 档，标题栏/任务栏/资源管理器不再发虚；窗口与托盘图标从 803KB 精简到 8KB，并修掉旧图四角不透明导致窗口图标露白方块的问题",
+    "latest_version": "1.1.71",
+    "changelog": "修复设置页保存按钮误报「* 保存设置」：脏标记改为与上次保存的配置实时比对，刚打开设置中心不再显示「*」，改回原值或保存成功后立即复原",
     "versions": {
+      "1.1.71": {
+        "zip": "https://qd.solutionx.top/d/p/1b2e5664-fad3-42d7-8184-2176148ecd85"
+      },
       "1.1.70": {
         "zip": "https://qd.solutionx.top/d/p/33a258fb-7dd4-48dd-be19-a80e62bd9734"
       },
       "1.1.69": {
         "zip": "https://qd.solutionx.top/d/p/5c879f6b-76d8-4819-9e32-2f8b351d0e3d"
-      },
-      "1.1.68": {
-        "zip": "https://qd.solutionx.top/d/p/1409df2b-879e-4432-bb30-0ddae247b3fe"
       }
     }
   },
