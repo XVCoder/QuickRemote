@@ -677,7 +677,25 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-23）
+## 当前线上版本（2026-09-24）
+
+> ✅ **PC v1.1.71 + about v1.0.130 已发布**（2026-09-24 22:04）= 设置页保存按钮不再误报「* 保存设置」：
+> 脏判定由粘滞布尔改为「与上次保存的配置逐项比对」，刚打开设置中心显示「保存设置」，改回原值即复原。
+> **本次只发 PC 一路**：Android / relay 零改动（pc-updater 仍随 ZIP 重发，update.exe 已重编）。
+> - PC ZIP `956,972B`（14 条目）→ `/d/p/1b2e5664-fad3-42d7-8184-2176148ecd85`（embedded `1.1.71+0125f9f`）
+> - about 蓝绿端口 **20006**，持久化卷 `data`；HTML 27234（本地 27160 **+74**）/ CSS 21400 / JS 8286
+> - manifest 线上 `{relay 1.0.8, pc 1.1.71, android 1.0.83}`；清理 pc 1.1.68 / about 1.0.127
+> - 提交 `72a42c4`（远端 SHA 已用 `git ls-remote` 核对一致）
+> - ⚠️ **本轮踩到：改 manifest.json 时 Edit 的 old/new 边界没对齐结构，吞掉了一个版本条目。**
+>   首次 Edit 的 `old_string` 收尾在 `"1.1.69": {`，而 `new_string` 收尾在上一条的 `},`，
+>   结果 1.1.69 的键行被吃掉，版本列表静默变成 `1.1.71 / 1.1.70 / 1.1.68`（latest_version 仍然正确，**光看它发现不了**）。
+>   → **manifest 里相邻同构的版本条目必须整条 entry 一起替换**（`"X": { "zip": "…" },` 到闭合 `}` 全包），
+>   不要让边界落在 `"key": {` 这种中间位置；改完**必须复核每个组件的 versions 键列表**：
+>   ```bash
+>   python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));[print(k,list(d[k]['versions'].keys())) for k in d]"
+>   ```
+>   期望各组件都恰好 3 个键、且是本轮期望的三个版本号。
+> - 上一版：PC v1.1.70 / Android v1.0.83 / about v1.0.129（2026-09-23 23:26，全端应用图标统一）。
 
 > ✅ **PC v1.1.70 + Android v1.0.83 + about v1.0.129 已发布**（2026-09-23 23:26）= 全端应用图标统一：
 > 以安卓自适应矢量为唯一真源（蓝 `#3B82F6` + 绿 `#10B981` + 底 `#0F1117`，即三端主题令牌）导出四端图标，
