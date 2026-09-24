@@ -45,8 +45,25 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
     private bool _lockOnDisconnect = true;
     private bool _clipboardSyncEnabled = true;
 
-    // 配置有未保存的修改时为 true：保存设置按钮显示「* 保存设置」
-    private bool _isConfigDirty;
+    // 设置页「上次保存」快照：保存按钮「*」提示的比较基准（仅在保存成功/重新载入配置后刷新）
+    private ConfigSnapshot _savedConfigSnapshot;
+
+    /// <summary>设置页各输入项的快照。设备名按保存口径去首尾空白，其余与保存逻辑一致。</summary>
+    private readonly record struct ConfigSnapshot(
+        string ServerAddress,
+        string PreSharedKey,
+        string DeviceName,
+        bool AutoStart,
+        bool CheckUpdateOnStart,
+        bool AutoUploadLogs,
+        string AccessCode,
+        bool AccessCodeEnabled,
+        bool LockOnDisconnect,
+        bool ClipboardSyncEnabled,
+        int ViewerQualityPercent,
+        int ViewerFps,
+        int ViewerColorDepth,
+        bool ViewerPreferLan);
 
     // 更新
     private bool _isUpdateAvailable;
@@ -230,22 +247,38 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
 
     // ========== 设置属性 ==========
 
+    /// <summary>当前设置页各输入项的快照（与保存逻辑同口径：设备名去首尾空白）。</summary>
+    private ConfigSnapshot CaptureSnapshot() => new(
+        ServerAddressInput ?? string.Empty,
+        PreSharedKeyInput ?? string.Empty,
+        (DeviceNameInput ?? string.Empty).Trim(),
+        AutoStart,
+        CheckUpdateOnStart,
+        AutoUploadLogs,
+        AccessCodeInput ?? string.Empty,
+        AccessCodeEnabled,
+        LockOnDisconnect,
+        ClipboardSyncEnabled,
+        ViewerQualityPercent,
+        ViewerFps,
+        ViewerColorDepth,
+        ViewerPreferLan);
+
+    /// <summary>配置是否有未保存的修改：与「上次保存快照」逐项比对，改回原值即视为未修改。
+    /// 刚打开设置页（输入框由配置回填）与保存成功后均为 false。</summary>
+    public bool IsConfigDirty => CaptureSnapshot() != _savedConfigSnapshot;
+
     /// <summary>保存设置按钮文字：有未保存修改时显示「* 保存设置」，保存后恢复「保存设置」。</summary>
-    public string SaveSettingsText => _isConfigDirty ? "* 保存设置" : "保存设置";
+    public string SaveSettingsText => IsConfigDirty ? "* 保存设置" : "保存设置";
 
-    /// <summary>标记配置已被修改（未保存）：保存按钮加「*」前缀提示。</summary>
-    private void MarkDirty()
-    {
-        if (_isConfigDirty) return;
-        _isConfigDirty = true;
-        OnPropertyChanged(nameof(SaveSettingsText));
-    }
+    /// <summary>设置项变动后刷新保存按钮提示。脏判定是实时比对的，无粘滞状态，
+    /// 因此这里只需通知 UI 重新求值。</summary>
+    private void MarkDirty() => OnPropertyChanged(nameof(SaveSettingsText));
 
-    /// <summary>清除未保存标记（保存成功后调用）。</summary>
-    private void ClearDirty()
+    /// <summary>把当前设置项固化为新的比较基准（保存成功后、或从配置重新载入后调用）。</summary>
+    private void AcceptSnapshot()
     {
-        if (!_isConfigDirty) return;
-        _isConfigDirty = false;
+        _savedConfigSnapshot = CaptureSnapshot();
         OnPropertyChanged(nameof(SaveSettingsText));
     }
 
@@ -585,6 +618,8 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
         OnPropertyChanged(nameof(ViewerFps));
         OnPropertyChanged(nameof(ViewerColorDepth));
         OnPropertyChanged(nameof(ViewerPreferLan));
+        // 回填完成即以当前配置为基准：刚打开设置页时保存按钮不显示「*」提示
+        AcceptSnapshot();
     }
 
     private void StartConnection()
@@ -640,7 +675,7 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
 
         _configService.Save();
         _logger.Info("Settings saved");
-        ClearDirty();
+        AcceptSnapshot();
 
         // 重启连接以应用新地址
         StartConnection();
