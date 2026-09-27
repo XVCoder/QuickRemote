@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.71",
-    "changelog": "修复设置页保存按钮误报「* 保存设置」：脏标记改为与上次保存的配置实时比对，刚打开设置中心不再显示「*」，改回原值或保存成功后立即复原",
+    "latest_version": "1.1.72",
+    "changelog": "新增会话心跳回显：配合 Android v1.0.84 的实时延迟显示（PC 端收到客户端探测帧后原样回显，旧版 Android 客户端不受影响）",
     "versions": {
+      "1.1.72": {
+        "zip": "https://qd.solutionx.top/d/p/a87724d0-e54b-4b9a-94cf-ee9d966a4527"
+      },
       "1.1.71": {
         "zip": "https://qd.solutionx.top/d/p/1b2e5664-fad3-42d7-8184-2176148ecd85"
       },
       "1.1.70": {
         "zip": "https://qd.solutionx.top/d/p/33a258fb-7dd4-48dd-be19-a80e62bd9734"
-      },
-      "1.1.69": {
-        "zip": "https://qd.solutionx.top/d/p/5c879f6b-76d8-4819-9e32-2f8b351d0e3d"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.83",
-    "changelog": "图标资源统一：把 APK 内残留的旧版「青绿显示器」图标（图源带 AI 生成水印）换成与启动器实际显示一致的同源图标，第三方启动器/文件管理器读取传统图标时不再出现两副面孔（Android 8+ 桌面外观不变，无功能改动）",
+    "latest_version": "1.0.84",
+    "changelog": "远程连接页顶栏新增实时延迟显示：位于「公网中继/局域网直连」右侧，每 3 秒测一次往返延迟，低于 80ms 绿色、80-200ms 橙色、高于 200ms 红色；需 PC 端 v1.1.72+，旧版 PC 下自动隐藏",
     "versions": {
+      "1.0.84": {
+        "apk": "https://qd.solutionx.top/d/p/ed1c040f-5215-4eca-9280-36079fca11f1"
+      },
       "1.0.83": {
         "apk": "https://qd.solutionx.top/d/p/5372c30b-6ae4-4185-bc9f-cb913cfce893"
       },
       "1.0.82": {
         "apk": "https://qd.solutionx.top/d/p/8436d1fa-d00b-4279-bc2b-a03aa2518cf2"
-      },
-      "1.0.81": {
-        "apk": "https://qd.solutionx.top/d/p/a3f1e3ac-8481-427a-89fd-598ba5383289"
       }
     }
   }

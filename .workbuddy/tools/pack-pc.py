@@ -23,7 +23,8 @@ import re
 import sys
 import zipfile
 
-ROOT = r"E:\000_AI\QuickRemote"
+# 仓库根：默认旧主工作区；worktree 场景用环境变量 QR_ROOT 覆盖
+ROOT = os.environ.get("QR_ROOT", r"E:\000_AI\QuickRemote")
 PUB = os.path.join(ROOT, r"QuickRemote\pc-client\publish")
 
 
