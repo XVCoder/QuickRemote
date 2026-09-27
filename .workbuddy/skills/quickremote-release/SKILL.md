@@ -677,7 +677,41 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-24）
+## 当前线上版本（2026-09-28）
+
+> ✅ **PC v1.1.73 + about v1.0.132 已发布**（2026-09-28 01:10）= 修复显示器休眠期间远程连接秒断、
+> 主控端无限重连：DXGI `E_INVALIDARG (0x80070057)` 加入 `IsAccessDeniedOrLost` 可恢复集合，
+> 走「销毁采集、每秒重建」自愈路径（与锁屏同一恢复路径），显示器唤醒后画面自动恢复。
+> **PC 单端发版**：Android/relay 零改动不重发；pc-updater 复用 1.1.72 的 update.exe（未改动）。
+> - 根因调查（两端日志 + DXGI 探针实证）：与中继链路无关，LAN 直连同样失败；
+>   触发点 = 显示器休眠/显示拓扑变化（`\\.\DISPLAY36` 高编号佐证拓扑多变）
+> - PC ZIP `956,555B`（14 条目，内嵌 `1.1.73+07e0eef`）→ `/d/p/d7ef00d5-4e56-41e3-889d-863083ece991`
+> - about 蓝绿端口 **20013**，持久化卷 `data`
+> - manifest 线上 `{relay 1.0.8, pc 1.1.73, android 1.0.84}`；清理 pc 1.1.70
+> - 诊断工具入库：`tmp-dxgiprobe/`（DXGI 探针 + 模拟主控端隧道请求触发脚本，PSK 改读本机 appsettings.json）
+> - 提交 `46427e9`
+> - ⚠️ **本轮环境坑**：沙箱 `curl` 偶发 `Failed to connect ... port 443`（上传大包后瞬时抖动），
+>   重试即通；`dotnet publish` 本轮仅 1m36s（非 §2.1 记录的 15 分钟级）。
+
+> ✅ **PC v1.1.72 + Android v1.0.84 + about v1.0.131 已发布**（2026-09-28 01:00）= 会话页实时延迟显示：
+> Android 顶栏「公网中继/局域网直连」右侧显示 RTT（3 秒一测，<80ms 绿 / 80-200ms 橙 / >200ms 红）；
+> 协议新增心跳回显（Android 发 8 字节时间戳 ping，PC `OnFrameReceived` 原样回显）。
+> **PC + Android 双端发版**：relay 零改动不重发；pc-updater 随 ZIP 重发。
+> - PC ZIP `956,553B`（14 条目，内嵌 `1.1.72+5c3f4fa`）→ `/d/p/a87724d0-e54b-4b9a-94cf-ee9d966a4527`
+> - Android APK `13,797,895B`（versionCode 84）→ `/d/p/ed1c040f-5215-4eca-9280-36079fca11f1`
+> - about 蓝绿端口 **20012**，持久化卷 `data`；HTML 27234（本地 27160 **+74**）/ CSS 21400 / JS 8286
+> - manifest 线上 `{relay 1.0.8, pc 1.1.72, android 1.0.84}`；清理 pc 1.1.69 / android 1.0.81 / about 1.0.128
+> - 提交 `5c3f4fa`（远端 main 已用 `git ls-remote` 核对 = 本地 HEAD）
+> - ⚠️ **本轮环境差异（worktree）**：仓库在 `C:\Users\xiong\WorkBuddy\Worktrees\QuickRemote\main-c3056db3`
+>   而非 `E:\000_AI\QuickRemote` —— `pack-pc.py` / `pack-about.py` 已改为支持 `QR_ROOT` 环境变量覆盖；
+>   gradle-wrapper.jar 在 worktree 缺失，用缓存发行版
+>   `~/.gradle/wrapper/dists/gradle-8.9-bin/78qddjpeqn5v6yec3xb8kv9ca/gradle-8.9/bin/gradle` 直接编译；
+>   `android-app/local.properties` 已写 sdk.dir（gitignore 已覆盖，无需提交）。
+> - ⚠️ **本轮出现并行会话同时改仓库**（skill 坑：只提交自己发版相关路径）：
+>   本轮 `2584d04`（tmp-dxgiprobe 收尾）与 `07e0eef` 为并行线提交，工作区残留的
+>   `ScreenCaptureService.cs` 改动属并行线工作，不代提交。PC 包内嵌 `5c3f4fa`，
+>   并行线的 DXGI 改动**不包含**在 v1.1.72 包内。
+> - 上一版：PC v1.1.71 + about v1.0.130（2026-09-24 22:04，设置页保存按钮误报修复）。
 
 > ✅ **PC v1.1.71 + about v1.0.130 已发布**（2026-09-24 22:04）= 设置页保存按钮不再误报「* 保存设置」：
 > 脏判定由粘滞布尔改为「与上次保存的配置逐项比对」，刚打开设置中心显示「保存设置」，改回原值即复原。
