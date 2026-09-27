@@ -23,7 +23,9 @@ import os
 import sys
 import tarfile
 
-SRC = r"E:\000_AI\QuickRemote\QuickRemote-about"
+# 仓库根：默认旧主工作区；worktree 场景用环境变量 QR_ROOT 覆盖
+_ROOT = os.environ.get("QR_ROOT", r"E:\000_AI\QuickRemote")
+SRC = os.path.join(_ROOT, "QuickRemote-about")
 
 FILES = [
     ("public/index.html", "public/index.html"),
@@ -54,7 +56,7 @@ def main():
         print(__doc__)
         return 1
     ver = sys.argv[1].lstrip("v")
-    out = r"E:\000_AI\QuickRemote\QuickRemote-about-v%s.tar.gz" % ver
+    out = os.path.join(_ROOT, "QuickRemote-about-v%s.tar.gz" % ver)
 
     staged = {}
     for rel, arc in FILES:
