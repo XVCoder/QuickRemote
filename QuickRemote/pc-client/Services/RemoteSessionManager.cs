@@ -1542,7 +1542,11 @@ public sealed class RemoteSessionManager : IDisposable
                 HandleControlFrame(data);
                 break;
             case RemoteFrameProtocol.TYPE_HEARTBEAT:
-                break; // 心跳，无需处理
+                // 客户端延迟探测（v1.1.72）：载荷为 8 字节发送时间戳时原样回显，手机端据此测 RTT；
+                // 空载荷为对端保活帧，回显对端也会忽略，统一回显无副作用
+                try { _transport?.Send(RemoteFrameProtocol.TYPE_HEARTBEAT, data); }
+                catch (Exception ex) { _logger.Warn($"Heartbeat echo failed: {ex.Message}"); }
+                break;
             default:
                 _logger.Warn($"Unknown frame type: 0x{type:X2}");
                 break;

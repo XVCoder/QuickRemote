@@ -1,5 +1,6 @@
 package com.quickremote.app.services
 
+import android.os.SystemClock
 import android.view.Surface
 import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.data.models.TunnelResponse
@@ -7,6 +8,7 @@ import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Socket
+import java.nio.ByteBuffer
 
 // 看门狗参数：检查间隔 5s；无任何数据超时 30s；无视频帧超时 30s。
 // PC 端心跳 5s/次 + 静止桌面保底帧 1fps，正常会话不会触碰这两个阈值。
@@ -26,6 +28,13 @@ private const val WATCHDOG_NO_VIDEO_TIMEOUT_MS = 30_000L
  * 超时后按网络故障收尾 → 交给自动重连，比等 30 秒看门狗更快也更可靠。
  */
 private const val SOCKET_READ_TIMEOUT_MS = 20_000
+
+/**
+ * 延迟探测间隔：每 3 秒发一个带 8 字节时间戳的心跳帧（ping），PC 端原样回显（pong），
+ * 接收线程收到回显即得 RTT。8 字节载荷 + 3 秒一次，对带宽与电量均可忽略。
+ * PC 端需 v1.1.72+（旧版不回显，延迟显示保持「--」，不影响会话）。
+ */
+private const val PING_INTERVAL_MS = 3_000L
 
 /**
  * Android 端远程会话管理器（截屏方案，替代 FreeRDP）。
@@ -89,6 +98,14 @@ class RemoteSessionManager(
 
     @Volatile
     var connectionMode: ConnectionMode = ConnectionMode.RELAY
+        private set
+
+    /**
+     * 最近一次测得的会话往返延迟（ms）；-1 = 无数据（未连接 / 等待首个回显 / 对端为旧版本不回显）。
+     * 由 ping 回显在接收线程更新，经 [Listener.onLatencyChanged] 通知 UI。
+     */
+    @Volatile
+    var latencyMs: Int = -1
         private set
 
     /** 已建立的隧道 Socket。 */
@@ -164,6 +181,9 @@ class RemoteSessionManager(
 
         /** 验证码通过（被控端开始建立会话，UI 关闭验证输入框）。 */
         fun onAuthOk() {}
+
+        /** 延迟探测更新（ms；-1 表示当前无数据，UI 据此隐藏或置灰延迟显示）。 */
+        fun onLatencyChanged(ms: Int) {}
     }
 
     /** 最近一次会话的设备信息与配置，供断线自动重连时复用。 */
@@ -226,6 +246,7 @@ class RemoteSessionManager(
         this.clipboardAssembler = ClipboardAssembler()
         this.lastAppliedClipHash = ""
         this.lastSentClipHash = ""
+        this.latencyMs = -1
         logger.info("Remote session starting: device=$deviceId host=$hostname lan=$lanIp quality=$qualityPercent%")
         listener?.onStateChanged(state)
 
@@ -287,6 +308,7 @@ class RemoteSessionManager(
                 lastDataAt = connectedAt
                 lastVideoFrameAt = 0L
                 startWatchdog()
+                startPingLoop()
                 logger.info("Remote session connected (relay)")
                 listener?.onStateChanged(state)
                 receiveLoop()
@@ -332,6 +354,35 @@ class RemoteSessionManager(
                 }
             }
         }.apply { isDaemon = true; name = "qr-watchdog" }.start()
+    }
+
+    /**
+     * 延迟探测线程：每 [PING_INTERVAL_MS] 发一个带时间戳的心跳帧，PC 端回显后在接收线程算 RTT。
+     * 会话代数与看门狗同一套：新会话递增代数后，旧 ping 线程自动退出。
+     */
+    private fun startPingLoop() {
+        val gen = sessionGeneration.get()
+        Thread {
+            while (running && sessionGeneration.get() == gen) {
+                try { Thread.sleep(PING_INTERVAL_MS) } catch (_: InterruptedException) { return@Thread }
+                if (!running || sessionGeneration.get() != gen) break
+                sendPing()
+            }
+        }.apply { isDaemon = true; name = "qr-ping" }.start()
+    }
+
+    /** 发送一个 ping 帧：TYPE_HEARTBEAT + 8 字节 elapsedRealtime 时间戳（PC 端 v1.1.72+ 会原样回显）。 */
+    private fun sendPing() {
+        val out = output ?: return
+        val payload = ByteBuffer.allocate(8).putLong(SystemClock.elapsedRealtime()).array()
+        try {
+            synchronized(out) {
+                out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_HEARTBEAT, payload.size))
+                out.write(payload)
+                out.flush()
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /** 发送压缩率控制帧：{action:"quality", percent:N}。 */
@@ -467,6 +518,7 @@ class RemoteSessionManager(
             lastDataAt = connectedAt
             lastVideoFrameAt = 0L
             startWatchdog()
+            startPingLoop()
             logger.info("Remote session connected (LAN direct)")
             listener?.onStateChanged(state)
             receiveLoop()
@@ -514,7 +566,19 @@ class RemoteSessionManager(
                         }
                     }
                     RemoteFrameProtocol.TYPE_CONTROL -> handleControl(data)
-                    RemoteFrameProtocol.TYPE_HEARTBEAT -> { /* 心跳，忽略 */ }
+                    RemoteFrameProtocol.TYPE_HEARTBEAT -> {
+                        // 两类心跳：空载荷 = PC 端 5 秒保活帧（忽略）；
+                        // 8 字节载荷 = 本端 ping 的时间戳回显，此刻距发送的差值即 RTT。
+                        // 上限 30s 只是防御：正常回显不可能超过 socket 读超时
+                        if (data.size == 8) {
+                            val sentAt = ByteBuffer.wrap(data).long
+                            val rtt = (SystemClock.elapsedRealtime() - sentAt).toInt()
+                            if (rtt in 0..30_000) {
+                                latencyMs = rtt
+                                listener?.onLatencyChanged(rtt)
+                            }
+                        }
+                    }
                     else -> logger.warn("Unknown frame type: 0x${type.toString(16)}")
                 }
             }
@@ -816,6 +880,8 @@ class RemoteSessionManager(
         state = SessionState.FAILED
         running = false
         lastDisconnectReason = reason
+        latencyMs = -1
+        listener?.onLatencyChanged(-1)
         logger.warn("Remote session failed: $message")
         listener?.onStateChanged(state)
         closeSocket()
@@ -842,6 +908,8 @@ class RemoteSessionManager(
         running = false
         lastDisconnectReason = ReconnectPolicy.Reason.UserInitiated
         decoder.stop()
+        latencyMs = -1
+        listener?.onLatencyChanged(-1)
         // FAILED（含看门狗超时）不降级为 DISCONNECTED：保留错误信息供 UI 展示断开原因
         if (state != SessionState.FAILED) {
             state = SessionState.DISCONNECTED

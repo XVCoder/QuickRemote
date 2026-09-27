@@ -90,6 +90,10 @@ class SessionViewModel(
     private val _connectionMode = MutableStateFlow(RemoteSessionManager.ConnectionMode.RELAY)
     val connectionMode: StateFlow<RemoteSessionManager.ConnectionMode> = _connectionMode.asStateFlow()
 
+    /** 最近一次测得的会话延迟（ms），-1 = 无数据。 */
+    private val _latencyMs = MutableStateFlow(-1)
+    val latencyMs: StateFlow<Int> = _latencyMs.asStateFlow()
+
     /** 会话内画质档位（20-100），供画质快捷面板高亮当前档位。 */
     private val _qualityPercent = MutableStateFlow(80)
     val qualityPercent: StateFlow<Int> = _qualityPercent.asStateFlow()
@@ -146,6 +150,7 @@ class SessionViewModel(
                 _tunnel.value = null
                 _authRequired.value = false
                 _authError.value = null
+                _latencyMs.value = -1
             } else {
                 _tunnel.value = sessionManager.tunnel
             }
@@ -189,6 +194,10 @@ class SessionViewModel(
         override fun onAuthOk() {
             _authRequired.value = false
             _authError.value = null
+        }
+
+        override fun onLatencyChanged(ms: Int) {
+            _latencyMs.value = ms
         }
     }
 
@@ -254,6 +263,7 @@ class SessionViewModel(
         _pcLocked.value = false
         _authRequired.value = false
         _authError.value = null
+        _latencyMs.value = -1
         // 立刻启动保活：此刻还确定处于前台（用户就点在会话页上），
         // 前台服务只能在应用可见时启动；等握手期间被切后台再启动就晚了
         syncSessionHolders()

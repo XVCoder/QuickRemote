@@ -117,6 +117,7 @@ import com.quickremote.app.ui.components.WheelAccumulator
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.BgHover
+import com.quickremote.app.ui.theme.Danger
 import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
@@ -172,6 +173,7 @@ fun RemoteSessionScreen(
     val videoWidth by viewModel.videoWidth.collectAsState()
     val videoHeight by viewModel.videoHeight.collectAsState()
     val connectionMode by viewModel.connectionMode.collectAsState()
+    val latencyMs by viewModel.latencyMs.collectAsState()
     val pcLocked by viewModel.pcLocked.collectAsState()
     val pcUnlockError by viewModel.pcUnlockError.collectAsState()
     val authRequired by viewModel.authRequired.collectAsState()
@@ -529,16 +531,31 @@ fun RemoteSessionScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            if (videoWidth > 0) {
-                                "$videoWidth x $videoHeight · " +
-                                    if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) "局域网直连" else "公网中继"
-                            } else "远程桌面",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) Success else TextMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (videoWidth > 0) {
+                                    "$videoWidth x $videoHeight · " +
+                                        if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) "局域网直连" else "公网中继"
+                                } else "远程桌面",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (connectionMode == RemoteSessionManager.ConnectionMode.LAN) Success else TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (latencyMs >= 0) {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "$latencyMs ms",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    // 延迟分档变色：<80ms 优（绿）/ 80-200ms 一般（橙）/ >200ms 差（红）
+                                    color = when {
+                                        latencyMs < 80 -> Success
+                                        latencyMs < 200 -> Warning
+                                        else -> Danger
+                                    }
+                                )
+                            }
+                        }
                     }
                     CompactIconButton(
                         icon = Icons.Filled.LinkOff,
