@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.72",
-    "changelog": "新增会话心跳回显：配合 Android v1.0.84 的实时延迟显示（PC 端收到客户端探测帧后原样回显，旧版 Android 客户端不受影响）",
+    "latest_version": "1.1.73",
+    "changelog": "修复显示器休眠期间远程连接秒断、手机端无限重连：DXGI E_INVALIDARG 按可恢复错误处理，销毁采集每秒重建，显示器唤醒后画面自动恢复，会话不再被断开",
     "versions": {
+      "1.1.73": {
+        "zip": "https://qd.solutionx.top/d/p/d7ef00d5-4e56-41e3-889d-863083ece991"
+      },
       "1.1.72": {
         "zip": "https://qd.solutionx.top/d/p/a87724d0-e54b-4b9a-94cf-ee9d966a4527"
       },
       "1.1.71": {
         "zip": "https://qd.solutionx.top/d/p/1b2e5664-fad3-42d7-8184-2176148ecd85"
-      },
-      "1.1.70": {
-        "zip": "https://qd.solutionx.top/d/p/33a258fb-7dd4-48dd-be19-a80e62bd9734"
       }
     }
   },
