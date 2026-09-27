@@ -33,6 +33,10 @@ public sealed class ScreenCaptureService : IDisposable
     /// - 0x80070005 E_ACCESSDENIED：锁屏期间重建 Output Duplication 被拒
     /// - 0x887A0001 DXGI_ERROR_INVALID_CALL：锁屏瞬间 AcquireNextFrame/DuplicateOutput
     ///   状态失效（实测锁屏时部分驱动报此码而非 ACCESS_LOST）
+    /// - 0x80070057 E_INVALIDARG：显示器休眠/显示拓扑变化期间 DuplicateOutput/
+    ///   AcquireNextFrame 持续失败（2026-09-28 00:19 实测：显示器睡眠后该错误
+    ///   持续 13 分钟，期间中继/局域网连接全部秒断——按可恢复处理，销毁捕获
+    ///   每秒重建，显示器唤醒后自动恢复，而不是杀死会话进入重连风暴）
     /// </summary>
     public static bool IsAccessDeniedOrLost(Exception ex)
     {
@@ -43,7 +47,8 @@ public sealed class ScreenCaptureService : IDisposable
                 int code = sge.ResultCode.Code;
                 if (code == unchecked((int)0x887A0026) ||
                     code == unchecked((int)0x887A0001) ||
-                    code == unchecked((int)0x80070005))
+                    code == unchecked((int)0x80070005) ||
+                    code == unchecked((int)0x80070057))
                     return true;
             }
         }
