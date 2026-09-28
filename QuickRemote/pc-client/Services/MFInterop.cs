@@ -47,6 +47,14 @@ internal static class MFInterop
     /// 对照程序验证：f1 起逐帧 NV12 输出 + STREAM_CHANGE 正常触发）。
     /// </summary>
     public static readonly Guid CODECAPI_AVLowLatencyMode = new("9c27891a-ed7a-40e1-88e8-b22727a024ee");
+    // 以下三个 GUID 已从本机 Windows SDK 10.0.26100.0 um/codecapi.h 核实
+    /// <summary>编码器低延迟模式（BOOL）：关闭 lookahead，输入一帧即产出一帧。
+    /// 编码延迟从 ~14 帧（15fps 下 ~930ms）降到 1 帧。</summary>
+    public static readonly Guid CODECAPI_AVEncCommonLowLatency = new("9d3ecd55-89e8-490a-970a-0c9548d5a56e");
+    /// <summary>实时编码模式（BOOL）：码率控制不做缓冲平滑，配合低延迟模式使用。</summary>
+    public static readonly Guid CODECAPI_AVEncCommonRealTime = new("143a0ff6-a131-43da-b81e-98fbb8ec378e");
+    /// <summary>B 帧数量（UINT32）：置 0 消除 B 帧重排缓冲，无 B 帧即无显示序解码序延迟。</summary>
+    public static readonly Guid CODECAPI_AVEncMPVDefaultBPictureCount = new("8d390aac-dc5c-4200-b57f-814d04babab2");
 
     public const int MF_VERSION = 0x20070; // MF_API_VERSION (2.7)
 

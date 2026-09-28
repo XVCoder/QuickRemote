@@ -42,6 +42,12 @@ public sealed class H264Encoder : IFrameEncoder
     public bool IsAvailable => _initialized;
 
     /// <summary>
+    /// 低延迟模式是否生效（v1.1.74）。true = lookahead 已关闭，输入一帧产出一帧；
+    /// false = 属性设置失败，走默认 lookahead~14 帧路径（历史行为，功能不受影响）。
+    /// </summary>
+    public bool IsLowLatency { get; private set; }
+
+    /// <summary>
     /// MF 平台全局启动标志（跨实例静态）。
     /// v1.1.34 崩溃根因：每次 Dispose 调 MFShutdown，引用计数 0↔1 震荡——
     /// ReconfigureEncoder（quality 调整）销毁重建编码器期间平台被拆，
@@ -96,13 +102,31 @@ public sealed class H264Encoder : IFrameEncoder
                     var gopKey = MFInterop.CODECAPI_AVEncMPVGOPSize;
                     encAttrs.SetUINT32(ref gopKey, (uint)Math.Max(1, fps * 3));
 
-                    // 低延迟模式（v1.1.56 曾开启，v1.1.58 回退）：
-                    // LL 模式下 CODECAPI_AVEncVideoForceKeyFrame 动态属性失效（实测设置后
-                    // 输出仍为 P 帧 NAL=1 无 IDR），且编码器 lookahead 降至 1 帧后 FastFill
-                    // 连投不再攒出 IDR——Android 请求 keyframe 永远无法刷新画面（公网黑屏
-                    // 无法自愈），同时 IDR 帧被切成 13+ slice 体积暴增（317-423KB/15帧）导致
-                    // 公网 1200kbps 拥塞丢帧。回退后恢复 lookahead~14 帧 + ForceKeyFrame 有效，
-                    // FastFill 连投 16 帧必然输出 IDR（v1.1.54 已验证正常）。
+                    // 低延迟模式 v1.1.74 重启（v1.1.56 首启、v1.1.58 回退）。
+                    // 当年回退的三个根因及本次对策：
+                    // ① LL 下 CODECAPI_AVEncVideoForceKeyFrame 静默失效 → keyframe 请求
+                    //    永远不出 IDR → 公网黑屏无法自愈。
+                    //    对策：RemoteSessionManager 增加 IDR 看门狗——ForceKeyFrame 后
+                    //    实测编码输出，700ms 内无 IDR NAL 即重建编码器（重建后首输出必
+                    //    为 IDR），不再依赖 MF 的动态属性行为。
+                    // ② 无 lookahead 时码率控制无法缓冲平滑，IDR 被切成 13+ slice 体积
+                    //    暴增（317-423KB/15帧）→ 弱链路拥塞丢帧循环。
+                    //    对策：显式 AVEncCommonRealTime + CBR 语义（无 B 帧无重排）；
+                    //    IDR 体积暴增是 LL 模式固有代价，LAN 码率上限 50Mbps 下单帧
+                    //    ~300KB 仅 ~50ms，可接受；弱链路的丢帧→强制 IDR 路径已有 2 秒
+                    //    节流兜底。
+                    // ③ lookahead 降到 1 帧后 FastFill 连投不再攒出 IDR。
+                    //    对策：FastFill 在 LL 下本来 1 帧即出（首个输出必为 IDR），
+                    //    非 LL 降级路径仍保留原 16 连投逻辑，两条路径都通。
+                    var llKey = MFInterop.CODECAPI_AVEncCommonLowLatency;
+                    var rtKey = MFInterop.CODECAPI_AVEncCommonRealTime;
+                    var bKey = MFInterop.CODECAPI_AVEncMPVDefaultBPictureCount;
+                    bool llOk = MFHr.Succeeded(encAttrs.SetUINT32(ref llKey, 1));
+                    bool rtOk = MFHr.Succeeded(encAttrs.SetUINT32(ref rtKey, 1));
+                    bool bOk = MFHr.Succeeded(encAttrs.SetUINT32(ref bKey, 0));
+                    IsLowLatency = llOk && rtOk && bOk;
+                    // 任一属性写入失败即整体降级为默认 lookahead 路径：半开 LL
+                    //（如仅关 B 帧不关 lookahead）没有意义，且行为不可预测
                 }
             }
             catch { /* GOP/低延迟设置失败不影响编码，保持默认 */ }
@@ -233,6 +257,23 @@ public sealed class H264Encoder : IFrameEncoder
     {
         if (!_initialized) return Array.Empty<byte>();
         return DrainOutput();
+    }
+
+    /// <summary>
+    /// 检测 H.264 Annex-B 码流中是否包含 IDR 帧（nal_unit_type == 5）。
+    /// IDR 看门狗用：ForceKeyFrame 后确认编码输出真的刷新了关键帧。
+    /// 同时兼容 3 字节（00 00 01）与 4 字节（00 00 00 01）起始码——
+    /// 两者都以 01 结尾、其后紧跟 NAL header，扫描 00 00 01 即可覆盖。
+    /// </summary>
+    public static bool ContainsIdrFrame(byte[] data)
+    {
+        for (int i = 2; i < data.Length - 1; i++)
+        {
+            if (data[i] == 1 && data[i - 1] == 0 && data[i - 2] == 0 &&
+                (data[i + 1] & 0x1F) == 5)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

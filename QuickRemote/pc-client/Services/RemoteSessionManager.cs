@@ -87,6 +87,19 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>上次因丢帧强制 IDR 的时间（节流，避免反复重建编码器）。</summary>
     private DateTime _lastKeyframeForce = DateTime.MinValue;
 
+    // ============ IDR 看门狗（v1.1.74） ============
+    // LL 模式下 CODECAPI_AVEncVideoForceKeyFrame 可能静默失效（v1.1.56 黑屏根因：
+    // 属性写入成功但输出仍为 P 帧 → keyframe 请求永远无法刷新画面）。不再信任
+    // 属性写入返回值 —— 实测编码输出，超时无 IDR 即重建编码器兜底（重建后首
+    // 输出必为 IDR）。仅在 EncodeLoop 线程访问，无需 volatile。
+    /// <summary>ForceKeyFrame 已下发，等待 IDR 出现。</summary>
+    private bool _keyframeAwaitingIdr;
+    /// <summary>看门狗起始时间。</summary>
+    private DateTime _keyframeRequestUtc = DateTime.MinValue;
+    /// <summary>看门狗超时：超过此时间未见 IDR 即重建编码器。15fps 下约 10 帧。
+    /// 非 LL 降级路径 lookahead~14 帧，FastFill 连投会在首轮循环内出帧，不会误伤。</summary>
+    private const int KeyframeIdrTimeoutMs = 700;
+
     /** 当前会话信息（启动成功后创建，UI 会话列表展示用）。 */
     private SessionInfo? _sessionInfo;
 
@@ -1145,7 +1158,8 @@ public sealed class RemoteSessionManager : IDisposable
             var h264 = new H264Encoder();
             h264.Initialize(width, height, _fps, bitrate);
             _encoder = h264;
-            _logger.Info($"H.264 encoder initialized: {_fps}fps, {bitrate}kbps, {width}x{height}");
+            // LL 生效状态有诊断价值：延迟劣化时先看这行（false = 属性设置失败走 lookahead 路径）
+            _logger.Info($"H.264 encoder initialized: {_fps}fps, {bitrate}kbps, {width}x{height}, lowLatency={h264.IsLowLatency}");
         }
         catch (Exception ex)
         {
@@ -1359,7 +1373,13 @@ public sealed class RemoteSessionManager : IDisposable
                 if (_pendingKeyframe)
                 {
                     _pendingKeyframe = false;
-                    if (_encoder?.ForceKeyFrame() != true)
+                    if (_encoder?.ForceKeyFrame() == true)
+                    {
+                        // 已接受：启动看门狗验证（LL 模式下可能静默失效，v1.1.56 教训）
+                        _keyframeAwaitingIdr = true;
+                        _keyframeRequestUtc = DateTime.UtcNow;
+                    }
+                    else
                         ReconfigureEncoder(_qualityPercent); // 编码器不支持动态强制时重建兜底
                     // ForceKeyFrame 属性需下一帧输入才生效：请求快投（静止桌面无新帧时
                     // 靠缓存帧立即生效，否则 keyframe 请求无响应）
@@ -1408,6 +1428,9 @@ public sealed class RemoteSessionManager : IDisposable
                 }
                 if (encoded != null && encoded.Length > 0)
                 {
+                    // IDR 看门狗：验证 keyframe 请求真的产出了 IDR（LL 模式下
+                    // ForceKeyFrame 可能静默失效），超时则重建编码器兜底
+                    NotifyEncodedOutput(encoded);
                     // 发送队列满 = 网络拥塞（SendLoop 阻塞在 TCP 写）：丢最旧帧控制延迟，
                     // 并强制下一个输出为 IDR（丢帧破坏 P 帧参考链，不刷新会花屏到下个 GOP 边界）
                     if (!sendQueue.TryAdd((RemoteFrameProtocol.TYPE_VIDEO_FRAME, encoded)))
@@ -1465,6 +1488,7 @@ public sealed class RemoteSessionManager : IDisposable
                 var encoded = _encoder.EncodeFrame(prepared);
                 if (encoded.Length > 0)
                 {
+                    NotifyEncodedOutput(encoded);
                     if (!sendQueue.TryAdd((RemoteFrameProtocol.TYPE_VIDEO_FRAME, encoded)))
                     {
                         sendQueue.TryTake(out _);
@@ -1517,8 +1541,36 @@ public sealed class RemoteSessionManager : IDisposable
         if ((DateTime.UtcNow - _lastKeyframeForce).TotalSeconds < 2) return;
         _lastKeyframeForce = DateTime.UtcNow;
         _logger.Warn("Network congested: frame dropped, forcing IDR refresh");
-        if (_encoder?.ForceKeyFrame() != true)
+        if (_encoder?.ForceKeyFrame() == true)
+        {
+            _keyframeAwaitingIdr = true;
+            _keyframeRequestUtc = DateTime.UtcNow;
+        }
+        else
             ReconfigureEncoder(_qualityPercent);
+    }
+
+    /// <summary>
+    /// IDR 看门狗（v1.1.74）：验证 ForceKeyFrame 真的产出了 IDR。LL 模式下该属性
+    /// 可能静默失效（v1.1.56 黑屏根因），超时未见 IDR 即重建编码器兜底（重建后
+    /// 首输出必为 IDR）。仅在 EncodeLoop 线程调用，与编码天然同线程。
+    /// </summary>
+    private void NotifyEncodedOutput(byte[] encoded)
+    {
+        if (!_keyframeAwaitingIdr) return;
+        if (H264Encoder.ContainsIdrFrame(encoded))
+        {
+            _keyframeAwaitingIdr = false;
+            return;
+        }
+        if ((DateTime.UtcNow - _keyframeRequestUtc).TotalMilliseconds > KeyframeIdrTimeoutMs)
+        {
+            _keyframeAwaitingIdr = false;
+            _lastKeyframeForce = DateTime.UtcNow; // 与拥塞强制路径共用节流，避免重建风暴
+            _logger.Warn("ForceKeyFrame produced no IDR within timeout (low-latency mode), rebuilding encoder");
+            ReconfigureEncoder(_qualityPercent);
+            _pendingFastFill = true;
+        }
     }
 
     /// <summary>接收帧（输入事件等），转发给输入处理器用 SendInput 模拟。</summary>
@@ -1682,9 +1734,10 @@ public sealed class RemoteSessionManager : IDisposable
                 try { _encoder?.Dispose(); } catch { }
                 _encoder = null;
 
+                H264Encoder? h264 = null;
                 if (isH264)
                 {
-                    var h264 = new H264Encoder();
+                    h264 = new H264Encoder();
                     h264.Initialize(width, height, _fps, newBitrate);
                     _encoder = h264;
                 }
@@ -1694,7 +1747,7 @@ public sealed class RemoteSessionManager : IDisposable
                     jpeg.Initialize(width, height, _fps, newBitrate);
                     _encoder = jpeg;
                 }
-                _logger.Info($"Encoder reconfigured: {(_encoder?.CodecName)} at {newBitrate}kbps ({percent}%)");
+                _logger.Info($"Encoder reconfigured: {(_encoder?.CodecName)} at {newBitrate}kbps ({percent}%), lowLatency={(h264?.IsLowLatency ?? false)}");
                 // 新编码器 lookahead 为空，静止桌面下无真实新帧：请求快投缓存帧填充，
                 // 否则重建后远程端黑屏直到桌面出现变化（quality 调整后黑屏的同源问题）
                 _pendingFastFill = true;
