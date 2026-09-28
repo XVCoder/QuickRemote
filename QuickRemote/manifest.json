@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.74",
-    "changelog": "局域网直连延迟从约 1 秒降至 150ms 内：重开编码器低延迟模式（lookahead 14 帧→1 帧）；新增 IDR 看门狗保证关键帧请求可靠刷新画面（规避 v1.1.56 低延迟黑屏回退）；编码器属性设置失败自动降级为原有逻辑",
+    "latest_version": "1.1.75",
+    "changelog": "修复 v1.1.74 延迟优化未生效：编码器低延迟改用 AVLowLatencyMode（探针实测首帧输入即出画面，78ms），局域网直连延迟降至 ~100ms 级；看门狗超时放宽避免误重建",
     "versions": {
+      "1.1.75": {
+        "zip": "https://qd.solutionx.top/d/p/0f0a923f-f8a5-4e87-bb64-29d060b12776"
+      },
       "1.1.74": {
         "zip": "https://qd.solutionx.top/d/p/92a9107b-a304-4d16-a20a-5fd3200bc723"
       },
       "1.1.73": {
         "zip": "https://qd.solutionx.top/d/p/d7ef00d5-4e56-41e3-889d-863083ece991"
-      },
-      "1.1.72": {
-        "zip": "https://qd.solutionx.top/d/p/a87724d0-e54b-4b9a-94cf-ee9d966a4527"
       }
     }
   },

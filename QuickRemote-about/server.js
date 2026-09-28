@@ -32,8 +32,8 @@ const TZ = 'Asia/Shanghai';
 const CLIENTS = {
   pc: {
     name: 'PC 客户端',
-    version: 'v1.1.74',
-    url: 'https://qd.solutionx.top/d/p/92a9107b-a304-4d16-a20a-5fd3200bc723',
+    version: 'v1.1.75',
+    url: 'https://qd.solutionx.top/d/p/0f0a923f-f8a5-4e87-bb64-29d060b12776',
   },
   android: {
     name: 'Android App',
