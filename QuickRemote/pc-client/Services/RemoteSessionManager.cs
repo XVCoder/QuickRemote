@@ -96,9 +96,12 @@ public sealed class RemoteSessionManager : IDisposable
     private bool _keyframeAwaitingIdr;
     /// <summary>看门狗起始时间。</summary>
     private DateTime _keyframeRequestUtc = DateTime.MinValue;
-    /// <summary>看门狗超时：超过此时间未见 IDR 即重建编码器。15fps 下约 10 帧。
-    /// 非 LL 降级路径 lookahead~14 帧，FastFill 连投会在首轮循环内出帧，不会误伤。</summary>
-    private const int KeyframeIdrTimeoutMs = 700;
+    /// <summary>看门狗超时：超过此时间未见 IDR 即重建编码器。
+    /// v1.1.75 从 700ms 放宽到 1500ms：LL 真生效时 FastFill 首轮循环即出 IDR
+    ///（探针实测第 1 帧输入 78ms），远低于超时；而属性失效的降级机器上
+    /// lookahead~14 帧 @15fps，ForceKeyFrame 生效需 ~930ms——700ms 会在这种
+    /// 机器上误重建（v1.1.74 线上日志 19:57/23:11 各触发 2 次重建循环）。</summary>
+    private const int KeyframeIdrTimeoutMs = 1500;
 
     /** 当前会话信息（启动成功后创建，UI 会话列表展示用）。 */
     private SessionInfo? _sessionInfo;

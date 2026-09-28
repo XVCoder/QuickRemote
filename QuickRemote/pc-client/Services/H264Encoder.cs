@@ -42,8 +42,9 @@ public sealed class H264Encoder : IFrameEncoder
     public bool IsAvailable => _initialized;
 
     /// <summary>
-    /// 低延迟模式是否生效（v1.1.74）。true = lookahead 已关闭，输入一帧产出一帧；
-    /// false = 属性设置失败，走默认 lookahead~14 帧路径（历史行为，功能不受影响）。
+    /// 低延迟模式是否生效（v1.1.75：CODECAPI_AVLowLatencyMode 写入成功）。
+    /// true = lookahead 已关闭，输入一帧产出一帧；false = 属性设置失败，
+    /// 走默认 lookahead~14 帧路径（功能不受影响，延迟回到旧水平）。
     /// </summary>
     public bool IsLowLatency { get; private set; }
 
@@ -102,31 +103,32 @@ public sealed class H264Encoder : IFrameEncoder
                     var gopKey = MFInterop.CODECAPI_AVEncMPVGOPSize;
                     encAttrs.SetUINT32(ref gopKey, (uint)Math.Max(1, fps * 3));
 
-                    // 低延迟模式 v1.1.74 重启（v1.1.56 首启、v1.1.58 回退）。
-                    // 当年回退的三个根因及本次对策：
-                    // ① LL 下 CODECAPI_AVEncVideoForceKeyFrame 静默失效 → keyframe 请求
-                    //    永远不出 IDR → 公网黑屏无法自愈。
-                    //    对策：RemoteSessionManager 增加 IDR 看门狗——ForceKeyFrame 后
-                    //    实测编码输出，700ms 内无 IDR NAL 即重建编码器（重建后首输出必
-                    //    为 IDR），不再依赖 MF 的动态属性行为。
-                    // ② 无 lookahead 时码率控制无法缓冲平滑，IDR 被切成 13+ slice 体积
-                    //    暴增（317-423KB/15帧）→ 弱链路拥塞丢帧循环。
-                    //    对策：显式 AVEncCommonRealTime + CBR 语义（无 B 帧无重排）；
-                    //    IDR 体积暴增是 LL 模式固有代价，LAN 码率上限 50Mbps 下单帧
-                    //    ~300KB 仅 ~50ms，可接受；弱链路的丢帧→强制 IDR 路径已有 2 秒
-                    //    节流兜底。
-                    // ③ lookahead 降到 1 帧后 FastFill 连投不再攒出 IDR。
-                    //    对策：FastFill 在 LL 下本来 1 帧即出（首个输出必为 IDR），
-                    //    非 LL 降级路径仍保留原 16 连投逻辑，两条路径都通。
+                    // 低延迟模式 v1.1.75 修正（v1.1.74 用错属性）：
+                    // v1.1.74 设 AVEncCommonLowLatency/RealTime/BPictureCount=0，属性
+                    // 写入全部成功但 MS 软件 H.264 编码器 lookahead 依旧 ~14 帧
+                    //（线上日志 FastFill 仍 "after 14 frames"，端到端延迟仍 ~1s）。
+                    // v1.1.56 当年用的 CODECAPI_AVLowLatencyMode（与解码端同款）实测
+                    // 才是真开关。tmp-llprobe 探针在本机四组合实测（2026-09-28）：
+                    //   基线                首个输出在第 14 个输入
+                    //   仅 AVLowLatencyMode 第 1 个输入即出（3.2KB IDR，78ms）
+                    //   仅 AVEncCommon 系列 第 14 个输入（写入 True/True/True 但无效）
+                    //   两者全开            第 1 个输入即出（与仅 AVLL 一致，共存无冲突）
+                    // 故 AVLowLatencyMode=1 为主开关（IsLowLatency 以它为准），
+                    // AVEncCommon 系列保留（语义正确：实时、无 B 帧，实测无害）。
+                    // 当年 v1.1.58 回退的三个坑（ForceKeyFrame 静默失效 / IDR slice
+                    // 暴增 / FastFill 攒不出 IDR）由 RemoteSessionManager 的 IDR
+                    // 看门狗 + FastFill 兜底，见 KeyframeIdrTimeoutMs 注释。
+                    var avllKey = MFInterop.CODECAPI_AVLowLatencyMode;
+                    bool avllOk = MFHr.Succeeded(encAttrs.SetUINT32(ref avllKey, 1));
                     var llKey = MFInterop.CODECAPI_AVEncCommonLowLatency;
                     var rtKey = MFInterop.CODECAPI_AVEncCommonRealTime;
                     var bKey = MFInterop.CODECAPI_AVEncMPVDefaultBPictureCount;
-                    bool llOk = MFHr.Succeeded(encAttrs.SetUINT32(ref llKey, 1));
-                    bool rtOk = MFHr.Succeeded(encAttrs.SetUINT32(ref rtKey, 1));
-                    bool bOk = MFHr.Succeeded(encAttrs.SetUINT32(ref bKey, 0));
-                    IsLowLatency = llOk && rtOk && bOk;
-                    // 任一属性写入失败即整体降级为默认 lookahead 路径：半开 LL
-                    //（如仅关 B 帧不关 lookahead）没有意义，且行为不可预测
+                    MFHr.Succeeded(encAttrs.SetUINT32(ref llKey, 1));
+                    MFHr.Succeeded(encAttrs.SetUINT32(ref rtKey, 1));
+                    MFHr.Succeeded(encAttrs.SetUINT32(ref bKey, 0));
+                    IsLowLatency = avllOk;
+                    // AVLowLatencyMode 写入失败 = lookahead 仍在（延迟回到旧水平），
+                    // 但功能完整；IsLowLatency 日志字段可诊断。
                 }
             }
             catch { /* GOP/低延迟设置失败不影响编码，保持默认 */ }

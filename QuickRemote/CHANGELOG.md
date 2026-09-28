@@ -1,5 +1,11 @@
 # QuickRemote 更新记录
 
+## v1.1.75 (PC 客户端)
+
+- **修复 v1.1.74 延迟优化未实际生效的问题**：v1.1.74 设置的 `AVEncCommonLowLatency/RealTime/BPictureCount` 属性虽写入成功，但对 MS 软件 H.264 编码器的 lookahead 无效，画面仍被缓冲 ~14 帧（15fps 下 ~930ms）。改用 `CODECAPI_AVLowLatencyMode`（v1.1.56 同款，经 tmp-llprobe 探针在本机四组合实测：仅此属性首帧输入即出画面，78ms；AVEncCommon 系列首输出仍在第 14 帧）
+- IDR 看门狗超时从 700ms 放宽到 1500ms：属性失效的降级机器上 ForceKeyFrame 需 ~14 帧（~930ms）才生效，700ms 会导致反复重建编码器（v1.1.74 日志可见）
+- 新增 `tmp-llprobe` 编码器属性组合探针工具（低延迟排查可复用）
+
 ## v1.1.74 (PC 客户端)
 
 - **局域网直连延迟从 ~1 秒降到 ~150ms 以内**：延迟主体不是网络，而是被控端 H.264 软件编码器的 ~14 帧 lookahead 缓冲（15fps 下 ≈930ms 固定延迟）。本次重开 Media Foundation 编码器低延迟模式（`AVEncCommonLowLatency` + `AVEncCommonRealTime` + 零 B 帧），编码延迟从 14 帧降到 1 帧，输入一帧即产出一帧
