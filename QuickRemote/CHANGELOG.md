@@ -1,5 +1,10 @@
 # QuickRemote 更新记录
 
+## v1.0.85 (Android App)（配合 PC v1.1.75）
+
+- **修复配合 PC v1.1.75 低延迟模式远程画面持续黑屏的问题**：PC 端编码器低延迟开启后，编码器多线程切片使每帧 slice 数从 1 变为 12+；Android 端解码器此前逐 slice 入队，13 次入队会耗尽 MediaCodec 输入缓冲（典型 4~8 个），而输出缓冲只在整帧排队完后才释放，重试 50ms 后静默丢 slice → 参考链断裂 → 持续黑屏。现在每帧所有 slice 合并为一个访问单元整块入队（单 buffer 多 NAL 是 Annex-B 标准用法），输入缓冲压力与旧版持平；`queueInput` 重试间隙自动取走已解码输出释放缓冲，入队失败不再静默（记日志）
+- 旧版 PC（逐帧单 slice 流）行为不受影响
+
 ## v1.1.75 (PC 客户端)
 
 - **修复 v1.1.74 延迟优化未实际生效的问题**：v1.1.74 设置的 `AVEncCommonLowLatency/RealTime/BPictureCount` 属性虽写入成功，但对 MS 软件 H.264 编码器的 lookahead 无效，画面仍被缓冲 ~14 帧（15fps 下 ~930ms）。改用 `CODECAPI_AVLowLatencyMode`（v1.1.56 同款，经 tmp-llprobe 探针在本机四组合实测：仅此属性首帧输入即出画面，78ms；AVEncCommon 系列首输出仍在第 14 帧）

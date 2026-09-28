@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.84",
-    "changelog": "远程连接页顶栏新增实时延迟显示：位于「公网中继/局域网直连」右侧，每 3 秒测一次往返延迟，低于 80ms 绿色、80-200ms 橙色、高于 200ms 红色；需 PC 端 v1.1.72+，旧版 PC 下自动隐藏",
+    "latest_version": "1.0.85",
+    "changelog": "修复配合 PC v1.1.75 低延迟模式远程画面持续黑屏：解码器改为整帧一个访问单元入队，避免 MediaCodec 输入缓冲耗尽丢 slice；需 PC 端 v1.1.75+",
     "versions": {
+      "1.0.85": {
+        "apk": "https://qd.solutionx.top/d/p/db45586c-4a5b-4222-a857-4fb49d7119ef"
+      },
       "1.0.84": {
         "apk": "https://qd.solutionx.top/d/p/ed1c040f-5215-4eca-9280-36079fca11f1"
       },
       "1.0.83": {
         "apk": "https://qd.solutionx.top/d/p/5372c30b-6ae4-4185-bc9f-cb913cfce893"
-      },
-      "1.0.82": {
-        "apk": "https://qd.solutionx.top/d/p/8436d1fa-d00b-4279-bc2b-a03aa2518cf2"
       }
     }
   }

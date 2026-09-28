@@ -61,12 +61,20 @@ class H264Decoder(private val logger: Logger = Logger()) {
                 queueInput(csd.toByteArray(), MediaCodec.BUFFER_FLAG_CODEC_CONFIG)
             }
 
-            // 2. 非 SPS/PPS 的 NAL 按普通帧入队（每个 NAL 单独入队）
+            // 2. 非 SPS/PPS 的 NAL 合并为一个访问单元整块入队（v1.0.85 黑屏修复）。
+            //    PC 端低延迟模式下编码器多线程切片，每帧 12+ 个 slice NAL；此前逐
+            //    NAL 入队会耗尽 MediaCodec 输入缓冲（典型 4~8 个）——drainOutputs
+            //    只在本函数末尾执行，输入缓冲等不到释放，重试 50ms 后静默丢 slice，
+            //    参考链断裂 → 持续黑屏。整帧一个 buffer 交给 MediaCodec 内部解析
+            //    （单 buffer 多 NAL 是 Annex-B 标准用法），输入缓冲压力从 ~13/帧
+            //    降回 1/帧，与旧版 lookahead 模式（每帧 1 slice）持平。
+            val accessUnit = ByteArrayOutputStream()
             for (nal in nals) {
                 val t = nalType(nal)
-                if (t != 7 && t != 8) {
-                    queueInput(nal, 0)
-                }
+                if (t != 7 && t != 8) accessUnit.write(nal)
+            }
+            if (accessUnit.size() > 0) {
+                queueInput(accessUnit.toByteArray(), 0)
             }
 
             // 3. 输出（释放到 Surface 渲染）
@@ -76,7 +84,7 @@ class H264Decoder(private val logger: Logger = Logger()) {
         }
     }
 
-    /** 入队一个缓冲（带重试，避免偶发取不到输入缓冲导致丢帧破坏参考链）。 */
+    /** 入队一个缓冲（带重试；重试间隙先取走已解码输出释放输入缓冲，避免忙等丢帧）。 */
     private fun queueInput(data: ByteArray, flags: Int) {
         val dec = decoder ?: return
         var attempts = 0
@@ -90,7 +98,9 @@ class H264Decoder(private val logger: Logger = Logger()) {
                 dec.queueInputBuffer(inputIndex, 0, data.size, ptsUs, flags)
                 return
             }
+            drainOutputs()
         }
+        logger.warn("queueInput dropped ${data.size}B after 5 attempts (decoder busy)")
     }
 
     /** 拉取并渲染所有可用的解码输出。 */
