@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.73",
-    "changelog": "修复显示器休眠期间远程连接秒断、手机端无限重连：DXGI E_INVALIDARG 按可恢复错误处理，销毁采集每秒重建，显示器唤醒后画面自动恢复，会话不再被断开",
+    "latest_version": "1.1.74",
+    "changelog": "局域网直连延迟从约 1 秒降至 150ms 内：重开编码器低延迟模式（lookahead 14 帧→1 帧）；新增 IDR 看门狗保证关键帧请求可靠刷新画面（规避 v1.1.56 低延迟黑屏回退）；编码器属性设置失败自动降级为原有逻辑",
     "versions": {
+      "1.1.74": {
+        "zip": "https://qd.solutionx.top/d/p/92a9107b-a304-4d16-a20a-5fd3200bc723"
+      },
       "1.1.73": {
         "zip": "https://qd.solutionx.top/d/p/d7ef00d5-4e56-41e3-889d-863083ece991"
       },
       "1.1.72": {
         "zip": "https://qd.solutionx.top/d/p/a87724d0-e54b-4b9a-94cf-ee9d966a4527"
-      },
-      "1.1.71": {
-        "zip": "https://qd.solutionx.top/d/p/1b2e5664-fad3-42d7-8184-2176148ecd85"
       }
     }
   },
