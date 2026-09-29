@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.75",
-    "changelog": "修复 v1.1.74 延迟优化未生效：编码器低延迟改用 AVLowLatencyMode（探针实测首帧输入即出画面，78ms），局域网直连延迟降至 ~100ms 级；看门狗超时放宽避免误重建",
+    "latest_version": "1.1.76",
+    "changelog": "编码切换 GPU 硬件优先：硬件 H.264 编码 MFT（AMD/Intel/NVIDIA）+ D3D11 零拷贝管线，本机实测编码延迟 11/30/53ms（软件 78ms+），无硬件自动回退软件编码；画质调整/IDR 看门狗行为不变",
     "versions": {
+      "1.1.76": {
+        "zip": "https://qd.solutionx.top/d/p/ad5d4e53-3227-4121-b49e-8be42d566e85"
+      },
       "1.1.75": {
         "zip": "https://qd.solutionx.top/d/p/0f0a923f-f8a5-4e87-bb64-29d060b12776"
       },
       "1.1.74": {
         "zip": "https://qd.solutionx.top/d/p/92a9107b-a304-4d16-a20a-5fd3200bc723"
-      },
-      "1.1.73": {
-        "zip": "https://qd.solutionx.top/d/p/d7ef00d5-4e56-41e3-889d-863083ece991"
       }
     }
   },
