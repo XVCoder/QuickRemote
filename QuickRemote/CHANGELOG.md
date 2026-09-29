@@ -1,5 +1,12 @@
 # QuickRemote 更新记录
 
+## v1.1.76 (PC 客户端)
+
+- **编码切换 GPU 硬件优先（第二步优化：硬件编码）**：新增 `HwH264Encoder`——通过 MFTEnumEx 枚举厂商硬件 H.264 编码 MFT（AMD VCE / Intel QSV / NVIDIA NVENC 同协议），D3D11 VideoProcessor 做 GPU 色彩转换 BGRA→NV12，NV12 纹理经 DXGI Surface Buffer 直接喂硬件 MFT，全程不出 GPU。本机探针实测（Radeon RX 5500 XT，2560x1440@15fps）：编码延迟 min/avg/max = 11/30/53ms，首帧 IDR 41ms（软件低延迟模式首帧 78ms，且省掉 ~13ms/帧 的 CPU 色彩转换），解码端到端 60/60 验证通过
+- 无硬件 MFT 或初始化失败自动回退软件 H264Encoder（失败再回退 JPEG），三条降级链路不影响既有兼容性；IDR 看门狗 / FastFill / ForceKeyFrame（`AVEncVideoForceKeyFrame` 探针实测生效）行为与软件编码器一致
+- `ReconfigureEncoder`（画质调整）重建编码器时同样硬件优先；日志新增 `H.264 HW encoder initialized` / `Encoder reconfigured: h264/hw` 字段可确认是否走 GPU 路径
+- 排查沉淀（`tmp-llprobe` 探针）：硬件 MFT 调用前必须先在属性 store 设 `MF_TRANSFORM_ASYNC_UNLOCK=1`（GUID 曾误写 `da7db1f80e27`，真值 `da7db1f8e207`，错键读写自洽造成已解锁假象）；`MFCreateDXGISurfaceBuffer` 导出自 mfplat.dll 非 mfapi.dll；异步 MFT 事件 `GetEvent(0)` 为阻塞模式需用 NO_WAIT 非阻塞轮询
+
 ## v1.0.85 (Android App)（配合 PC v1.1.75）
 
 - **修复配合 PC v1.1.75 低延迟模式远程画面持续黑屏的问题**：PC 端编码器低延迟开启后，编码器多线程切片使每帧 slice 数从 1 变为 12+；Android 端解码器此前逐 slice 入队，13 次入队会耗尽 MediaCodec 输入缓冲（典型 4~8 个），而输出缓冲只在整帧排队完后才释放，重试 50ms 后静默丢 slice → 参考链断裂 → 持续黑屏。现在每帧所有 slice 合并为一个访问单元整块入队（单 buffer 多 NAL 是 Annex-B 标准用法），输入缓冲压力与旧版持平；`queueInput` 重试间隙自动取走已解码输出释放缓冲，入队失败不再静默（记日志）

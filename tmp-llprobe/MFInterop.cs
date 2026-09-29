@@ -166,9 +166,19 @@ internal interface IMFAttributes
     [PreserveSig] int SetUnknown_();
     [PreserveSig] int LockStore_();
     [PreserveSig] int UnlockStore_();
-    [PreserveSig] int GetCount_();
-    [PreserveSig] int GetItemByIndex_();
+    [PreserveSig] int GetCount(out int pcItems);
+    [PreserveSig] int GetItemByIndex(int dwIndex, out Guid pKey, out PROPVARIANT pValue);
     [PreserveSig] int CopyAllItems_();
+}
+
+/// <summary>PROPVARIANT 最小布局（x64 共 24 字节：8 头 + 16 union）。仅用于属性 dump。</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct PROPVARIANT
+{
+    public ushort vt;
+    public ushort r1, r2, r3;
+    public IntPtr p0; // union 前 8 字节（标量直接内联）
+    public IntPtr p1; // union 后 8 字节
 }
 
 /// <summary>
@@ -311,8 +321,8 @@ internal interface IMFTransform
     [PreserveSig] int GetInputStreamInfo(int dwInputStreamID, out MFT_INPUT_STREAM_INFO pInfo);
     [PreserveSig] int GetOutputStreamInfo(int dwOutputStreamID, out MFT_OUTPUT_STREAM_INFO pInfo);
     [PreserveSig] int GetAttributes(out IMFAttributes? ppAttributes);
-    [PreserveSig] int GetInputStreamAttributes_();
-    [PreserveSig] int GetOutputStreamAttributes_();
+    [PreserveSig] int GetInputStreamAttributes(int dwInputStreamID, out IMFAttributes? ppAttributes);
+    [PreserveSig] int GetOutputStreamAttributes(int dwOutputStreamID, out IMFAttributes? ppAttributes);
     [PreserveSig] int DeleteInputStream_();
     [PreserveSig] int AddInputStreams_();
     [PreserveSig] int GetInputAvailableType(int dwInputStreamID, int dwTypeIndex, out IMFMediaType? ppType);
@@ -379,7 +389,7 @@ internal interface IMFActivate
     [PreserveSig] int SetItem_();
     [PreserveSig] int DeleteItem_();
     [PreserveSig] int DeleteAllItems_();
-    [PreserveSig] int SetUINT32_();
+    [PreserveSig] int SetUINT32_(ref Guid key, uint value);
     [PreserveSig] int SetUINT64_();
     [PreserveSig] int SetDouble_();
     [PreserveSig] int SetGUID_();
@@ -388,8 +398,8 @@ internal interface IMFActivate
     [PreserveSig] int SetUnknown_();
     [PreserveSig] int LockStore_();
     [PreserveSig] int UnlockStore_();
-    [PreserveSig] int GetCount_();
-    [PreserveSig] int GetItemByIndex_();
+    [PreserveSig] int GetCount(out int pcItems);
+    [PreserveSig] int GetItemByIndex(int dwIndex, out Guid pKey, out PROPVARIANT pValue);
     [PreserveSig] int CopyAllItems_();
     // ---- IMFActivate（槽 33-35）----
     [PreserveSig] int ActivateObject(ref Guid riid, out IntPtr ppv);
@@ -431,9 +441,10 @@ internal static class MFHr
     public const int MF_E_INVALIDSTREAMNUMBER = unchecked((int)0xC00D36B3);
     public const int MF_E_INVALIDTYPE = unchecked((int)0xC00D36B4);
 
-    // MFT_MESSAGE_*（ProcessMessage 用）
-    public const int MFT_MESSAGE_COMMAND_FLUSH = 0x00000001;
-    public const int MFT_MESSAGE_COMMAND_DRAIN = 0x00000002;
+    // MFT_MESSAGE_*（ProcessMessage 用）——按 SDK mftransform.h 2025-03 核实：
+    // FLUSH=0, DRAIN=1（此前误写 1/2，整体错一位）
+    public const int MFT_MESSAGE_COMMAND_FLUSH = 0x00000000;
+    public const int MFT_MESSAGE_COMMAND_DRAIN = 0x00000001;
     public const int MFT_MESSAGE_NOTIFY_BEGIN_STREAMING = 0x10000000;
     public const int MFT_MESSAGE_NOTIFY_END_STREAMING = 0x10000001;
     public const int MFT_MESSAGE_NOTIFY_START_OF_STREAM = 0x10000003;

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>hwtest</AssemblyName>
+    <RootNamespace>HwTest</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 直接链接生产源文件：验证的就是将要发布的那份代码，不是复制品 -->
+    <Compile Include="../QuickRemote/pc-client/Services/HwH264Encoder.cs" Link="HwH264Encoder.cs" />
+    <Compile Include="../QuickRemote/pc-client/Services/MFInterop.cs" Link="MFInterop.cs" />
+    <Compile Include="../QuickRemote/pc-client/Services/IFrameEncoder.cs" Link="IFrameEncoder.cs" />
+    <Compile Include="../QuickRemote/pc-client/Services/Logger.cs" Link="Logger.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" Version="3.5.0" />
+    <PackageReference Include="Vortice.DXGI" Version="3.5.0" />
+  </ItemGroup>
+</Project>

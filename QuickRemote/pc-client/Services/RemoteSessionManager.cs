@@ -1158,11 +1158,22 @@ public sealed class RemoteSessionManager : IDisposable
         var bitrate = ComputeBitrateKbps(_qualityPercent);
         try
         {
-            var h264 = new H264Encoder();
-            h264.Initialize(width, height, _fps, bitrate);
-            _encoder = h264;
-            // LL 生效状态有诊断价值：延迟劣化时先看这行（false = 属性设置失败走 lookahead 路径）
-            _logger.Info($"H.264 encoder initialized: {_fps}fps, {bitrate}kbps, {width}x{height}, lowLatency={h264.IsLowLatency}");
+            // v1.1.76 硬件编码优先：GPU MFT 省掉 CPU 转色+编码（探针实测 11/30/53ms
+            // vs 软件首帧 78ms），无硬件 MFT 时回退软件 H264Encoder（失败再回退 JPEG）
+            var hw = HwH264Encoder.TryCreate(width, height, _fps, bitrate, _logger);
+            if (hw != null)
+            {
+                _encoder = hw;
+                _logger.Info($"H.264 HW encoder initialized: {_fps}fps, {bitrate}kbps, {width}x{height} (GPU MFT, zero-copy NV12)");
+            }
+            else
+            {
+                var h264 = new H264Encoder();
+                h264.Initialize(width, height, _fps, bitrate);
+                _encoder = h264;
+                // LL 生效状态有诊断价值：延迟劣化时先看这行（false = 属性设置失败走 lookahead 路径）
+                _logger.Info($"H.264 encoder initialized (software fallback): {_fps}fps, {bitrate}kbps, {width}x{height}, lowLatency={h264.IsLowLatency}");
+            }
         }
         catch (Exception ex)
         {
@@ -1737,12 +1748,23 @@ public sealed class RemoteSessionManager : IDisposable
                 try { _encoder?.Dispose(); } catch { }
                 _encoder = null;
 
+                bool hwUsed = false;
                 H264Encoder? h264 = null;
                 if (isH264)
                 {
-                    h264 = new H264Encoder();
-                    h264.Initialize(width, height, _fps, newBitrate);
-                    _encoder = h264;
+                    // v1.1.76 硬件优先（与首次初始化同策略），失败回退软件
+                    var hw = HwH264Encoder.TryCreate(width, height, _fps, newBitrate, _logger);
+                    if (hw != null)
+                    {
+                        _encoder = hw;
+                        hwUsed = true;
+                    }
+                    else
+                    {
+                        h264 = new H264Encoder();
+                        h264.Initialize(width, height, _fps, newBitrate);
+                        _encoder = h264;
+                    }
                 }
                 else
                 {
@@ -1750,7 +1772,7 @@ public sealed class RemoteSessionManager : IDisposable
                     jpeg.Initialize(width, height, _fps, newBitrate);
                     _encoder = jpeg;
                 }
-                _logger.Info($"Encoder reconfigured: {(_encoder?.CodecName)} at {newBitrate}kbps ({percent}%), lowLatency={(h264?.IsLowLatency ?? false)}");
+                _logger.Info($"Encoder reconfigured: {(_encoder?.CodecName)}{(hwUsed ? "/hw" : "")} at {newBitrate}kbps ({percent}%), lowLatency={(hwUsed || (h264?.IsLowLatency ?? false))}");
                 // 新编码器 lookahead 为空，静止桌面下无真实新帧：请求快投缓存帧填充，
                 // 否则重建后远程端黑屏直到桌面出现变化（quality 调整后黑屏的同源问题）
                 _pendingFastFill = true;

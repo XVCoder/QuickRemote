@@ -92,6 +92,9 @@ internal static class MFInterop
     /// <summary>视频解码器 MFT 类别（mftransform.h / mfapi 常量 MFT_CATEGORY_VIDEO_DECODER）。</summary>
     public static readonly Guid MFT_CATEGORY_VIDEO_DECODER = new("d6c02d4b-6833-45b4-971a-05a4b04bab91");
 
+    /// <summary>视频编码器 MFT 类别（mftransform.h MFT_CATEGORY_VIDEO_ENCODER，SDK 核实）。</summary>
+    public static readonly Guid MFT_CATEGORY_VIDEO_ENCODER = new("f79eac7d-e545-4387-bdee-d647d7bde42a");
+
     /// <summary>仅枚举同步（软件）MFT，排除需 DXVA/D3D 设备初始化的硬件 MFT。</summary>
     public const uint MFT_ENUM_FLAG_SYNCMFT = 0x00000001;
     /// <summary>仅枚举异步 MFT。</summary>
@@ -125,6 +128,38 @@ internal static class MFInterop
             if (ptr != IntPtr.Zero) Marshal.Release(ptr);
         }
     }
+
+    // ============ 硬件编码 MFT 管线（v1.1.76，GUID/常量全部从本机 SDK 10.0.26100.0 核实）============
+
+    /// <summary>MF_TRANSFORM_ASYNC（mftransform.h）：MFT 声明自己为异步 MFT（UINT32）。</summary>
+    public static readonly Guid MF_TRANSFORM_ASYNC = new("f81a699a-649a-497d-8c73-29f8fed6ad7a");
+    /// <summary>
+    /// MF_TRANSFORM_ASYNC_UNLOCK（mftransform.h SDK 核实：da7db1f8e207）。
+    /// ⚠️ 探针阶段曾误写 da7db1f80e27（凭记忆转录）——错键写入+读回自洽造成
+    /// "已解锁"假象，AMD MFT 实际从未解锁，GetInputStreamAttributes /
+    /// SET_D3D_MANAGER / SetInputType 全部返回 MF_E_TRANSFORM_ASYNC_LOCKED
+    /// (0xC00D6D77)。最终靠属性 store 全量 dump 对照 SDK 头文件暴露此差异。
+    /// </summary>
+    public static readonly Guid MF_TRANSFORM_ASYNC_UNLOCK = new("e5666d6b-3422-4eb6-a421-da7db1f8e207");
+
+    /// <summary>异步 MFT 事件：METransformNeedInput（mfobjects.h，SDK 核实）。</summary>
+    public const uint ME_TRANSFORM_NEED_INPUT = 601;
+    /// <summary>异步 MFT 事件：METransformHaveOutput（mfobjects.h，SDK 核实）。</summary>
+    public const uint ME_TRANSFORM_HAVE_OUTPUT = 602;
+    /// <summary>IMFMediaEventGenerator.GetEvent 非阻塞标志（MF_EVENT_FLAG_NO_WAIT）。</summary>
+    public const int MF_EVENT_FLAG_NO_WAIT = 0x1;
+    /// <summary>事件队列空（非阻塞 GetEvent 时返回）。</summary>
+    public const int MF_E_NO_EVENTS_AVAILABLE = unchecked((int)0xC00D3E80);
+    /// <summary>输出流 flag：MFT 自己提供输出 sample（硬件 MFT 常见）。</summary>
+    public const int MFT_OUTPUT_STREAM_PROVIDES_SAMPLES = 0x100;
+
+    [DllImport("mfplat.dll", ExactSpelling = true)]
+    public static extern int MFCreateDXGIDeviceManager(out int pResetToken, out IntPtr ppManager);
+
+    /// <summary>⚠️ 导出自 mfplat.dll（非 mfapi.dll——探针曾误写导致 DllNotFoundException）。</summary>
+    [DllImport("mfplat.dll", ExactSpelling = true)]
+    public static extern int MFCreateDXGISurfaceBuffer(ref Guid riid, IntPtr pUnkSurface,
+        uint uSubresourceIndex, int fBottomUpWhenLinear, out IntPtr ppBuffer);
 }
 
 /// <summary>
@@ -431,14 +466,79 @@ internal static class MFHr
     public const int MF_E_INVALIDSTREAMNUMBER = unchecked((int)0xC00D36B3);
     public const int MF_E_INVALIDTYPE = unchecked((int)0xC00D36B4);
 
-    // MFT_MESSAGE_*（ProcessMessage 用）
-    public const int MFT_MESSAGE_COMMAND_FLUSH = 0x00000001;
-    public const int MFT_MESSAGE_COMMAND_DRAIN = 0x00000002;
+    // MFT_MESSAGE_*（ProcessMessage 用）——按 SDK mftransform.h 核实（FLUSH=0, DRAIN=1，
+    // 此前误写 1/2 整体错一位；当前无调用点，修正以防后续误用）
+    public const int MFT_MESSAGE_COMMAND_FLUSH = 0x00000000;
+    public const int MFT_MESSAGE_COMMAND_DRAIN = 0x00000001;
+    public const int MFT_MESSAGE_SET_D3D_MANAGER = 0x00000002;
     public const int MFT_MESSAGE_NOTIFY_BEGIN_STREAMING = 0x10000000;
     public const int MFT_MESSAGE_NOTIFY_END_STREAMING = 0x10000001;
     public const int MFT_MESSAGE_NOTIFY_START_OF_STREAM = 0x10000003;
 
     public static bool Succeeded(int hr) => hr >= 0;
+}
+
+/// <summary>
+/// IMFMediaEventGenerator（异步 MFT 事件协议，v1.1.76 硬件编码）。
+/// IID = 2CD0BD52-BCD5-4B89-B62C-EADC0C031E7D（mfobjects.h SDK 核实）。
+/// GetEvent(dwFlags=0) 是阻塞模式：队列空时永久挂起——必须用
+/// MF_EVENT_FLAG_NO_WAIT 非阻塞轮询（探针实测挂死教训）。
+/// </summary>
+[ComImport]
+[Guid("2CD0BD52-BCD5-4B89-B62C-EADC0C031E7D")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMFMediaEventGenerator
+{
+    [PreserveSig] int GetEvent(int dwFlags, out IntPtr ppEvent);
+    [PreserveSig] int BeginGetEvent_(IntPtr cb, IntPtr state);
+    [PreserveSig] int EndGetEvent_(IntPtr result, out IntPtr ppEvent);
+    [PreserveSig] int QueueEvent_();
+}
+
+/// <summary>
+/// IMFMediaEvent 拍平声明（3 IUnknown + 30 IMFAttributes + 4 自身 = 37 槽）。
+/// IID = DF598932-F10C-4E39-BBA2-C308F101DAA3（mfobjects.h SDK 核实）。
+/// </summary>
+[ComImport]
+[Guid("DF598932-F10C-4E39-BBA2-C308F101DAA3")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMFMediaEventView
+{
+    // IMFAttributes 30 槽占位
+    [PreserveSig] int A01_(); [PreserveSig] int A02_(); [PreserveSig] int A03_();
+    [PreserveSig] int A04_(); [PreserveSig] int A05_(); [PreserveSig] int A06_();
+    [PreserveSig] int A07_(); [PreserveSig] int A08_(); [PreserveSig] int A09_();
+    [PreserveSig] int A10_(); [PreserveSig] int A11_(); [PreserveSig] int A12_();
+    [PreserveSig] int A13_(); [PreserveSig] int A14_(); [PreserveSig] int A15_();
+    [PreserveSig] int A16_(); [PreserveSig] int A17_(); [PreserveSig] int A18_();
+    [PreserveSig] int A19_(); [PreserveSig] int A20_(); [PreserveSig] int A21_();
+    [PreserveSig] int A22_(); [PreserveSig] int A23_(); [PreserveSig] int A24_();
+    [PreserveSig] int A25_(); [PreserveSig] int A26_(); [PreserveSig] int A27_();
+    [PreserveSig] int A28_(); [PreserveSig] int A29_(); [PreserveSig] int A30_();
+    // IMFMediaEvent（mfobjects.h 顺序：GetType, GetExtendedType, GetStatus, GetValue）
+    [PreserveSig] int GetType_(out uint met);
+    [PreserveSig] int GetExtendedType_(out Guid g);
+    [PreserveSig] int GetStatus_(out int hr);
+    [PreserveSig] int GetValue_();
+}
+
+/// <summary>
+/// IMFDXGIDeviceManager（mfobjects.h，v1.1.76 硬件编码 D3D 管线）。
+/// IID = eb533d5d-2db6-40f8-97a9-494692014f07（SDK 核实）。
+/// vtable 按 mfobjects.h 声明序：Close, GetVideoService, Lock, Open, Reset, Test, Unlock。
+/// </summary>
+[ComImport]
+[Guid("eb533d5d-2db6-40f8-97a9-494692014f07")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMFDXGIDeviceManager
+{
+    [PreserveSig] int CloseDeviceHandle_(IntPtr h);
+    [PreserveSig] int GetVideoService_(IntPtr h, ref Guid riid, out IntPtr pp);
+    [PreserveSig] int LockDevice_(IntPtr h, ref Guid riid, out IntPtr pp, int fBlock);
+    [PreserveSig] int OpenDeviceHandle_(out IntPtr h);
+    [PreserveSig] int ResetDevice(IntPtr pUnkDevice, uint resetToken);
+    [PreserveSig] int TestDevice_(IntPtr h);
+    [PreserveSig] int UnlockDevice_(IntPtr h);
 }
 
 /// <summary>

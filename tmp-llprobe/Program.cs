@@ -1,18 +1,25 @@
+using System.Runtime.InteropServices;
 using QuickRemote.PCClient.Services;
 
 // ============================================================================
-// 黑屏复现探针：完整模拟线上被控端时序（v1.1.75 LL 模式），
-// 并把编码输出按"每个 EncodeFrame 返回 = 一个 TCP 视频帧"喂给 MS 解码器，
-// 验证流是否可解（Android 黑屏 = 解码器吐不出非黑帧）。
-//
-// 线上时序（23:36:10 会话 2）：
-//   1. encoder init
-//   2. keyframe request #1（首帧之前！）→ ForceKeyFrame
-//   3. FastFill：喂缓存帧直到首个非空输出（实测 182B = 仅 SPS/PPS）
-//   4. keyframe request #2 → ForceKeyFrame + FastFill（4817B）
-//   5. 主循环 15fps 连续编码
-// 对照组：不下发 ForceKeyFrame / 仅 AVLowLatencyMode。
+// 探针入口：
+//   llprobe          → 黑屏复现 + 编解码端到端验证（默认）
+//   llprobe enum     → 枚举本机可用的 H.264 编码器 MFT（硬件/软件/异步）
 // ============================================================================
+
+if (args.Length > 0 && args[0] == "enum")
+{
+    return RunEnumProbe();
+}
+if (args.Length > 0 && args[0] == "hw")
+{
+    return HwProbe.Run();
+}
+if (args.Length > 0 && args[0] == "hw2")
+{
+    return HwGpuProbe.Run();
+}
+
 
 const int W = 2560, H = 1440;
 
@@ -150,3 +157,58 @@ RunScenario("线上时序复现", variant: 3, keyframeBeforeFirstFrame: true);
 RunScenario("对照：无 keyframe 先行", variant: 3, keyframeBeforeFirstFrame: false);
 RunScenario("对照：仅 AVLowLatencyMode + keyframe 先行", variant: 1, keyframeBeforeFirstFrame: true);
 return 0;
+
+// ============ 硬件编码器枚举（llprobe enum） ============
+
+static int RunEnumProbe()
+{
+    MfPlatform.EnsureStarted();
+
+    // MFT_CATEGORY_VIDEO_ENCODER + MFT_FRIENDLY_NAME_Attribute（codecapi.h/mfapi.h）
+    var catEncoder = new Guid("f79eac7d-e545-4387-bdee-d647d7bde42a");
+    var attrFriendlyName = new Guid("314ffbae-5b41-4c95-9c19-4e7d586face3"); // SDK mfapi.h 核实
+    var attrFlags = new Guid("eb3d2b3d-e0d8-45ae-a49c-9990af5d2baf"); // MFT_ENUM_ADAPTER? 无需，仅展示 flags
+
+    // 输入 NV12 → 输出 H264 的类型过滤（与真实使用一致）
+    var inType = new MFT_REGISTER_TYPE_INFO { guidMajorType = new Guid("73646976-0000-0010-8000-00aa00389b71"), guidSubtype = new Guid("3231564e-0000-0010-8000-00aa00389b71") };
+    var outType = new MFT_REGISTER_TYPE_INFO { guidMajorType = new Guid("73646976-0000-0010-8000-00aa00389b71"), guidSubtype = new Guid("34363248-0000-0010-8000-00aa00389b71") };
+    IntPtr inPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MFT_REGISTER_TYPE_INFO>());
+    IntPtr outPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MFT_REGISTER_TYPE_INFO>());
+    Marshal.StructureToPtr(inType, inPtr, false);
+    Marshal.StructureToPtr(outType, outPtr, false);
+
+    string[] flagNames = { "SYNCMFT(软件同步)", "ASYNC(软件异步)", "HARDWARE(硬件)", "FIELDOFUSE" };
+    uint[] flags = { MFInterop.MFT_ENUM_FLAG_SYNCMFT, MFInterop.MFT_ENUM_FLAG_ASYNC, MFInterop.MFT_ENUM_FLAG_HARDWARE, MFInterop.MFT_ENUM_FLAG_FIELDOFUSE };
+
+    try
+    {
+        foreach (var (flag, name) in flags.Zip(flagNames))
+        {
+            int hr = MFInterop.MFTEnumEx(catEncoder, flag, inPtr, outPtr, out var activates, out int count);
+            Console.WriteLine($"\n== {name} (0x{flag:X}): hr=0x{hr:X8}, {count} 个");
+            if (hr < 0 || count == 0) continue;
+            for (int i = 0; i < count; i++)
+            {
+                IntPtr actPtr = Marshal.ReadIntPtr(activates, i * IntPtr.Size);
+                var act = MFInterop.GetObject<IMFActivate>(actPtr);
+                string fname = "?";
+                if (act.GetStringLength(ref attrFriendlyName, out uint len) >= 0 && len > 0)
+                {
+                    var buf = Marshal.AllocHGlobal((int)len * 2 + 2);
+                    if (act.GetString(ref attrFriendlyName, buf, (uint)(len * 2 + 2), out _) >= 0)
+                        fname = Marshal.PtrToStringUni(buf) ?? "?";
+                    Marshal.FreeHGlobal(buf);
+                }
+                Console.WriteLine($"   [{i}] {fname}");
+                Marshal.ReleaseComObject(act);
+            }
+            Marshal.FreeHGlobal(activates);
+        }
+    }
+    finally
+    {
+        Marshal.FreeHGlobal(inPtr);
+        Marshal.FreeHGlobal(outPtr);
+    }
+    return 0;
+}
