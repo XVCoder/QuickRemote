@@ -677,7 +677,22 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-28）
+## 当前线上版本（2026-09-29）
+
+> ✅ **PC v1.1.76 + about v1.0.136 已发布**（2026-09-29 08:45）= 第二步优化：编码切换 GPU 硬件优先。
+> 新增 `HwH264Encoder`（MFTEnumEx 硬件编码 MFT + D3D11 VideoProcessor BGRA→NV12 + DXGI Surface Buffer
+> 零拷贝喂异步 MFT），无硬件 MFT 自动回退软件 H264Encoder（再回退 JPEG），三级降级链路不影响兼容性。
+> 本机探针/生产类双验证：编码延迟 11/30/53ms（软件首帧 78ms+13ms/帧 CPU 转色），首帧 IDR 30-41ms，
+> 60/60 解码非黑；ForceKeyFrame 生效但有 ~11 帧（~733ms）内部延迟，落在 IDR 看门狗 1500ms 窗口内。
+> **PC 单端发版**：Android 1.0.85 / relay 1.0.8 零改动不重发；pc-updater 随 ZIP 重发。
+> - ASYNC_LOCKED 根因 = unlock GUID 误写 `da7db1f80e27`（真值 `da7db1f8e207`），错键读写自洽假象；
+>   另 `MFCreateDXGISurfaceBuffer` 在 mfplat.dll 非 mfapi.dll；`GetEvent(0)` 阻塞会挂死 → NO_WAIT 轮询
+> - PC ZIP `961,805B`（14 条目，内嵌 `1.1.76+2102e73`）→ `/d/p/ad5d4e53-3227-4121-b49e-8be42d566e85`
+> - about 蓝绿端口 **20031**，持久化卷 `data`；HTML 27234（本地 27160 **+74**）/ CSS 21400 / JS 8286
+> - manifest 线上 `{relay 1.0.8, pc 1.1.76, android 1.0.85}`；清理 pc 1.1.71/72/73、about 包 1.0.129~1.0.133
+> - 提交 `2102e73` + `dea829e`（远端 main 已用 `git ls-remote` 核对 = 本地 HEAD）
+> - 新增 `tmp-hwtest/`（直接链接生产源文件的硬件编码器端到端验证工程，发版前 PASS 门禁）
+> - 上一版：PC v1.1.75 / Android v1.0.85 / about v1.0.135（2026-09-28，低延迟开关修正 + 解码端整帧入队）。
 
 > ✅ **PC v1.1.73 + about v1.0.132 已发布**（2026-09-28 01:10）= 修复显示器休眠期间远程连接秒断、
 > 主控端无限重连：DXGI `E_INVALIDARG (0x80070057)` 加入 `IsAccessDeniedOrLost` 可恢复集合，
