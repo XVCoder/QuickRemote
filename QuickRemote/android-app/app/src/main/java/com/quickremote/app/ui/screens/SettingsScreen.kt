@@ -1,8 +1,7 @@
 package com.quickremote.app.ui.screens
 
+import android.app.DownloadManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.core.content.FileProvider
 import com.quickremote.app.BuildConfig
 import com.quickremote.app.data.PairingPayload
 import com.quickremote.app.data.RelayAddress
@@ -70,6 +68,7 @@ import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.Border
 import com.quickremote.app.ui.theme.BorderLight
+import com.quickremote.app.services.UpdateDownloader
 import com.quickremote.app.ui.theme.Danger
 import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
@@ -78,14 +77,9 @@ import com.quickremote.app.ui.theme.TextSecondary
 import com.quickremote.app.viewmodels.FeedbackUiState
 import com.quickremote.app.viewmodels.MainViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * 设置页：服务器地址、画质与触控、版本检查、更新记录、日志上传、关于。
@@ -706,14 +700,53 @@ fun SettingsScreen(
             )
         }
 
-        // 发现新版本对话框（展示更新内容 + App 内下载安装）
+        // 发现新版本对话框（v1.0.86：后台下载 + 断点续传）
+        // 下载交给系统 DownloadManager：关闭对话框 / 切后台 / 锁屏都不中断，中断后自动续传。
         updateInfo?.let { info ->
-            var downloading by remember(info) { mutableStateOf(false) }
+            var phase by remember(info) { mutableStateOf(UpdatePhase.Idle) }
             var progress by remember(info) { mutableStateOf(0f) }
+            var downloadId by remember(info) { mutableStateOf<Long?>(null) }
             var downloadError by remember(info) { mutableStateOf<String?>(null) }
             val scope = rememberCoroutineScope()
+
+            // 恢复已存在的后台下载（关过对话框 / 重启 App 后仍能接着看进度或直接安装）
+            LaunchedEffect(info) {
+                val saved = UpdateDownloader.savedDownload(context)
+                if (saved != null && saved.second == info.latestVersion) {
+                    downloadId = saved.first
+                    val p = withContext(Dispatchers.IO) { UpdateDownloader.query(context, saved.first) }
+                    if (p == null || p.status == DownloadManager.STATUS_FAILED) {
+                        phase = UpdatePhase.Idle
+                    } else if (p.status == DownloadManager.STATUS_SUCCESSFUL) {
+                        phase = UpdatePhase.Ready
+                    } else {
+                        phase = UpdatePhase.Downloading
+                        if (p.total > 0) progress = (p.bytes.toFloat() / p.total.toFloat()).coerceIn(0f, 1f)
+                    }
+                }
+            }
+
+            // 轮询下载进度（仅下载中；进入后台后由系统继续，回到本页再接着显示）
+            LaunchedEffect(downloadId, phase) {
+                val id = downloadId ?: return@LaunchedEffect
+                if (phase != UpdatePhase.Downloading) return@LaunchedEffect
+                while (true) {
+                    val p = withContext(Dispatchers.IO) { UpdateDownloader.query(context, id) }
+                    if (p == null) { phase = UpdatePhase.Idle; break }
+                    if (p.total > 0) progress = (p.bytes.toFloat() / p.total.toFloat()).coerceIn(0f, 1f)
+                    if (p.status == DownloadManager.STATUS_SUCCESSFUL) { phase = UpdatePhase.Ready; break }
+                    if (p.status == DownloadManager.STATUS_FAILED) {
+                        phase = UpdatePhase.Idle
+                        downloadError = "下载失败（reason=${p.reason}），可重试"
+                        break
+                    }
+                    delay(500)
+                }
+            }
+
             AlertDialog(
-                onDismissRequest = { if (!downloading) viewModel.dismissUpdate() },
+                // 随时可关闭：下载在后台继续，不受对话框生命周期影响
+                onDismissRequest = { viewModel.dismissUpdate() },
                 title = {
                     Text("发现新版本 v${info.latestVersion}", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                 },
@@ -740,7 +773,7 @@ fun SettingsScreen(
                                 )
                             }
                         }
-                        if (downloading) {
+                        if (phase == UpdatePhase.Downloading) {
                             Spacer(modifier = Modifier.height(12.dp))
                             LinearProgressIndicator(
                                 progress = { progress },
@@ -749,9 +782,17 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "正在下载安装包… ${(progress * 100).toInt()}%",
+                                "后台下载中… ${(progress * 100).toInt()}%（可关闭此对话框，下载继续）",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
+                            )
+                        }
+                        if (phase == UpdatePhase.Ready) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "安装包已就绪，点击下方安装即可",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Success
                             )
                         }
                         downloadError?.let { err ->
@@ -763,26 +804,62 @@ fun SettingsScreen(
                 confirmButton = {
                     Button(
                         onClick = {
-                            downloading = true
-                            downloadError = null
-                            scope.launch {
-                                try {
-                                    val file = withContext(Dispatchers.IO) {
-                                        downloadUpdateApk(context, info.downloadUrl, info.latestVersion) { p -> progress = p }
+                            when (phase) {
+                                UpdatePhase.Ready -> {
+                                    // 已下载完成：校验后唤起系统安装器
+                                    scope.launch {
+                                        try {
+                                            val file = withContext(Dispatchers.IO) {
+                                                UpdateDownloader.validate(context, info.latestVersion)
+                                            }
+                                            UpdateDownloader.install(context, file)
+                                        } catch (e: Exception) {
+                                            downloadError = e.message
+                                            phase = UpdatePhase.Idle
+                                        }
                                     }
-                                    // 下载完成，直接唤起系统安装器（App 内更新，不经浏览器/文件管理器）
-                                    openApkInstaller(context, file)
-                                    downloading = false
-                                } catch (e: Exception) {
-                                    downloading = false
-                                    downloadError = "下载失败：${e.message ?: "未知错误"}，请重试或改用浏览器下载"
+                                }
+                                UpdatePhase.Downloading -> Unit // 下载中，按钮禁用
+                                UpdatePhase.Idle -> {
+                                    downloadError = null
+                                    // 主路径：系统 DownloadManager（后台 + 断点续传）
+                                    val id = UpdateDownloader.enqueue(context, info.downloadUrl, info.latestVersion)
+                                    if (id != null) {
+                                        downloadId = id
+                                        phase = UpdatePhase.Downloading
+                                    } else {
+                                        // 兜底：DownloadManager 不可用时 App 内带 Range 续传下载
+                                        phase = UpdatePhase.Downloading
+                                        scope.launch {
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    UpdateDownloader.downloadResumable(
+                                                        context, info.downloadUrl, info.latestVersion
+                                                    ) { p -> progress = p }
+                                                }
+                                                phase = UpdatePhase.Ready
+                                                val file = UpdateDownloader.validate(context, info.latestVersion)
+                                                UpdateDownloader.install(context, file)
+                                            } catch (e: Exception) {
+                                                phase = UpdatePhase.Idle
+                                                downloadError = "下载失败：${e.message ?: "未知错误"}"
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         },
-                        enabled = info.downloadUrl.isNotBlank() && !downloading,
+                        enabled = info.downloadUrl.isNotBlank() && phase != UpdatePhase.Downloading,
                         colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = TextPrimary)
                     ) {
-                        Text(if (downloading) "下载中…" else "立即更新", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            when (phase) {
+                                UpdatePhase.Idle -> if (downloadError == null) "立即更新" else "重试"
+                                UpdatePhase.Downloading -> "后台下载中…"
+                                UpdatePhase.Ready -> "安装"
+                            },
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 },
                 dismissButton = {
@@ -931,99 +1008,11 @@ private fun SectionTitle(text: String) {
     )
 }
 
-/**
- * App 内下载更新 APK 到应用外部私有目录（无需存储权限）。
- * 此前"立即更新"只是打开浏览器链接，用户需在下载目录手动找文件安装，
- * 连续两次装成旧版本（v1.0.39 装成 1.0.38、v1.0.41 装成 1.0.40），
- * 现改为 App 内直接下载并唤起系统安装器，全程不离开 App。
- *
- * v1.0.44 加固：v1.0.43 升级时曾出现"下载进度 100%、安装器显示成功，
- * 但实际装入的仍是旧版 APK"（同 versionCode 覆盖重装也会显示安装成功）。
- * 现下载前清除旧文件、URL 加时间戳防缓存污染、下载后校验 APK 内嵌
- * versionName 与期望版本一致，不一致直接拦截不再唤起安装器。
- */
-private fun downloadUpdateApk(context: Context, url: String, expectedVersion: String, onProgress: (Float) -> Unit): File {
-    val dir = context.getExternalFilesDir(null)
-        ?: File(context.filesDir, "update").apply { mkdirs() }
-    val file = File(dir, "QuickRemote-update.apk")
-    // 防旧安装包残留干扰：每次下载前清除
-    if (file.exists() && !file.delete()) {
-        throw IOException("无法清除旧安装包缓存，请重试")
-    }
-    // 加时间戳参数防中间层缓存返回旧内容
-    val cacheBustingUrl = if (url.contains("?")) "$url&_t=${System.currentTimeMillis()}" else "$url?_t=${System.currentTimeMillis()}"
-    val conn = URL(cacheBustingUrl).openConnection() as HttpURLConnection
-    conn.connectTimeout = 15000
-    conn.readTimeout = 60000
-    conn.instanceFollowRedirects = true
-    conn.setRequestProperty("Cache-Control", "no-cache")
-    try {
-        if (conn.responseCode != 200) throw IOException("服务器返回 HTTP ${conn.responseCode}")
-        val total = conn.contentLengthLong.toFloat()
-        conn.inputStream.use { input ->
-            FileOutputStream(file).use { out ->
-                val buf = ByteArray(64 * 1024)
-                var done = 0L
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    out.write(buf, 0, n)
-                    done += n
-                    if (total > 0) onProgress((done / total).coerceIn(0f, 1f))
-                }
-                // 流提前结束且未下满声明长度，视为下载不完整
-                if (total > 0 && done < total.toLong()) {
-                    throw IOException("下载中断（${done}/${total.toLong()} 字节）")
-                }
-            }
-        }
-    } finally {
-        conn.disconnect()
-    }
-    // 简单完整性校验：APK 是 zip 包（PK 头）且体积应大于 1MB
-    if (file.length() < 1_000_000) throw IOException("安装包不完整（${file.length()} 字节）")
-    FileInputStream(file).use { it.read() == 0x50 && it.read() == 0x4B }.let { isZip ->
-        if (!isZip) {
-            file.delete()
-            throw IOException("下载内容不是有效安装包")
-        }
-    }
-    // 关键校验：读取 APK 内嵌版本号，防止下载被缓存污染后装入旧版
-    //（旧场景：versionCode 相同的旧包覆盖重装，安装器同样显示"安装成功"）
-    val pkgInfo = try {
-        context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
-    } catch (e: Exception) {
-        null
-    }
-    if (pkgInfo == null) {
-        file.delete()
-        throw IOException("安装包解析失败，请重试")
-    }
-    val actualVersion = pkgInfo.versionName.orEmpty().trim().trimStart('v', 'V')
-    if (actualVersion != expectedVersion.trim().trimStart('v', 'V')) {
-        file.delete()
-        throw IOException("下载到旧版本安装包（实际 v$actualVersion，应为 v$expectedVersion），已拦截。请稍后重试")
-    }
-    return file
-}
+/** 更新包下载/校验/安装：v1.0.86 起统一在 UpdateDownloader 中实现（后台下载 + 断点续传）。 */
 
-/** 通过 FileProvider 唤起系统安装器安装指定 APK。失败时回退到浏览器打开下载页。 */
-private fun openApkInstaller(context: Context, apk: File) {
-    try {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        // FileProvider 或安装器唤起失败（极老 ROM）：回退浏览器
-        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://qd.solutionx.top/app/23dafeae-1f70-4d6c-8023-dc585b0f4366/about"))
-        fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(fallback)
-    }
-}
+/** 更新对话框的下载阶段：未开始 / 下载中 / 已就绪待安装。 */
+private enum class UpdatePhase { Idle, Downloading, Ready }
+
 
 @Composable
 private fun SettingCard(content: @Composable () -> Unit) {

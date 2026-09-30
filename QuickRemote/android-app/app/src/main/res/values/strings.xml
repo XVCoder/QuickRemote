@@ -30,6 +30,12 @@
     <string name="notify_session_title_unknown">远程会话进行中</string>
     <string name="notify_session_text">切到其他应用不会断开</string>
 
+    <!-- 更新包下载完成通知（后台下载结束后提示安装） -->
+    <string name="notify_channel_update_name">应用更新</string>
+    <string name="notify_channel_update_desc">后台下载更新包，下载完成后提示安装</string>
+    <string name="notify_update_ready_title">新版本已下载完成</string>
+    <string name="notify_update_ready_text">点击安装 QuickRemote v%1$s</string>
+
     <!-- 设置 -->
     <string name="settings_server">服务器</string>
     <string name="settings_about">关于</string>
