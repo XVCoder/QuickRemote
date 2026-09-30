@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.85",
-    "changelog": "修复配合 PC v1.1.75 低延迟模式远程画面持续黑屏：解码器改为整帧一个访问单元入队，避免 MediaCodec 输入缓冲耗尽丢 slice；需 PC 端 v1.1.75+",
+    "latest_version": "1.0.86",
+    "changelog": "更新包下载改为后台下载并支持断点续传：改由系统下载管理器执行，关闭弹窗/切后台/锁屏不中断，断网恢复后从断点继续；下载完成会提示安装。ROM 禁用时自动回退应用内 Range 续传",
     "versions": {
+      "1.0.86": {
+        "apk": "https://qd.solutionx.top/d/p/86868ce4-1c0c-4e59-a0b4-f273a71352cd"
+      },
       "1.0.85": {
         "apk": "https://qd.solutionx.top/d/p/db45586c-4a5b-4222-a857-4fb49d7119ef"
       },
       "1.0.84": {
         "apk": "https://qd.solutionx.top/d/p/ed1c040f-5215-4eca-9280-36079fca11f1"
-      },
-      "1.0.83": {
-        "apk": "https://qd.solutionx.top/d/p/5372c30b-6ae4-4185-bc9f-cb913cfce893"
       }
     }
   }
