@@ -677,7 +677,23 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-09-29）
+## 当前线上版本（2026-10-01）
+
+> ✅ **Android v1.0.86 + about v1.0.137 已发布**（2026-10-01 06:35）= 更新包后台下载 + 断点续传。
+> 下载改由系统 DownloadManager 执行（App 退后台/被划掉仍继续、中断后系统发 `Range` 续传），
+> downloadId+version 持久化跨重启恢复；ROM 禁用时回退 App 内 `Range: bytes=N-` 续传（最多 5 次重试）。
+> 下载完成若已离开设置页 → 通知栏「点击安装」（`UpdateDownloadReceiver` 只能动态注册：
+> Android 8+ 禁静态注册隐式广播）。三重校验（大小/ZIP头/内嵌 versionName）沿用并接入两条路径。
+> **Android 单端发版**：PC 1.1.76 / relay 1.0.8 / pc-updater 零改动不重发。
+> - APK `13,800,143B`（versionCode 86）→ `/d/p/86868ce4-1c0c-4e59-a0b4-f273a71352cd`
+> - about 蓝绿端口 **20041**，持久化卷 `data`；HTML 27234（本地 27160 **+74**）/ CSS 21400 / JS 8286
+> - manifest 线上 `{relay 1.0.8, pc 1.1.76, android 1.0.86}`；清理 android 1.0.82/83、about 包 1.0.134
+> - 提交 `413f686` + `84d5a98`（远端 main 已用 `git ls-remote` 核对 = 本地 HEAD）
+> - ⚠️ **本轮新坑：删除文件必须用 `list_files` 返回的 file_id**。android-app 目录里的 file_id
+>   （1.0.85 = `c68a3065`）与 manifest 下载链接里的分享 ID（`db45586c`）**不是同一个值**；
+>   此处曾拿 skill 里记的分享 ID 当 file_id 删，报「文件不存在: sql: no rows in result set」。
+>   → 清理前先 `list_files(dir_id)`，用列出的 ID 删。
+> - 上一版：PC v1.1.76 / about v1.0.136（2026-09-29，硬件编码 GPU MFT 零拷贝管线）。
 
 > ✅ **PC v1.1.76 + about v1.0.136 已发布**（2026-09-29 08:45）= 第二步优化：编码切换 GPU 硬件优先。
 > 新增 `HwH264Encoder`（MFTEnumEx 硬件编码 MFT + D3D11 VideoProcessor BGRA→NV12 + DXGI Surface Buffer
