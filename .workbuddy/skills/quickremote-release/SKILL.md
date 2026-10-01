@@ -699,6 +699,15 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 >   ② **改 about 的 server.js 下载 URL 时不要凭记忆写 old_string**——上轮发版留下的 URL 与记忆不符导致 replace 静默不生效，
 >      部署后 `/dl/android` 仍指旧包（幸好校验链路抓到）。改完必须 grep 复核 + 部署后核对 `/dl/*` Location。
 > - Go 交叉编译坑：多架构连跑会被沙箱 SIGTERM，分两条后台命令跑即可（单条仅 6-50s）。
+> - ⚠️ 本轮新坑 3 个（2026-10-01 上午）：
+>   ③ **上传 shell 脚本必须转 LF**——仓库 autocrlf=true 使工作区文件为 CRLF，直接 `file=@install.sh` 上传
+>      会在 Linux 上炸 `$'\r': command not found` / `set: invalid option pipefail`。上传前 python 读 bytes
+>      `replace(b'\r\n',b'\n')` 写临时文件再传，上传后必须下载回来验证 `\r` 计数 = 0 + bash -n。
+>   ④ **覆盖上传要求本地文件名与目标完全同名**——传 `install.sh.lf` 会新建文件而不是覆盖 `install.sh`
+>      （先 cp 到临时目录改回同名再传，传完核对返回的 file_id 是否为原值）。
+>   ⑤ **写 .gitignore 排除规则后必须 `git check-ignore --no-index` 用真实文件验证**（v*.linux-* 连字符笔误）。
+>   另：X 曾把 qd CLI 的安装脚本（tempfiles.solutionx.top，另一个项目）误当 relay 安装脚本——
+>   relay 正确安装命令在 about 页，指向 `/d/p/2430959d`。
 > - 上一版：PC v1.1.76 / Android v1.0.86 / about v1.0.136-139（2026-09-29/10-01）。
 
 > ✅ **Android v1.0.86 + about v1.0.137 已发布**（2026-10-01 06:35）= 更新包后台下载 + 断点续传。
