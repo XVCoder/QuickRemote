@@ -679,6 +679,8 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ## 当前线上版本（2026-10-01 三端）
 
+> ✅ **Android v1.0.88 + about v1.0.140 已发布**（2026-10-01 10:15）= 重发修复版（新版本号）：双锁按钮修复 + versionCode 88，APK 13,816,791B → `/d/p/078ce04d-e9bd-4858-b334-21ecf18d5aa9`；manifest android 留 {88,87,86}，删 85；about 包删 137。端口 20046。
+>
 > ✅ **relay 1.0.9 + PC v1.1.77 + Android v1.0.87 + about v1.0.139 已发布**（2026-10-01 09:15）=
 > 三端管理员模式。relay：`admin.password`（存量回填 88888888，install.sh 新装随机 6 位可自定义、
 > 升级时提示设置、「修改配置」可改）+ `POST /api/admin/verify`、`POST /api/admin/device/delete`
