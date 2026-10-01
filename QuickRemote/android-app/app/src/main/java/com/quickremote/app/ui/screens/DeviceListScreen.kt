@@ -282,7 +282,7 @@ fun DeviceListScreen(
             onDismiss = { showAdminDialog = false },
             onConfirm = { password ->
                 showAdminDialog = false
-                viewModel.enterAdminMode(password)
+                if (isAdmin) viewModel.exitAdminMode() else viewModel.enterAdminMode(password)
             }
         )
     }
@@ -291,8 +291,9 @@ fun DeviceListScreen(
 }
 
 /**
- * 管理员模式入口对话框（v1.0.87）：输入 relay 服务器设置的管理员密码。
+ * 管理员模式入口对话框（v1.0.89）：输入 relay 服务器设置的管理员密码。
  * 密码通过后进入管理员模式：被软删除的设备可见，且移除时可勾选物理删除。
+ * 已处于管理员模式时再次点击 → 显示退出确认，确定则退出并刷新列表。
  */
 @Composable
 private fun AdminPasswordDialog(
@@ -309,7 +310,7 @@ private fun AdminPasswordDialog(
             Column {
                 if (isAdmin) {
                     Text(
-                        "已处于管理员模式。",
+                        "当前已处于管理员模式。\n\n是否退出管理员登录？退出后：\n· 被软删除的设备将不再展示；\n· 移除设备时不再提供「物理删除」选项。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
@@ -332,10 +333,14 @@ private fun AdminPasswordDialog(
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = { onConfirm(password) },
-                enabled = isAdmin || password.isNotBlank()
-            ) { Text("确定", color = if (isAdmin || password.isNotBlank()) Accent else TextMuted) }
+            if (isAdmin) {
+                TextButton(onClick = { onConfirm("") }) { Text("退出", color = Danger) }
+            } else {
+                TextButton(
+                    onClick = { onConfirm(password) },
+                    enabled = password.isNotBlank()
+                ) { Text("确定", color = if (password.isNotBlank()) Accent else TextMuted) }
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }

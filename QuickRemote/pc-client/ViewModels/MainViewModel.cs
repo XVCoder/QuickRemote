@@ -527,9 +527,22 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
 
     private async Task EnterAdminModeAsync()
     {
+        // 已处于管理员模式：提示退出登录。退出后恢复普通视图（已隐藏的设备不再展示）。
         if (IsAdminMode)
         {
-            Views.DialogWindow.Show("已处于管理员模式。", "管理员模式", Views.DialogWindow.DialogType.Info);
+            var exit = Views.DialogWindow.Confirm(
+                "当前已处于管理员模式。\n\n是否退出管理员登录？退出后：\n· 被软删除的设备将不再展示；\n· 移除设备时不再提供「物理删除」选项。",
+                "管理员模式", Views.DialogWindow.DialogType.Question);
+            if (!exit) return;
+
+            _adminPassword = null;
+            IsAdminMode = false;
+            _logger.Info("Admin mode exited");
+
+            // 立即重装配列表：被软删除的设备退出展示
+            var exitSnapshot = _lastDeviceList;
+            if (exitSnapshot != null)
+                Application.Current?.Dispatcher.InvokeAsync(() => RebuildDeviceList(exitSnapshot));
             return;
         }
 

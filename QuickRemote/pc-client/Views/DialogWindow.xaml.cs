@@ -120,7 +120,7 @@ public partial class DialogWindow : Window
             var win = Create(title, message, DialogType.Question, showCancel: true);
             if (!string.IsNullOrWhiteSpace(checkboxText))
             {
-                win.OptionCheck.Content = checkboxText;
+                win.OptionCheckText.Text = checkboxText;
                 win.OptionCheck.IsChecked = defaultChecked;
                 win.OptionPanel.Visibility = Visibility.Visible;
             }

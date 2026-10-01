@@ -264,6 +264,15 @@ class MainViewModel(
         }
     }
 
+    /** 退出管理员模式：清空内存密码并刷新列表（被软删除的设备不再展示）。 */
+    fun exitAdminMode() {
+        adminPassword = ""
+        _isAdmin.value = false
+        rebuildDeviceList()
+        _toast.value = "已退出管理员模式"
+        logger.info("Admin mode exited")
+    }
+
     /**
      * 物理删除设备（管理员模式）：调服务端接口清除设备记录并拉黑旧 ID，
      * 同时把该 ID 移出本地隐藏集合，刷新列表。

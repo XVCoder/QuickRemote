@@ -54,12 +54,16 @@
                            TextWrapping="Wrap" LineHeight="20" VerticalAlignment="Top"/>
             </Grid>
 
-            <!-- v1.1.77 管理员模式：可选的「物理删除」复选框（默认折叠，按需显示） -->
+            <!-- v1.1.77 管理员模式：可选的「物理删除」复选框（默认折叠，按需显示）。
+                 CheckBox 内容必须用 TextBlock 且限宽换行：固定宽窗口里长文案会被硬裁（v1.1.78 截图反馈） -->
             <StackPanel Grid.Row="2" x:Name="OptionPanel" Orientation="Horizontal"
                         Margin="22,6,22,0" Visibility="Collapsed">
-                <CheckBox x:Name="OptionCheck" Content="" IsChecked="True"
+                <CheckBox x:Name="OptionCheck" IsChecked="True"
                           Foreground="{StaticResource TextPrimaryBrush}"
-                          FontSize="12.5" VerticalAlignment="Center"/>
+                          FontSize="12.5" VerticalAlignment="Top">
+                    <TextBlock x:Name="OptionCheckText" Text="" TextWrapping="Wrap"
+                               MaxWidth="330" LineHeight="18"/>
+                </CheckBox>
             </StackPanel>
 
             <!-- 按钮 -->

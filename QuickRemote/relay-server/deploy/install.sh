@@ -379,10 +379,6 @@ do_install() {
         info "已随机生成管理员密码: $admin_password"
     fi
 
-    local quickdeploy_url
-    prompt "请输入quickdeploy地址 (可选) []: "
-    read -r quickdeploy_url
-
     # 创建目录
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR"
 
@@ -407,7 +403,8 @@ admin:
 storage:
   sqlite_path: "$DATA_DIR/registry.db"
 quickdeploy:
-  base_url: "$quickdeploy_url"
+  # 客户端日志转发目标（内部功能，默认留空；需要时通过菜单「修改配置」填写）
+  base_url: ""
 EOF
 
     # 创建 systemd 服务
