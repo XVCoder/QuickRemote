@@ -170,10 +170,6 @@ fun DeviceListScreen(
                 IconButton(onClick = { showAdminDialog = true }) {
                     Icon(Icons.Filled.Lock, contentDescription = "管理员模式", tint = TextPrimary)
                 }
-                // v1.0.87 管理员模式入口：设置按钮左边（锁形图标）
-                IconButton(onClick = { showAdminDialog = true }) {
-                    Icon(Icons.Filled.Lock, contentDescription = "管理员模式", tint = TextPrimary)
-                }
                 IconButton(onClick = onSettingsClick) {
                     Icon(Icons.Filled.Settings, contentDescription = "设置", tint = TextPrimary)
                 }
