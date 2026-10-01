@@ -1,8 +1,12 @@
 {
   "relay-server": {
-    "latest_version": "1.0.8",
-    "changelog": "设备列表接口 GET /api/devices 新增可选参数 all=1，返回全部设备（含离线设备）；不带参数时行为与旧版完全一致，旧客户端升级零影响",
+    "latest_version": "1.0.9",
+    "changelog": "新增管理员模式：config.yaml 支持 admin.password（存量默认 88888888，安装脚本可随机生成/自定义）；新增管理员密码校验与设备物理删除接口；物理删除的设备进黑名单，旧 ID 再注册会被要求重新生成设备 ID",
     "versions": {
+      "1.0.9": {
+        "amd64": "https://qd.solutionx.top/d/p/e2199a5e-d40a-4ba5-899a-68eb29fa916c",
+        "arm64": "https://qd.solutionx.top/d/p/c724e997-0e57-4ede-bbb2-1501a59b1946"
+      },
       "1.0.8": {
         "amd64": "https://qd.solutionx.top/d/p/cfc52a23-36b5-464a-a626-8021538a381b",
         "arm64": "https://qd.solutionx.top/d/p/cf719669-79a5-4f54-b8c5-991e03cf5191"
@@ -10,40 +14,36 @@
       "1.0.7": {
         "amd64": "https://qd.solutionx.top/d/p/bc9590a9-dae5-4c3d-a61f-add40dab9935",
         "arm64": "https://qd.solutionx.top/d/p/66d5f37d-57d9-4198-9aeb-b86606e49835"
-      },
-      "1.0.6": {
-        "amd64": "https://qd.solutionx.top/d/p/df79c7e1-5822-40b0-a11c-0719932b2366",
-        "arm64": "https://qd.solutionx.top/d/p/55732f27-b1bb-45dc-9471-479123977a9f"
       }
     }
   },
   "pc-client": {
-    "latest_version": "1.1.76",
-    "changelog": "编码切换 GPU 硬件优先：硬件 H.264 编码 MFT（AMD/Intel/NVIDIA）+ D3D11 零拷贝管线，本机实测编码延迟 11/30/53ms（软件 78ms+），无硬件自动回退软件编码；画质调整/IDR 看门狗行为不变",
+    "latest_version": "1.1.77",
+    "changelog": "新增管理员模式：首页右上角设置按钮左侧新增入口，输入 relay 管理员密码后可查看被软删除的设备并支持物理删除（未软删除项展示「物理删除」复选框默认勾选）；本机被物理删除后自动重新生成设备 ID 重新注册",
     "versions": {
+      "1.1.77": {
+        "zip": "https://qd.solutionx.top/d/p/60bda645-0b85-4b3d-b57b-5c5570d94efb"
+      },
       "1.1.76": {
         "zip": "https://qd.solutionx.top/d/p/ad5d4e53-3227-4121-b49e-8be42d566e85"
       },
       "1.1.75": {
         "zip": "https://qd.solutionx.top/d/p/0f0a923f-f8a5-4e87-bb64-29d060b12776"
-      },
-      "1.1.74": {
-        "zip": "https://qd.solutionx.top/d/p/92a9107b-a304-4d16-a20a-5fd3200bc723"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.86",
-    "changelog": "更新包下载改为后台下载并支持断点续传：改由系统下载管理器执行，关闭弹窗/切后台/锁屏不中断，断网恢复后从断点继续；下载完成会提示安装。ROM 禁用时自动回退应用内 Range 续传",
+    "latest_version": "1.0.87",
+    "changelog": "新增管理员模式：设备页右上角新增入口，输入 relay 管理员密码后可查看被软删除的设备并支持物理删除（确认框含「物理删除」复选框默认勾选）；非管理员行为不变（仅软删除）",
     "versions": {
+      "1.0.87": {
+        "apk": "https://qd.solutionx.top/d/p/18863c48-c4ac-4c56-8407-c03afb05743a"
+      },
       "1.0.86": {
         "apk": "https://qd.solutionx.top/d/p/86868ce4-1c0c-4e59-a0b4-f273a71352cd"
       },
       "1.0.85": {
         "apk": "https://qd.solutionx.top/d/p/db45586c-4a5b-4222-a857-4fb49d7119ef"
-      },
-      "1.0.84": {
-        "apk": "https://qd.solutionx.top/d/p/ed1c040f-5215-4eca-9280-36079fca11f1"
       }
     }
   }
