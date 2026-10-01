@@ -535,24 +535,16 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
                 "管理员模式", Views.DialogWindow.DialogType.Question);
             if (!exit) return;
 
-            _adminPassword = null;
-            IsAdminMode = false;
-            _logger.Info("Admin mode exited");
-
-            // 立即重装配列表：被软删除的设备退出展示
-            var exitSnapshot = _lastDeviceList;
-            if (exitSnapshot != null)
-                Application.Current?.Dispatcher.InvokeAsync(() => RebuildDeviceList(exitSnapshot));
+            ExitAdminModeCore();
             return;
         }
 
-        var password = Views.InputDialogWindow.ShowPassword(
-            "管理员模式",
+        var password = Views.InputDialogWindow.ShowPassword(            "管理员模式",
             "请输入管理员密码（由 relay 服务器安装/配置时设置）：", 64);
         if (string.IsNullOrWhiteSpace(password)) return;
 
         var cfg = _configService.Config;
-        var (ok, err) = await Services.AdminService.VerifyAsync(cfg.Server.Address, cfg.Server.PreSharedKey, password);
+        var (ok, err, _) = await Services.AdminService.VerifyAsync(cfg.Server.Address, cfg.Server.PreSharedKey, password);
         if (!ok)
         {
             _logger.Warn($"Admin verify failed: {err}");
@@ -572,6 +564,18 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
         Views.DialogWindow.Show(
             "管理员模式已开启：\n· 被软删除的设备现在可见（带「已隐藏」标记）；\n· 移除设备时可选「物理删除」（从服务器彻底移除）。",
             "管理员模式", Views.DialogWindow.DialogType.Success);
+    }
+
+    /// <summary>退出管理员模式的核心逻辑（清内存密码 + 恢复普通视图）。二次点击退出与密码失效强制退出共用。</summary>
+    private void ExitAdminModeCore()
+    {
+        _adminPassword = null;
+        IsAdminMode = false;
+        _logger.Info("Admin mode exited");
+
+        var snapshot = _lastDeviceList;
+        if (snapshot != null)
+            Application.Current?.Dispatcher.InvokeAsync(() => RebuildDeviceList(snapshot));
     }
 
     /// <summary>
@@ -976,10 +980,21 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
     private async Task PhysicalDeleteDeviceAsync(Models.RemoteDeviceInfo device)
     {
         var cfg = _configService.Config;
-        var (ok, err) = await Services.AdminService.DeleteDeviceAsync(
+        var (ok, err, passwordInvalid) = await Services.AdminService.DeleteDeviceAsync(
             cfg.Server.Address, cfg.Server.PreSharedKey, _adminPassword ?? string.Empty, device.DeviceId);
         if (!ok)
         {
+            // v1.1.79：管理员在服务器侧改了密码 → 本机保存的管理员登录已失效，
+            // 提示并自动退出管理员模式（否则界面停留在管理员态，后续操作会一直失败）。
+            if (passwordInvalid)
+            {
+                _logger.Warn("Admin password changed on server, forcing admin mode exit");
+                Views.DialogWindow.Show(
+                    "管理员密码已被更改，当前管理员登录已失效，需要重新登录。\n\n即将退出管理员模式，请稍后重新输入新密码。",
+                    "管理员模式", Views.DialogWindow.DialogType.Warning);
+                ExitAdminModeCore();
+                return;
+            }
             Views.DialogWindow.Show($"物理删除失败：{err}", "管理员模式", Views.DialogWindow.DialogType.Error);
             return;
         }

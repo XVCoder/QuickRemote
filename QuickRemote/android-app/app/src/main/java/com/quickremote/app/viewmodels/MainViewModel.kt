@@ -265,11 +265,11 @@ class MainViewModel(
     }
 
     /** 退出管理员模式：清空内存密码并刷新列表（被软删除的设备不再展示）。 */
-    fun exitAdminMode() {
+    fun exitAdminMode(silent: Boolean = false) {
         adminPassword = ""
         _isAdmin.value = false
         rebuildDeviceList()
-        _toast.value = "已退出管理员模式"
+        if (!silent) _toast.value = "已退出管理员模式"
         logger.info("Admin mode exited")
     }
 
@@ -283,6 +283,13 @@ class MainViewModel(
                 relay.deleteDevicePermanently(_serverConfig.value, adminPassword, deviceId)
             }
             if (!ok) {
+                // v1.0.90：管理员在服务器侧改了密码 → 本机管理员登录失效，
+                // 提示并自动退出管理员模式，避免界面停留在管理员态、后续操作一直失败。
+                if (relay.lastAdminPasswordInvalid) {
+                    _toast.value = "管理员密码已变更，请重新登录管理员模式"
+                    exitAdminMode(silent = true)
+                    return@launch
+                }
                 _toast.value = relay.lastError.ifBlank { "永久删除失败" }
                 return@launch
             }

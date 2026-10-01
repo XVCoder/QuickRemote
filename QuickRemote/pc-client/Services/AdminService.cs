@@ -20,28 +20,28 @@ public static class AdminService
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
-    /// <summary>校验管理员密码。成功返回 (true, null)，失败返回 (false, 错误描述)。</summary>
-    public static async Task<(bool Ok, string? Error)> VerifyAsync(string controlAddress, string preSharedKey, string password)
+    /// <summary>校验管理员密码。成功返回 (true, null, false)。</summary>
+    public static async Task<(bool Ok, string? Error, bool PasswordInvalid)> VerifyAsync(string controlAddress, string preSharedKey, string password)
     {
-        var (ok, err) = await PostAsync(controlAddress, preSharedKey, "/api/admin/verify", new { password });
-        return (ok, err);
+        var (ok, err, pwInvalid) = await PostAsync(controlAddress, preSharedKey, "/api/admin/verify", new { password });
+        return (ok, err, pwInvalid);
     }
 
-    /// <summary>物理删除设备。成功返回 (true, null)。</summary>
-    public static async Task<(bool Ok, string? Error)> DeleteDeviceAsync(string controlAddress, string preSharedKey, string password, string deviceId)
+    /// <summary>物理删除设备。成功返回 (true, null, false)；密码错误时 PasswordInvalid = true
+    ///（管理员模式中遇到即视为"密码已被服务器侧更改"，调用方应引导重新登录）。</summary>
+    public static async Task<(bool Ok, string? Error, bool PasswordInvalid)> DeleteDeviceAsync(string controlAddress, string preSharedKey, string password, string deviceId)
     {
-        var (ok, err) = await PostAsync(controlAddress, preSharedKey, "/api/admin/device/delete", new { password, device_id = deviceId });
-        return (ok, err);
+        return await PostAsync(controlAddress, preSharedKey, "/api/admin/device/delete", new { password, device_id = deviceId });
     }
 
-    private static async Task<(bool Ok, string? Error)> PostAsync(string controlAddress, string preSharedKey, string path, object payload)
+    private static async Task<(bool Ok, string? Error, bool PasswordInvalid)> PostAsync(string controlAddress, string preSharedKey, string path, object payload)
     {
         try
         {
             var baseUrl = ToHttpBase(controlAddress);
             var token = await GetTokenAsync(baseUrl, preSharedKey);
             if (token == null)
-                return (false, "无法通过服务器认证（预共享密钥错误或服务器不可达）");
+                return (false, "无法通过服务器认证（预共享密钥错误或服务器不可达）", false);
 
             using var req = new HttpRequestMessage(HttpMethod.Post, baseUrl + path)
             {
@@ -50,14 +50,14 @@ public static class AdminService
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
             using var resp = await Http.SendAsync(req);
-            if (resp.IsSuccessStatusCode) return (true, null);
+            if (resp.IsSuccessStatusCode) return (true, null, false);
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                return (false, "管理员密码错误");
-            return (false, $"服务器返回 HTTP {(int)resp.StatusCode}");
+                return (false, "管理员密码错误", true);
+            return (false, $"服务器返回 HTTP {(int)resp.StatusCode}", false);
         }
         catch (Exception ex)
         {
-            return (false, $"网络请求失败：{ex.Message}");
+            return (false, $"网络请求失败：{ex.Message}", false);
         }
     }
 

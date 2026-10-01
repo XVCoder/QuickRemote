@@ -29,6 +29,11 @@ class RelayConnection(
     var lastError: String = ""
         private set
 
+    /** 最近一次管理员操作是否因「管理员密码已被服务器侧更改」而失败（v1.0.90，调用方读取后自行清零）。 */
+    @Volatile
+    var lastAdminPasswordInvalid: Boolean = false
+        private set
+
     /** 认证并缓存 token。成功返回 true。 */
     fun authenticate(config: ServerConfig): Boolean {
         serverConfig = config
@@ -75,10 +80,12 @@ class RelayConnection(
 
     /**
      * 校验管理员密码（v1.0.87 管理员模式）。成功返回 true。
-     * 密码错误（401）单独区分 lastError 文案，避免与"认证过期"混淆。
+     * 密码错误（401）单独区分 lastError 文案与 [lastAdminPasswordInvalid] 标志，
+     * 避免与"认证过期"混淆。
      */
     fun verifyAdminPassword(config: ServerConfig, password: String): Boolean {
         serverConfig = config
+        lastAdminPasswordInvalid = false
         return try {
             ensureToken()
             try {
@@ -86,6 +93,7 @@ class RelayConnection(
             } catch (e: ApiException) {
                 if (e.code == 401) {
                     lastError = "管理员密码错误"
+                    lastAdminPasswordInvalid = true
                     logger.warn("Admin verify failed: wrong password")
                     return false
                 }
@@ -105,9 +113,14 @@ class RelayConnection(
         }
     }
 
-    /** 物理删除设备（管理员模式）。成功返回 true；被删设备旧 ID 进服务端黑名单。 */
+    /**
+     * 物理删除设备（管理员模式）。成功返回 true；被删设备旧 ID 进服务端黑名单。
+     * v1.0.90：401（管理员已在服务器侧更改密码）时置 [lastAdminPasswordInvalid]，
+     * 调用方应提示密码已变更并退出管理员登录。
+     */
     fun deleteDevicePermanently(config: ServerConfig, password: String, deviceId: String): Boolean {
         serverConfig = config
+        lastAdminPasswordInvalid = false
         return try {
             ensureToken()
             try {
@@ -115,7 +128,8 @@ class RelayConnection(
             } catch (e: ApiException) {
                 if (e.code == 401) {
                     lastError = "管理员密码错误"
-                    logger.warn("Admin delete failed: wrong password")
+                    lastAdminPasswordInvalid = true
+                    logger.warn("Admin delete failed: password changed on server")
                     return false
                 }
                 throw e
