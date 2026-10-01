@@ -68,4 +68,4 @@ tmp-iconwork/
 qr-crash-check.txt
 
 # relay 交叉编译产物（发布用临时文件，不入库）
-QuickRemote-Relay-v*.linux-*
+QuickRemote/QuickRemote-Relay-*linux-*
