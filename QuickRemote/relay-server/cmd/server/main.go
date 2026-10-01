@@ -20,7 +20,7 @@ import (
 )
 
 // Version 是中转服务器的版本号，可在编译时通过 -ldflags="-X main.Version=x.y.z" 注入。
-var Version = "1.0.8"
+var Version = "1.0.9"
 
 func main() {
 	configPath := "config.yaml"
@@ -78,7 +78,7 @@ func main() {
 	defer controlSrv.Close()
 
 	// 初始化 API 处理器
-	apiHandler := api.New(authService, reg, tunnelMgr, tunnelListener, controlSrv, cfg.QuickDeploy.BaseURL, cfg.QuickDeploy.UploadToken)
+	apiHandler := api.New(authService, reg, tunnelMgr, tunnelListener, controlSrv, cfg.QuickDeploy.BaseURL, cfg.QuickDeploy.UploadToken, cfg.Admin.Password)
 
 	// 启动心跳超时检查（同时周期广播设备列表，兜底陈旧清理导致的离线状态变化）
 	go func() {

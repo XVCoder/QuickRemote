@@ -105,3 +105,42 @@ func TestUpdateHeartbeat(t *testing.T) {
 		t.Error("expected LastSeen to be updated")
 	}
 }
+
+// ===== 物理删除与已删除黑名单（v1.0.9 管理员模式）=====
+
+func TestDeleteDeviceAndBlacklist(t *testing.T) {
+	reg, err := New(t.TempDir() + "/del.db")
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	defer reg.Close()
+
+	if _, _, err := reg.Register(&Device{MachineID: "m-del", Hostname: "PC-DEL", OS: "Windows 11", RDPPort: 3389}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// 未删除时不应命中黑名单
+	if deleted, _ := reg.IsDeleted("m-del"); deleted {
+		t.Fatal("fresh device must not be marked deleted")
+	}
+
+	if err := reg.DeleteDevice("m-del"); err != nil {
+		t.Fatalf("delete device: %v", err)
+	}
+	if _, err := reg.GetByDeviceID("m-del"); err == nil {
+		t.Error("device row should be removed")
+	}
+	deleted, err := reg.IsDeleted("m-del")
+	if err != nil || !deleted {
+		t.Fatalf("expected machine id in blacklist, got deleted=%v err=%v", deleted, err)
+	}
+
+	// 幂等：重复删除不报错
+	if err := reg.DeleteDevice("m-del"); err != nil {
+		t.Errorf("re-delete should be a no-op, got %v", err)
+	}
+	// 不存在的设备：同样幂等
+	if err := reg.DeleteDevice("not-exist"); err != nil {
+		t.Errorf("delete missing device should be a no-op, got %v", err)
+	}
+}

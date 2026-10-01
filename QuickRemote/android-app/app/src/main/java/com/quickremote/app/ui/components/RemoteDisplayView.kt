@@ -38,7 +38,9 @@ import kotlin.math.sqrt
  *   fit 整幅可见 ~ 5x；fit 状态竖屏下宽度撑满、上下留空，可拖动摆放位置；
  *   任意缩放下垂直拖到极端均至少各露 1/3 屏高空白，供悬浮球避让与空白区手势）
  * - 双指同向滑动（笔记本触摸板式）= 滚轮：主轴判定后垂直滑动=上下滚、水平滑动=左右滚；
- *   与捏合按「指间距变化 vs 中心位移谁主导」自动区分（滑动中指距微漂不再误判为缩放）
+ *   与捏合按「指间距变化 vs 中心位移谁主导」自动区分——中心位移须明显主导 span 变化
+ *   才锁滚轮（捏合中的整体平移不再抢先锁死缩放）；锁滚轮后未发出滚轮前若 span 变化
+ *   强主导仍可改判缩放（滑动中指距微漂不再误判为缩放）
  * - 双指轻点（两指快速落下抬起，无移动无缩放）= 右键
  * - 双指手势全程（第二指落下 → 最后一指抬起）不触发任何单指操作：
  *   长按在落指时取消、轻点在抬指时抑制、剩余手指不再接管平移——
@@ -143,7 +145,7 @@ class RemoteDisplayView(
 
     // 双指手势判定（笔记本触摸板式：滑动=滚轮 / 捏合=缩放 / 双指轻点=右键）
     private var twoFingerStartSpan = 0f
-    /** 上一次 MOVE 事件的指间距（缩放比 = 当前 span / lastPinchSpan，逐事件精确跟手）。 */
+    /** 上一次 MOVE 事件的指间距（观测用；缩放实际走锚点式计算，不逐帧用此值）。 */
     private var lastPinchSpan = 0f
     /** 双指手势起始中心（屏幕绝对坐标，用于区分"同向滑动=滚轮"与"捏合=缩放"）。 */
     private var twoFingerStartCenterX = 0f
@@ -209,7 +211,7 @@ class RemoteDisplayView(
 
     // 双指捏合缩放不再用 ScaleGestureDetector：其 scaleFactor 是相邻事件增量、
     // 且默认带平滑，缩放比与指间距真实比例脱节（不跟手）。改为在 ACTION_MOVE
-    // 里手动计算 span/lastPinchSpan 精确比例，配合中心位移平移实现完全跟手
+    // 里手动用屏幕坐标（raw）计算 span 真实比例，配合中心位移平移实现完全跟手
     // （画面上双指触点始终跟随手指位置）。见 MOVE 分支 twoFingerZoomed 处理。
 
     init {
@@ -371,12 +373,22 @@ class RemoteDisplayView(
                     val span = fingerSpan(event)
 
                     // 手势分类：指间距变化主导 = 捏合缩放；中心位移主导 = 双指同向滑动（滚轮）。
-                    // 仅凭指间距变化判定会把双指滑动中的微小间距漂移误判成缩放（禁滚轮
-                    // 且画面被悄悄缩放），必须同时要求间距变化超过中心位移；开始滚动后不再改判
-                    if (!twoFingerZoomed && !wheelFired && wheelAxis == 0 && twoFingerStartSpan > 0f) {
-                        val spanChange = abs(span - twoFingerStartSpan)
-                        val centerDist = hypot(cx - twoFingerStartCenterX, cy - twoFingerStartCenterY)
-                        if (spanChange > twoFingerStartSpan * ZOOM_RATIO && spanChange > centerDist) {
+                    // 两个判定互相竞争、锁存前互不抢先：
+                    // - 锁滚轮要求中心位移 > touchSlop 且明显主导（> span 变化 × WHEEL_DOMINANCE），
+                    //   捏合中带一点整体平移不再把整段手势抢先锁死成滚轮
+                    // - 判缩放保留原条件（span 变化 > 12% 起始 且 > 中心位移）；另外已锁滚轮轴
+                    //   但尚未发出滚轮时，span 变化 > 20% 起始 且 > 中心位移 × 1.5（迟滞）允许
+                    //   改判缩放——修"中心先漂 21px 被锁滚轮，之后再怎么张合都没反应"
+                    // - 已发出滚轮（wheelFired）后不再改判：远端内容已滚动，中途切缩放会跳变
+                    val spanChange = abs(span - twoFingerStartSpan)
+                    val centerDist = hypot(cx - twoFingerStartCenterX, cy - twoFingerStartCenterY)
+                    if (!twoFingerZoomed && !wheelFired && twoFingerStartSpan > 0f) {
+                        val zoomClassic =
+                            spanChange > twoFingerStartSpan * ZOOM_RATIO && spanChange > centerDist
+                        val zoomReclassify = wheelAxis != 0 &&
+                                spanChange > twoFingerStartSpan * ZOOM_RECLASSIFY_RATIO &&
+                                spanChange > centerDist * ZOOM_RECLASSIFY_MARGIN
+                        if (zoomClassic || zoomReclassify) {
                             twoFingerZoomed = true
                             // 判定为捏合：以当前状态建锚（span/锚=1 画面不跳变）
                             pinchAnchorScale = displayScale
@@ -394,12 +406,17 @@ class RemoteDisplayView(
                     }
 
                     if (!twoFingerZoomed) {
-                        // 主轴判定：累计位移先超阈值的轴锁定（斜向滑动不两轴混滚）
-                        if (wheelAxis == 0) {
+                        // 主轴判定：累计位移先超阈值的轴锁定（斜向滑动不两轴混滚），
+                        // 且中心位移须明显主导 span 变化才锁（排除捏合中的整体平移抢锁）
+                        if (wheelAxis == 0 && twoFingerStartSpan > 0f) {
                             wheelTotalX += dx
                             wheelTotalY += dy
-                            if (abs(wheelTotalY) > touchSlop) wheelAxis = 1
-                            else if (abs(wheelTotalX) > touchSlop) wheelAxis = 2
+                            if (abs(wheelTotalY) > touchSlop &&
+                                abs(wheelTotalY) > spanChange * WHEEL_DOMINANCE
+                            ) wheelAxis = 1
+                            else if (abs(wheelTotalX) > touchSlop &&
+                                abs(wheelTotalX) > spanChange * WHEEL_DOMINANCE
+                            ) wheelAxis = 2
                         }
                         if (wheelAxis == 1) {
                             // 垂直滑动 = 上下滚（自然滚动：内容跟随手指——手指上移
@@ -636,10 +653,16 @@ class RemoteDisplayView(
 
     private fun centerLocalY(event: MotionEvent): Float = (event.getY(0) + event.getY(1)) / 2f
 
-    /** 双指指间距（捏合/张开检测）。 */
+    /**
+     * 双指指间距（捏合/张开检测）。必须用屏幕绝对坐标（raw）：
+     * event.getX 是 View 本地坐标，被当前缩放逆变换过（本地 span = 屏幕 span / scale），
+     * 用它算 span 会让 scale 一变大 span 读数就缩水，锚点公式
+     * targetScale = 锚scale × span/锚span 形成负反馈环——稳态缩放只有真实
+     * 张合比例的平方根，张合后停住还会回退（缩放"没反应"的主因）。
+     */
     private fun fingerSpan(event: MotionEvent): Float {
-        val dx = event.getX(0) - event.getX(1)
-        val dy = event.getY(0) - event.getY(1)
+        val dx = event.getRawX(0) - event.getRawX(1)
+        val dy = event.getRawY(0) - event.getRawY(1)
         return sqrt(dx * dx + dy * dy)
     }
 
@@ -657,6 +680,15 @@ class RemoteDisplayView(
 
         /** 指间距偏离起始超过此比例 → 判定为捏合缩放（禁用滚轮）。 */
         private const val ZOOM_RATIO = 0.12f
+
+        /** 已锁滚轮轴但未发出滚轮时，允许改判缩放的最小 span 变化（起始间距比例）。 */
+        private const val ZOOM_RECLASSIFY_RATIO = 0.2f
+
+        /** 从滚轮改判缩放要求 span 变化超过中心位移的倍数（迟滞，防双指滑动间距漂移误判）。 */
+        private const val ZOOM_RECLASSIFY_MARGIN = 1.5f
+
+        /** 锁滚轮轴的主导系数：中心单轴累计位移须超过 span 变化的此倍数（排除捏合平移抢锁）。 */
+        private const val WHEEL_DOMINANCE = 2f
 
         /** 双指轻点判定的最长持续时间（超时视为按住而非点击）。 */
         private const val TWO_FINGER_TAP_MS = 300L

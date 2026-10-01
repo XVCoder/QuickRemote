@@ -48,6 +48,14 @@
                         <Run Text=" PC"/>
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- v1.1.77 管理员模式入口：位于设置按钮左侧（盾牌图标） -->
+                        <Button x:Name="BtnAdminMode" Click="BtnAdminMode_Click" ToolTip="管理员模式"
+                                Style="{StaticResource TitleIconButton}"
+                                Margin="0,0,4,0">
+                            <Path Width="12" Height="12" Stretch="Uniform"
+                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  Data="M512 64L128 192v224c0 212.48 163.2 372.8 384 432 220.8-59.2 384-219.52 384-432V192L512 64z m0 118.4l298.56 105.28v228.32c0 164.16-121.6 291.84-298.56 340.16-176.96-48.32-298.56-176-298.56-340.16V287.68L512 182.4z"/>
+                        </Button>
                         <Button x:Name="BtnSettings" Click="BtnSettings_Click" ToolTip="设置"
                                 Style="{StaticResource TitleIconButton}"
                                 Margin="0,0,4,0">
@@ -299,6 +307,11 @@
                                                     </TextBlock.Style>
                                                     <Run Text="〔"/><Run Text="{Binding Remark, Mode=OneWay}"/><Run Text="〕"/>
                                                 </TextBlock>
+                                                <!-- v1.1.77 管理员模式：被软删除的设备带「已隐藏」标记 -->
+                                                <TextBlock Text="{Binding HiddenMarkText, Mode=OneWay}"
+                                                           FontSize="11" Margin="10,0,0,0"
+                                                           Foreground="{StaticResource WarningBrush}"
+                                                           VerticalAlignment="Center"/>
                                                 <Ellipse Width="7" Height="7" Margin="12,0,5,0"
                                                          VerticalAlignment="Center">
                                                     <Ellipse.Style>

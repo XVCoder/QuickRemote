@@ -74,6 +74,19 @@ func (r *Registry) initSchema() error {
 			return fmt.Errorf("add display_name column: %w", err)
 		}
 	}
+
+	// v1.0.9 管理员模式：已被物理删除的设备 ID 黑名单。
+	// 用途：设备被物理删除后，若带着旧 machine_id 重新注册，服务端拒绝并让其
+	// 重新生成设备 ID（register_ack.status = device_deleted），避免"删了又自己冒回来"。
+	// 客户端换新 ID 注册时上报 previous_machine_id，服务端据此清除对应黑名单记录。
+	if _, err := r.db.Exec(`
+		CREATE TABLE IF NOT EXISTS deleted_devices (
+			machine_id  TEXT PRIMARY KEY,
+			deleted_at  DATETIME NOT NULL
+		)
+	`); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -162,6 +175,55 @@ func (r *Registry) ListAll() ([]Device, error) {
 		devices = append(devices, d)
 	}
 	return devices, nil
+}
+
+// DeleteDevice 物理删除设备（管理员模式，v1.0.9）。
+//
+// 删除 devices 记录并把 machine_id 记入 deleted_devices 黑名单：
+// 之后该设备若仍用旧 ID 注册会被拒（register_ack.status=device_deleted），
+// 客户端必须重新生成设备 ID 才能再次上线——这正是"删除后需重新注册"的语义。
+// 设备不存在时返回 nil（幂等，避免管理员列表陈旧导致误报失败）。
+func (r *Registry) DeleteDevice(deviceID string) error {
+	var machineID string
+	err := r.db.QueryRow(`SELECT machine_id FROM devices WHERE device_id = ?`, deviceID).Scan(&machineID)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("lookup device: %w", err)
+	}
+
+	if _, err := r.db.Exec(`DELETE FROM devices WHERE device_id = ?`, deviceID); err != nil {
+		return fmt.Errorf("delete device: %w", err)
+	}
+	if _, err := r.db.Exec(`
+		INSERT INTO deleted_devices (machine_id, deleted_at) VALUES (?, ?)
+		ON CONFLICT(machine_id) DO UPDATE SET deleted_at = excluded.deleted_at
+	`, machineID, time.Now()); err != nil {
+		return fmt.Errorf("record deleted device: %w", err)
+	}
+	return nil
+}
+
+// IsDeleted 判断 machine_id 是否已被物理删除（命中黑名单 → 需重新生成设备 ID）。
+func (r *Registry) IsDeleted(machineID string) (bool, error) {
+	if machineID == "" {
+		return false, nil
+	}
+	var count int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM deleted_devices WHERE machine_id = ?`, machineID).Scan(&count); err != nil {
+		return false, fmt.Errorf("check deleted device: %w", err)
+	}
+	return count > 0, nil
+}
+
+// ClearDeleted 清除黑名单记录（客户端换新 ID 注册成功后调用，避免黑名单无限增长）。
+func (r *Registry) ClearDeleted(machineID string) error {
+	if machineID == "" {
+		return nil
+	}
+	_, err := r.db.Exec(`DELETE FROM deleted_devices WHERE machine_id = ?`, machineID)
+	return err
 }
 
 // Rename 更新设备自定义名称（PC 端设置即时生效）。

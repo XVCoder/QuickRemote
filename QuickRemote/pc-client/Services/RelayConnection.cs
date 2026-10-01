@@ -133,7 +133,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     /// <param name="version">客户端版本</param>
     /// <param name="deviceName">本机设备显示名称（空 = 服务器分配默认名）</param>
     public void Start(string serverAddress, string preSharedKey, string machineId, int rdpPort, string version,
-        string deviceName = "")
+        string deviceName = "", string previousMachineId = "")
     {
         Stop();
         _rdpPort = rdpPort;
@@ -146,8 +146,11 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
         _pendingTunnelAck?.TrySetException(new InvalidOperationException("连接重启，隧道请求已取消"));
         _pendingTunnelAck = null;
         _cts = new CancellationTokenSource();
-        _ = RunAsync(serverAddress, preSharedKey, machineId, rdpPort, version, deviceName, _cts.Token);
+        _ = RunAsync(serverAddress, preSharedKey, machineId, rdpPort, version, deviceName, previousMachineId, _cts.Token);
     }
+
+    /// <summary>本机设备被管理员物理删除（v1.1.77）：ViewModel 收到后重新生成设备 ID 并重启连接。</summary>
+    public event Action? DeviceDeletedByAdmin;
 
     /// <summary>停止连接。</summary>
     public void Stop()
@@ -159,7 +162,7 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
     }
 
     private async Task RunAsync(string serverAddress, string preSharedKey, string machineId,
-        int rdpPort, string version, string deviceName, CancellationToken ct)
+        int rdpPort, string version, string deviceName, string previousMachineId, CancellationToken ct)
     {
         int backoffIndex = 0;
 
@@ -200,6 +203,8 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
                 {
                     Type = "register",
                     MachineId = machineId,
+                    // 本机被物理删除后换新 ID 重连时上报旧 ID，服务端据此清除黑名单记录
+                    PreviousMachineId = previousMachineId,
                     Hostname = SystemInfo.Hostname,
                     DisplayName = deviceName ?? string.Empty,
                     OS = SystemInfo.OsInfo,
@@ -236,6 +241,17 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
                     LastMessage = $"注册失败：{st}";
                     _logger.Warn($"Register failed: {st}");
                     Status = ConnectionStatus.Disconnected;
+
+                    // v1.1.77 管理员模式：本机设备被管理员物理删除 →
+                    // 通知 ViewModel 重新生成设备 ID 并重启连接（带旧 ID，服务端清黑名单）。
+                    // 这里必须结束连接循环：继续用旧 ID 重试只会被服务端反复拒绝。
+                    if (st == "device_deleted")
+                    {
+                        _logger.Warn("Device was deleted by admin, requesting device id regeneration");
+                        try { DeviceDeletedByAdmin?.Invoke(); } catch { }
+                        return;
+                    }
+
                     await DelayBackoff(ct, backoffIndex);
                     backoffIndex = Math.Min(backoffIndex + 1, BackoffSeconds.Length - 1);
                     continue;
@@ -579,6 +595,10 @@ public sealed class RelayConnection : INotifyPropertyChanged, IDisposable
 
         [JsonPropertyName("machine_id")]
         public string? MachineId { get; set; }
+
+        /// <summary>本机因被管理员物理删除而重新生成 ID 后，注册时上报的旧 ID（v1.1.77，服务端据此清黑名单）。</summary>
+        [JsonPropertyName("previous_machine_id")]
+        public string? PreviousMachineId { get; set; }
 
         [JsonPropertyName("hostname")]
         public string? Hostname { get; set; }

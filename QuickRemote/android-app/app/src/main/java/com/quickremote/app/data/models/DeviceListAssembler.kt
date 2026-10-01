@@ -1,9 +1,10 @@
 package com.quickremote.app.data.models
 
-/** 设备列表中的一行：设备 + 本机备注（备注仅本机可见）。 */
+/** 设备列表中的一行：设备 + 本机备注（备注仅本机可见）+ 软删除标记（v1.0.87 管理员模式用）。 */
 data class DeviceListItem(
     val device: Device,
-    val remark: String = ""
+    val remark: String = "",
+    val isSoftDeleted: Boolean = false
 )
 
 /**
@@ -31,11 +32,15 @@ data class DeviceListResult(
  *
  * 为什么复活判定必须在前、且只对在线设备成立：若先过滤隐藏再判复活，软删除的设备
  * 永远回不来；若对离线设备也判复活，则「移除离线设备」这个功能会当场失效。
+ *
+ * [adminMode] = true（v1.0.87 管理员模式）：被软删除的离线设备不再跳过，
+ * 改为带 isSoftDeleted 标记展示，供管理员执行「物理删除」。在线设备照常复活。
  */
 fun assembleDeviceList(
     devices: List<Device>,
     remarks: Map<String, String> = emptyMap(),
-    hidden: Set<String> = emptySet()
+    hidden: Set<String> = emptySet(),
+    adminMode: Boolean = false
 ): DeviceListResult {
     val online = ArrayList<DeviceListItem>()
     val offline = ArrayList<DeviceListItem>()
@@ -46,10 +51,14 @@ fun assembleDeviceList(
         val isHidden = device.device_id in hidden
         if (device.isOnline) {
             if (isHidden) revived += device.device_id
-        } else if (isHidden) {
+        } else if (isHidden && !adminMode) {
             continue
         }
-        val item = DeviceListItem(device, remarks[device.device_id].orEmpty())
+        val item = DeviceListItem(
+            device,
+            remarks[device.device_id].orEmpty(),
+            isSoftDeleted = isHidden && !device.isOnline
+        )
         if (device.isOnline) online += item else offline += item
     }
     return DeviceListResult(online = online, offline = offline, revived = revived)

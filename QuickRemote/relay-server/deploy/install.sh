@@ -224,6 +224,42 @@ update_yaml_block_field() {
     ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 }
 
+# 生成 6 位数字管理员密码（新装默认）。
+# shuf 在绝大多数发行版可用；缺失时退回 $RANDOM 组合（仍保证 6 位）。
+generate_admin_password() {
+    if command -v shuf >/dev/null 2>&1; then
+        shuf -i 100000-999999 -n 1
+    else
+        printf "%06d" $(( (RANDOM * 32768 + RANDOM) % 900000 + 100000 ))
+    fi
+}
+
+# 确保 config.yaml 存在 admin 段（v1.0.9 管理员模式）。
+# 用法: ensure_admin_password <默认密码> <场景说明>
+# 行为：已配置 → 不动；未配置 → 提示输入，回车用传入的默认值。
+# 存量部署升级时默认 88888888（服务端 Load 也会回填同一个值，双保险），
+# 用户可在此直接改成自己的密码。
+ensure_admin_password() {
+    local default_pw="$1" scene="$2"
+    local current
+    current="$(read_yaml_block_field "$CONFIG_FILE" admin password)"
+    if [ -n "$current" ]; then
+        return
+    fi
+    echo ""
+    info "$scene"
+    prompt "请输入管理员密码 [回车使用默认: $default_pw]: "
+    local pw
+    read -r pw
+    [ -z "$pw" ] && pw="$default_pw"
+    if ! grep -q '^admin:' "$CONFIG_FILE" 2>/dev/null; then
+        printf 'admin:\n  password: "%s"\n' "$pw" >> "$CONFIG_FILE"
+    else
+        update_yaml_block_field "$CONFIG_FILE" admin password "$pw"
+    fi
+    info "管理员密码已写入: $pw（请妥善保存，客户端「管理员模式」需输入此密码）"
+}
+
 # 修复二进制在 SELinux 下的执行上下文。
 # 在 RHEL/CentOS/Oracle/Rocky 9 等启用 SELinux enforcing 的系统上，/opt 下的二进制默认
 # 被标记为 var_t/usr_t，systemd 从该上下文中执行会报：
@@ -335,6 +371,14 @@ do_install() {
         info "已生成JWT密钥"
     fi
 
+    # v1.0.9 管理员模式：新装默认随机 6 位数字，用户可直接输入自定义密码
+    local admin_password
+    admin_password="$(prompt_secret "请输入管理员密码 [回车随机生成 6 位数字]: ")"
+    if [ -z "$admin_password" ]; then
+        admin_password=$(generate_admin_password)
+        info "已随机生成管理员密码: $admin_password"
+    fi
+
     local quickdeploy_url
     prompt "请输入quickdeploy地址 (可选) []: "
     read -r quickdeploy_url
@@ -358,6 +402,8 @@ server:
 auth:
   pre_shared_key: "$pre_shared_key"
   jwt_secret: "$jwt_secret"
+admin:
+  password: "$admin_password"
 storage:
   sqlite_path: "$DATA_DIR/registry.db"
 quickdeploy:
@@ -401,6 +447,7 @@ EOF
     warn "请确认防火墙/云安全组已放行以上三个端口"
     info "建议在 nginx 反向代理层配置 TLS 证书以启用 HTTPS"
     info "预共享密钥: $pre_shared_key"
+    info "管理员密码: $admin_password （PC/安卓端「管理员模式」入口使用，用于查看与物理删除设备）"
     info "配置文件: $CONFIG_FILE"
     info "管理命令: sudo systemctl {start|stop|restart|status} $SERVICE_NAME"
 }
@@ -504,6 +551,8 @@ do_upgrade() {
     if health_check "$(get_listen_port)"; then
         info "升级完成: $current_version -> $latest_version"
         info "已保留 $current_version 备份，如需回退可在菜单选择「3) 回滚到上一版本」"
+        # 存量部署首次升级到 v1.0.9+：补上管理员密码（默认 88888888，可直接改）
+        ensure_admin_password "88888888" "检测到尚未配置管理员密码（v1.0.9 新增「管理员模式」）"
     else
         # 失败自动回滚到旧版本
         error "健康检查失败，正在回滚到 $current_version"
@@ -580,6 +629,8 @@ do_config() {
     base_url=$(prompt_with_default "新的quickdeploy地址" "$(read_yaml_block_field "$CONFIG_FILE" quickdeploy base_url)")
     prompt "新的上传令牌 (回车保持不变): "
     read -r upload_token
+    prompt "新的管理员密码 (回车保持不变): "
+    read -r admin_password
 
     update_yaml_block_field "$CONFIG_FILE" server listen ":$listen_port"
     update_yaml_block_field "$CONFIG_FILE" server tunnel_listen ":$tunnel_port"
@@ -587,6 +638,13 @@ do_config() {
     [ -n "$jwt_secret" ]       && update_yaml_block_field "$CONFIG_FILE" auth jwt_secret "$jwt_secret"
     update_yaml_block_field "$CONFIG_FILE" quickdeploy base_url "$base_url"
     [ -n "$upload_token" ]     && update_yaml_block_field "$CONFIG_FILE" quickdeploy upload_token "$upload_token"
+    if [ -n "$admin_password" ]; then
+        if ! grep -q '^admin:' "$CONFIG_FILE" 2>/dev/null; then
+            printf 'admin:\n  password: "%s"\n' "$admin_password" >> "$CONFIG_FILE"
+        else
+            update_yaml_block_field "$CONFIG_FILE" admin password "$admin_password"
+        fi
+    fi
 
     info "新配置:"
     cat "$CONFIG_FILE"

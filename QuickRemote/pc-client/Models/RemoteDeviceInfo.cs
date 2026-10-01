@@ -36,6 +36,17 @@ public class RemoteDeviceInfo : INotifyPropertyChanged
     }
     private string _remark = string.Empty;
 
+    /// <summary>是否已被本机软删除（v1.1.77 管理员模式：管理员模式下仍展示，带「已隐藏」标记）。</summary>
+    public bool IsHidden
+    {
+        get => _isHidden;
+        set { _isHidden = value; OnPropertyChanged(); OnPropertyChanged(nameof(HiddenMarkText)); }
+    }
+    private bool _isHidden;
+
+    /// <summary>列表展示用标记文本（已隐藏时显示「已隐藏」，否则空）。</summary>
+    public string HiddenMarkText => IsHidden ? "已隐藏" : string.Empty;
+
     /// <summary>客户端版本。</summary>
     public string Version { get; set; } = string.Empty;
 

@@ -1,6 +1,9 @@
 package com.quickremote.app.data.api
 
 import com.quickremote.app.data.RelayAddress
+import com.quickremote.app.data.models.AdminDeleteRequest
+import com.quickremote.app.data.models.AdminOkResponse
+import com.quickremote.app.data.models.AdminVerifyRequest
 import com.quickremote.app.data.models.AuthRequest
 import com.quickremote.app.data.models.AuthResponse
 import com.quickremote.app.data.models.DeviceListResponse
@@ -120,9 +123,58 @@ class RelayApi {
         }
     }
 
-    /** 上传日志到服务器。logs 应为 Base64 编码的日志内容。 */
-    fun uploadLogs(
+    /**
+     * 校验管理员密码（v1.0.87 管理员模式）。
+     * 401 = 密码错误；其他非 2xx 抛 ApiException。
+     */
+    fun adminVerify(serverAddress: String, token: String, password: String): AdminOkResponse {
+        val base = baseUrl(serverAddress)
+        val body = json.encodeToString(AdminVerifyRequest.serializer(), AdminVerifyRequest(password))
+        val request = Request.Builder()
+            .url("$base/api/admin/verify")
+            .header("Authorization", "Bearer $token")
+            .post(body.toRequestBody(JSON_MEDIA))
+            .build()
+        client.newCall(request).execute().use { resp ->
+            val respBody = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                throw ApiException(resp.code, "管理员密码验证失败: $respBody")
+            }
+            return json.decodeFromString(AdminOkResponse.serializer(), respBody)
+        }
+    }
+
+    /**
+     * 物理删除设备（管理员模式）。删除后该设备旧 device_id 进服务端黑名单，
+     * 再连接必须重新生成设备 ID。
+     */
+    fun adminDeleteDevice(
         serverAddress: String,
+        token: String,
+        password: String,
+        deviceId: String
+    ): AdminOkResponse {
+        val base = baseUrl(serverAddress)
+        val body = json.encodeToString(
+            AdminDeleteRequest.serializer(),
+            AdminDeleteRequest(password = password, device_id = deviceId)
+        )
+        val request = Request.Builder()
+            .url("$base/api/admin/device/delete")
+            .header("Authorization", "Bearer $token")
+            .post(body.toRequestBody(JSON_MEDIA))
+            .build()
+        client.newCall(request).execute().use { resp ->
+            val respBody = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                throw ApiException(resp.code, "物理删除失败: $respBody")
+            }
+            return json.decodeFromString(AdminOkResponse.serializer(), respBody)
+        }
+    }
+
+    /** 上传日志到服务器。logs 应为 Base64 编码的日志内容。 */
+    fun uploadLogs(        serverAddress: String,
         token: String,
         deviceId: String,
         logs: String,

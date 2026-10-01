@@ -105,6 +105,32 @@ public partial class DialogWindow : Window
         return result;
     }
 
+    /// <summary>
+    /// 带复选框的确认框（v1.1.77 管理员模式用）。
+    /// 返回 (是否点确定, 复选框是否勾选)；取消时第二项无意义。
+    /// 复选框文案为空字符串时不显示该行（退化为普通确认框）。
+    /// </summary>
+    public static (bool Confirmed, bool OptionChecked) ConfirmWithCheckbox(
+        string message, string title, string checkboxText, bool defaultChecked = true)
+    {
+        var confirmed = false;
+        var optionChecked = defaultChecked;
+        RunOnUi(() =>
+        {
+            var win = Create(title, message, DialogType.Question, showCancel: true);
+            if (!string.IsNullOrWhiteSpace(checkboxText))
+            {
+                win.OptionCheck.Content = checkboxText;
+                win.OptionCheck.IsChecked = defaultChecked;
+                win.OptionPanel.Visibility = Visibility.Visible;
+            }
+            win.ShowDialog();
+            confirmed = win._confirmed;
+            optionChecked = win.OptionCheck.IsChecked == true;
+        });
+        return (confirmed, optionChecked);
+    }
+
     private static DialogWindow Create(string title, string message, DialogType type, bool showCancel)
     {
         var win = new DialogWindow(title, message, type, showCancel);

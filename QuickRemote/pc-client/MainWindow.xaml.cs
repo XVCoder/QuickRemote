@@ -49,9 +49,21 @@ public partial class MainWindow : Window
     }
 
     /// <summary>设置按钮（齿轮图标）：打开设置中心弹窗（基本/远程/安全配置）。</summary>
-    private void BtnSettings_Click(object sender, RoutedEventArgs e)
+    /// <summary>管理员模式入口（v1.1.77）：弹窗验证密码后进入管理员模式。</summary>
+    private void BtnAdminMode_Click(object sender, RoutedEventArgs e)
     {
         try
+        {
+            _viewModel.AdminModeCommand.Execute(null);
+        }
+        catch (Exception ex)
+        {
+            App.Logger.Error("Open admin mode failed", ex);
+        }
+    }
+
+    private void BtnSettings_Click(object sender, RoutedEventArgs e)
+    {        try
         {
             var win = new Views.SettingsWindow { Owner = this, DataContext = _viewModel };
             win.ShowDialog();

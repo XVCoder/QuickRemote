@@ -94,11 +94,13 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
         SetDeviceRemarkCommand = new RelayCommand(SetDeviceRemark);
         RemoveDeviceCommand = new RelayCommand(RemoveDevice);
         GenerateAccessCodeCommand = new RelayCommand(GenerateAccessCode);
+        AdminModeCommand = new RelayCommand(async () => await EnterAdminModeAsync());
 
         // 订阅事件
         _relay.PropertyChanged += OnRelayPropertyChanged;
         _relay.DeviceListUpdated += OnDeviceListUpdated;
         _relay.RenameResult += OnRenameResult;
+        _relay.DeviceDeletedByAdmin += OnDeviceDeletedByAdmin;
         _tunnelManager.SessionStarted += OnSessionStarted;
         _tunnelManager.SessionEnded += OnSessionEnded;
         _remoteSessionManager.SessionStarted += OnSessionStarted;
@@ -507,6 +509,79 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
         new Models.OptionItem(16, "高彩色（16 位，省流量）"),
     };
 
+    // ========== 管理员模式（v1.1.77）==========
+
+    /// <summary>
+    /// 管理员模式是否已开启。进程内有效——重启 App / 断线重连后回到普通模式，
+    /// 需重新输入密码。管理员密码只在内存（_adminPassword），不落盘。
+    /// </summary>
+    public bool IsAdminMode
+    {
+        get => _isAdminMode;
+        private set => SetField(ref _isAdminMode, value);
+    }
+    private bool _isAdminMode;
+
+    /// <summary>验证通过的管理员密码（内存态，供后续物理删除请求复用）。</summary>
+    private string? _adminPassword;
+
+    private async Task EnterAdminModeAsync()
+    {
+        if (IsAdminMode)
+        {
+            Views.DialogWindow.Show("已处于管理员模式。", "管理员模式", Views.DialogWindow.DialogType.Info);
+            return;
+        }
+
+        var password = Views.InputDialogWindow.ShowPassword(
+            "管理员模式",
+            "请输入管理员密码（由 relay 服务器安装/配置时设置）：", 64);
+        if (string.IsNullOrWhiteSpace(password)) return;
+
+        var cfg = _configService.Config;
+        var (ok, err) = await Services.AdminService.VerifyAsync(cfg.Server.Address, cfg.Server.PreSharedKey, password);
+        if (!ok)
+        {
+            _logger.Warn($"Admin verify failed: {err}");
+            Views.DialogWindow.Show($"管理员密码验证失败：{err}", "管理员模式", Views.DialogWindow.DialogType.Warning);
+            return;
+        }
+
+        _adminPassword = password;
+        IsAdminMode = true;
+        _logger.Info("Admin mode enabled");
+
+        // 立即重装配当前列表，把被软删除的设备展示出来（无需等下一次广播）
+        var snapshot = _lastDeviceList;
+        if (snapshot != null)
+            Application.Current?.Dispatcher.InvokeAsync(() => RebuildDeviceList(snapshot));
+
+        Views.DialogWindow.Show(
+            "管理员模式已开启：\n· 被软删除的设备现在可见（带「已隐藏」标记）；\n· 移除设备时可选「物理删除」（从服务器彻底移除）。",
+            "管理员模式", Views.DialogWindow.DialogType.Success);
+    }
+
+    /// <summary>
+    /// 本机设备被管理员物理删除（register_ack.status = device_deleted）：
+    /// 重新生成设备 ID 并以新 ID 重新注册（旧 ID 已在服务端黑名单中，继续重试只会被拒）。
+    /// </summary>
+    private void OnDeviceDeletedByAdmin()
+    {
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            var cfg = _configService.Config;
+            var oldId = cfg.MachineId;
+            cfg.MachineId = SystemInfo.EnsureMachineId();
+            _configService.Save();
+            _logger.Warn($"Device id regenerated after admin deletion: {oldId} -> {cfg.MachineId}");
+
+            Views.DialogWindow.Show(
+                "本机设备已被管理员从服务器删除。\n已自动重新生成设备 ID 并重新注册，本机将作为一台新设备出现在列表中。",
+                "管理员操作", Views.DialogWindow.DialogType.Warning);
+            StartConnection(previousMachineId: oldId);
+        });
+    }
+
     // ========== 更新 ==========
 
     public bool IsUpdateAvailable
@@ -537,6 +612,9 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
 
     public ICommand SaveSettingsCommand { get; }
     public ICommand CheckUpdateCommand { get; }
+
+    /// <summary>管理员模式入口（v1.1.77，设置按钮左侧的盾牌按钮）。</summary>
+    public ICommand AdminModeCommand { get; }
     public ICommand ViewLogsCommand { get; }
 
     /// <summary>点击远程设备 → 打开远程查看窗口（参数：RemoteDeviceInfo）。</summary>
@@ -622,7 +700,7 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
         AcceptSnapshot();
     }
 
-    private void StartConnection()
+    private void StartConnection(string previousMachineId = "")
     {
         var cfg = _configService.Config;
         var addr = string.IsNullOrWhiteSpace(ServerAddressInput) ? cfg.Server.Address : ServerAddressInput;
@@ -631,7 +709,7 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
         // 不再依赖系统 RDP（曾导致本地控制台黑屏，相关实现已彻底移除）。
         // rdpPort 仅为兼容服务端注册表字段，不用于实际连接。
         _relay.Start(addr, cfg.Server.PreSharedKey, cfg.MachineId, 3389, App.Version,
-            DeviceNameInput?.Trim() ?? string.Empty);
+            DeviceNameInput?.Trim() ?? string.Empty, previousMachineId);
     }
 
     // ========== 命令实现 ==========
@@ -687,38 +765,47 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
 
     /// <summary>服务器设备列表广播 → 更新远程设备列表（过滤本机，含离线）。
     /// 同时合并本机私有状态：备注（DeviceRemarks）与软删除（HiddenDevices）；
-    /// 软删除设备再次上线时自动恢复（移出隐藏列表并重新显示）。</summary>
+    /// 软删除设备再次上线时自动恢复（移出隐藏列表并重新显示）。
+    /// v1.1.77 管理员模式：被软删除的设备也展示（带「已隐藏」标记），供物理删除。</summary>
     private void OnDeviceListUpdated(System.Collections.Generic.List<Models.RemoteDeviceInfo> devices)
     {
-        Application.Current?.Dispatcher.InvokeAsync(() =>
+        _lastDeviceList = devices;
+        Application.Current?.Dispatcher.InvokeAsync(() => RebuildDeviceList(devices));
+    }
+
+    /// <summary>最近一次服务器设备列表广播（进入管理员模式时用它立即重装配列表）。</summary>
+    private System.Collections.Generic.List<Models.RemoteDeviceInfo>? _lastDeviceList;
+
+    private void RebuildDeviceList(System.Collections.Generic.List<Models.RemoteDeviceInfo> devices)
+    {
+        var myId = _relay.DeviceId;
+        var cfg = _configService.Config;
+        var remarks = cfg.DeviceRemarks;
+        var hidden = cfg.HiddenDevices;
+        var revived = false;
+
+        // 上线自动恢复：软删除设备出现在广播中且在线 → 移出隐藏列表
+        foreach (var d in devices)
         {
-            var myId = _relay.DeviceId;
-            var cfg = _configService.Config;
-            var remarks = cfg.DeviceRemarks;
-            var hidden = cfg.HiddenDevices;
-            var revived = false;
+            if (d.DeviceId != myId && d.IsOnline && hidden.Remove(d.DeviceId))
+                revived = true;
+        }
+        if (revived)
+            _configService.Save();
 
-            // 上线自动恢复：软删除设备出现在广播中且在线 → 移出隐藏列表
-            foreach (var d in devices)
-            {
-                if (d.DeviceId != myId && d.IsOnline && hidden.Remove(d.DeviceId))
-                    revived = true;
-            }
-            if (revived)
-                _configService.Save();
+        RemoteDevices.Clear();
+        foreach (var d in devices)
+        {
+            if (d.DeviceId == myId) continue;      // 不展示自己
+            var isHidden = hidden.Contains(d.DeviceId);
+            if (isHidden && !IsAdminMode) continue; // 软删除的设备仅管理员模式可见
 
-            RemoteDevices.Clear();
-            foreach (var d in devices)
-            {
-                if (d.DeviceId == myId) continue;      // 不展示自己
-                if (hidden.Contains(d.DeviceId)) continue; // 软删除的设备不显示
-
-                if (remarks.TryGetValue(d.DeviceId, out var remark))
-                    d.Remark = remark ?? string.Empty;
-                RemoteDevices.Add(d);
-            }
-            OnPropertyChanged(nameof(HasRemoteDevices));
-        });
+            if (remarks.TryGetValue(d.DeviceId, out var remark))
+                d.Remark = remark ?? string.Empty;
+            d.IsHidden = isHidden;
+            RemoteDevices.Add(d);
+        }
+        OnPropertyChanged(nameof(HasRemoteDevices));
     }
 
     /// <summary>改名结果提示。</summary>
@@ -795,7 +882,14 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
         device.Remark = trimmed;
     }
 
-    /// <summary>软删除离线设备（列表项 ✕ 按钮）：仅本机隐藏，设备再次上线时自动恢复显示。</summary>
+    /// <summary>
+    /// 移除设备（列表项 ✕ 按钮）。
+    /// 非管理员：软删除——仅本机隐藏，设备再次上线时自动恢复（v1.1.77 前的唯一行为）。
+    /// 管理员：
+    ///   · 设备未被软删除 → 确认框展示「物理删除」复选框（默认勾选）；
+    ///     勾选 = 从服务器物理删除（设备下次连接需重新生成 ID 注册），取消勾选 = 仅软删除；
+    ///   · 设备已被软删除 → 提示「将永久删除」，确认后物理删除。
+    /// </summary>
     private void RemoveDevice(object? param)
     {
         if (param is not Models.RemoteDeviceInfo device) return;
@@ -806,16 +900,90 @@ public sealed class MainViewModel : BaseViewModel, IChangelogSource
             return;
         }
 
-        var confirmed = Views.DialogWindow.Confirm(
-            $"确定将「{device.DisplayName}」从列表移除？\n\n仅在当前主机隐藏（软删除），不影响其他主机；该设备再次上线后将自动恢复显示。",
-            "移除设备", Views.DialogWindow.DialogType.Question);
-        if (!confirmed) return;
+        var hidden = _configService.Config.HiddenDevices;
+        var isHidden = hidden.Contains(device.DeviceId);
 
+        // 非管理员：保持原有软删除行为，不展示「物理删除」复选框
+        if (!IsAdminMode)
+        {
+            var confirmed = Views.DialogWindow.Confirm(
+                $"确定将「{device.DisplayName}」从列表移除？\n\n仅在当前主机隐藏（软删除），不影响其他主机；该设备再次上线后将自动恢复显示。",
+                "移除设备", Views.DialogWindow.DialogType.Question);
+            if (!confirmed) return;
+
+            SoftDeleteDevice(device);
+            return;
+        }
+
+        // 管理员 + 已软删除的设备：再次删除 = 永久删除
+        if (isHidden)
+        {
+            var confirmed = Views.DialogWindow.Confirm(
+                $"设备「{device.DisplayName}」已被软删除。\n\n继续将从服务器【永久删除】（物理删除）：\n· 服务器上的设备记录被清除，无法恢复；\n· 该设备下次连接时需重新生成设备 ID 并重新注册。\n\n是否继续？",
+                "永久删除设备", Views.DialogWindow.DialogType.Warning);
+            if (!confirmed) return;
+
+            _ = PhysicalDeleteDeviceAsync(device);
+            return;
+        }
+
+        // 管理员 + 未软删除：确认框带「物理删除」复选框，默认勾选
+        var (confirmed2, physical) = Views.DialogWindow.ConfirmWithCheckbox(
+            $"确定将「{device.DisplayName}」从列表移除？",
+            "移除设备",
+            "物理删除（从服务器彻底移除；该设备下次连接需重新生成 ID 并注册）",
+            defaultChecked: true);
+        if (!confirmed2) return;
+
+        if (physical)
+            _ = PhysicalDeleteDeviceAsync(device);
+        else
+            SoftDeleteDevice(device);
+    }
+
+    /// <summary>软删除：仅本机隐藏（所有模式通用）。</summary>
+    private void SoftDeleteDevice(Models.RemoteDeviceInfo device)
+    {
         _configService.Config.HiddenDevices.Add(device.DeviceId);
         _configService.Save();
-        RemoteDevices.Remove(device);
+        if (IsAdminMode)
+        {
+            // 管理员模式下不从列表移除，改为打上「已隐藏」标记
+            device.IsHidden = true;
+        }
+        else
+        {
+            RemoteDevices.Remove(device);
+        }
         OnPropertyChanged(nameof(HasRemoteDevices));
         _logger.Info($"Device hidden (soft delete): {device.DeviceId} ({device.DisplayName})");
+    }
+
+    /// <summary>物理删除：调服务端接口清除设备记录（记入已删除黑名单，旧 ID 不能再注册）。</summary>
+    private async Task PhysicalDeleteDeviceAsync(Models.RemoteDeviceInfo device)
+    {
+        var cfg = _configService.Config;
+        var (ok, err) = await Services.AdminService.DeleteDeviceAsync(
+            cfg.Server.Address, cfg.Server.PreSharedKey, _adminPassword ?? string.Empty, device.DeviceId);
+        if (!ok)
+        {
+            Views.DialogWindow.Show($"物理删除失败：{err}", "管理员模式", Views.DialogWindow.DialogType.Error);
+            return;
+        }
+
+        // 本地清理：隐藏列表与缓存备注一并移除
+        cfg.HiddenDevices.Remove(device.DeviceId);
+        cfg.DeviceRemarks.Remove(device.DeviceId);
+        _configService.Save();
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            RemoteDevices.Remove(device);
+            OnPropertyChanged(nameof(HasRemoteDevices));
+        });
+        _logger.Warn($"Device permanently deleted by admin: {device.DeviceId} ({device.DisplayName})");
+        Views.DialogWindow.Show(
+            $"设备「{device.DisplayName}」已从服务器永久删除。\n该设备下次连接时需重新生成设备 ID 并重新注册。",
+            "管理员模式", Views.DialogWindow.DialogType.Success);
     }
 
     private async Task CheckUpdateAsync()

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -27,10 +28,13 @@ type Handler struct {
 	controlSrv     *control.Server
 	quickDeployURL string
 	uploadToken    string
+	// adminPassword 是管理员模式密码（v1.0.9）。来自 config.yaml 的 admin.password：
+	// 全新安装由 install.sh 随机生成 6 位数字（或用户自定义），存量部署回填默认 88888888。
+	adminPassword string
 }
 
 // New 创建一个新的 API 处理器。
-func New(authService *auth.Service, reg *registry.Registry, tunnelMgr *tunnel.Manager, tunnelListener *tunnel.TunnelListener, controlSrv *control.Server, quickDeployURL string, uploadToken string) *Handler {
+func New(authService *auth.Service, reg *registry.Registry, tunnelMgr *tunnel.Manager, tunnelListener *tunnel.TunnelListener, controlSrv *control.Server, quickDeployURL string, uploadToken string, adminPassword string) *Handler {
 	return &Handler{
 		authService:    authService,
 		registry:       reg,
@@ -39,6 +43,7 @@ func New(authService *auth.Service, reg *registry.Registry, tunnelMgr *tunnel.Ma
 		controlSrv:     controlSrv,
 		quickDeployURL: quickDeployURL,
 		uploadToken:    uploadToken,
+		adminPassword:  adminPassword,
 	}
 }
 
@@ -50,6 +55,10 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/tunnel/request", h.requireAuth(h.HandleTunnelRequest))
 	mux.HandleFunc("/api/logs/upload", h.HandleUploadLogs)
 	mux.HandleFunc("/api/changelog", h.HandleChangelog)
+	// 管理员模式（v1.0.9）：密码校验 + 设备物理删除。仍需 JWT（requireAuth），
+	// 密码是第二道门——JWT 只证明"是本服务的合法客户端"，不证明"是管理员"。
+	mux.HandleFunc("/api/admin/verify", h.requireAuth(h.HandleAdminVerify))
+	mux.HandleFunc("/api/admin/device/delete", h.requireAuth(h.HandleAdminDeleteDevice))
 	mux.HandleFunc("/", h.HandleHealth)
 	return mux
 }
@@ -69,6 +78,87 @@ func (h *Handler) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// HandleAdminVerify 校验管理员密码。
+//
+// 客户端（PC/安卓）点「管理员模式」后弹窗收密码，调此接口；通过后在本地维持
+// 管理员态（进程内有效，不落盘 token）——服务端不签发管理员 token 是有意的：
+// 管理员操作频次极低，多一个长期有效的凭证反而多一份泄露面。
+func (h *Handler) HandleAdminVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"bad_request"}`, http.StatusBadRequest)
+		return
+	}
+
+	if !h.verifyAdminPassword(req.Password) {
+		// 不区分"密码错"与"未配置"，避免给爆破试探提供信息
+		http.Error(w, `{"error":"invalid_password"}`, http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+// HandleAdminDeleteDevice 物理删除设备（管理员模式）。
+//
+// 与客户端本地软删除的区别：这里把 devices 记录真正删掉，并把 machine_id 记入
+// deleted_devices 黑名单——该设备下次用旧 ID 注册会被拒（register_ack.status=device_deleted），
+// 必须重新生成设备 ID 才能再次上线。
+func (h *Handler) HandleAdminDeleteDevice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+		DeviceID string `json:"device_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"bad_request"}`, http.StatusBadRequest)
+		return
+	}
+	if req.DeviceID == "" {
+		http.Error(w, `{"error":"device_id_required"}`, http.StatusBadRequest)
+		return
+	}
+	if !h.verifyAdminPassword(req.Password) {
+		http.Error(w, `{"error":"invalid_password"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.registry.DeleteDevice(req.DeviceID); err != nil {
+		log.Printf("admin delete device %s failed: %v", req.DeviceID, err)
+		http.Error(w, `{"error":"delete_failed"}`, http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("admin deleted device %s permanently", req.DeviceID)
+	// 设备记录已变：立即向所有在线 PC 广播最新列表，管理员界面不用等下一个 30s 周期
+	if h.controlSrv != nil {
+		h.controlSrv.BroadcastDeviceList()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+// verifyAdminPassword 常量时间比较，避免按字节逐个比较泄露前缀长度信息。
+func (h *Handler) verifyAdminPassword(password string) bool {
+	if h.adminPassword == "" || password == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(password), []byte(h.adminPassword)) == 1
 }
 
 // HandleAuth 处理认证请求，验证预共享密钥并返回 JWT。

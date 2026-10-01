@@ -22,12 +22,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,8 +56,10 @@ import com.quickremote.app.data.models.Device
 import com.quickremote.app.ui.components.DeviceCard
 import com.quickremote.app.ui.components.StatusColor
 import com.quickremote.app.ui.components.StatusIndicator
+import com.quickremote.app.data.models.DeviceListItem
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
+import com.quickremote.app.ui.theme.Danger
 import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
 import com.quickremote.app.ui.theme.TextSecondary
@@ -82,10 +86,12 @@ fun DeviceListScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val serverConfig by viewModel.serverConfig.collectAsState()
+    val isAdmin by viewModel.isAdmin.collectAsState()
 
     // 对话框目标：非空即弹出对应对话框
     var remarkTarget by remember { mutableStateOf<Device?>(null) }
-    var removeTarget by remember { mutableStateOf<Device?>(null) }
+    var removeTarget by remember { mutableStateOf<DeviceListItem?>(null) }
+    var showAdminDialog by remember { mutableStateOf(false) }
 
     val statusColor = when (connectionState) {
         ConnectionState.CONNECTED -> StatusColor.GREEN
@@ -160,6 +166,14 @@ fun DeviceListScreen(
                         Icon(Icons.Filled.Refresh, contentDescription = "刷新", tint = TextPrimary)
                     }
                 }
+                // v1.0.87 管理员模式入口：设置按钮左边（锁形图标）
+                IconButton(onClick = { showAdminDialog = true }) {
+                    Icon(Icons.Filled.Lock, contentDescription = "管理员模式", tint = TextPrimary)
+                }
+                // v1.0.87 管理员模式入口：设置按钮左边（锁形图标）
+                IconButton(onClick = { showAdminDialog = true }) {
+                    Icon(Icons.Filled.Lock, contentDescription = "管理员模式", tint = TextPrimary)
+                }
                 IconButton(onClick = onSettingsClick) {
                     Icon(Icons.Filled.Settings, contentDescription = "设置", tint = TextPrimary)
                 }
@@ -193,7 +207,10 @@ fun DeviceListScreen(
                                 item = listItem,
                                 onClick = { device -> onDeviceClick(device) },
                                 onEditRemark = { remarkTarget = it },
-                                onRemove = { removeTarget = it }
+                                onRemove = { d ->
+                                    removeTarget = (deviceList.online + deviceList.offline)
+                                        .firstOrNull { it.device.device_id == d.device_id }
+                                }
                             )
                         }
                     }
@@ -210,7 +227,10 @@ fun DeviceListScreen(
                                     )
                                 },
                                 onEditRemark = { remarkTarget = it },
-                                onRemove = { removeTarget = it }
+                                onRemove = { d ->
+                                    removeTarget = (deviceList.online + deviceList.offline)
+                                        .firstOrNull { it.device.device_id == d.device_id }
+                                }
                             )
                         }
                     }
@@ -243,18 +263,91 @@ fun DeviceListScreen(
         )
     }
 
-    removeTarget?.let { device ->
+    removeTarget?.let { target ->
         RemoveDialog(
-            device = device,
+            device = target.device,
+            adminMode = isAdmin,
+            isSoftDeleted = target.isSoftDeleted,
             onDismiss = { removeTarget = null },
-            onConfirm = {
-                viewModel.removeOfflineDevice(device.device_id)
+            onConfirm = { physical ->
+                if (physical) {
+                    viewModel.deleteDevicePermanently(target.device.device_id)
+                } else {
+                    viewModel.removeOfflineDevice(target.device.device_id)
+                }
                 removeTarget = null
             }
         )
     }
 
+    if (showAdminDialog) {
+        AdminPasswordDialog(
+            isAdmin = isAdmin,
+            onDismiss = { showAdminDialog = false },
+            onConfirm = { password ->
+                showAdminDialog = false
+                viewModel.enterAdminMode(password)
+            }
+        )
+    }
+
     ToastHost(viewModel)
+}
+
+/**
+ * 管理员模式入口对话框（v1.0.87）：输入 relay 服务器设置的管理员密码。
+ * 密码通过后进入管理员模式：被软删除的设备可见，且移除时可勾选物理删除。
+ */
+@Composable
+private fun AdminPasswordDialog(
+    isAdmin: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("管理员模式", color = TextPrimary) },
+        text = {
+            Column {
+                if (isAdmin) {
+                    Text(
+                        "已处于管理员模式。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                } else {
+                    Text(
+                        "请输入管理员密码（在 relay 服务器安装/配置时设置）：",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("管理员密码", color = TextMuted) }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(password) },
+                enabled = isAdmin || password.isNotBlank()
+            ) { Text("确定", color = if (isAdmin || password.isNotBlank()) Accent else TextMuted) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }
+        },
+        containerColor = BgCard,
+        titleContentColor = TextPrimary,
+        textContentColor = TextPrimary
+    )
 }
 
 @Composable
@@ -319,22 +412,80 @@ private fun RemarkDialog(
 @Composable
 private fun RemoveDialog(
     device: Device,
+    adminMode: Boolean = false,
+    isSoftDeleted: Boolean = false,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: (physical: Boolean) -> Unit
 ) {
+    // v1.0.87 管理员模式：确认框展示「物理删除」复选框（默认勾选）；
+    // 非管理员不展示该复选框，行为保持原样（仅软删除）。
+    var physical by remember { mutableStateOf(true) }
+
+    // 管理员 + 已被软删除的设备：再次删除 = 永久删除
+    if (adminMode && isSoftDeleted) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("永久删除设备", color = TextPrimary) },
+            text = {
+                Text(
+                    "设备「${device.displayTitle}」已被软删除。\n\n" +
+                        "继续将从服务器【永久删除】（物理删除）：\n" +
+                        "· 服务器上的设备记录被清除，无法恢复；\n" +
+                        "· 该设备下次连接时需重新生成设备 ID 并重新注册。\n\n" +
+                        "是否继续？",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onConfirm(true) }) { Text("永久删除", color = Danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }
+            },
+            containerColor = BgCard,
+            titleContentColor = TextPrimary,
+            textContentColor = TextPrimary
+        )
+        return
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("移除设备", color = TextPrimary) },
         text = {
-            Text(
-                "确定将「${device.displayTitle}」从列表移除？\n\n" +
-                    "仅在当前手机隐藏（软删除），不影响其它设备；该设备再次上线后将自动恢复显示。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
+            Column {
+                Text(
+                    "确定将「${device.displayTitle}」从列表移除？\n\n" +
+                        (if (adminMode) {
+                            "勾选「物理删除」将从服务器彻底移除该设备（无法恢复，该设备下次连接需重新生成 ID 并注册）；" +
+                                "取消勾选则仅在本机隐藏（软删除），设备再次上线后自动恢复。"
+                        } else {
+                            "仅在当前手机隐藏（软删除），不影响其它设备；该设备再次上线后将自动恢复显示。"
+                        }),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                if (adminMode) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = physical,
+                            onCheckedChange = { physical = it }
+                        )
+                        Text(
+                            "物理删除",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("移除", color = Accent) }
+            TextButton(onClick = { onConfirm(adminMode && physical) }) {
+                Text(if (adminMode && physical) "物理删除" else "移除", color = if (adminMode && physical) Danger else Accent)
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }

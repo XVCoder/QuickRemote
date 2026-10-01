@@ -73,6 +73,67 @@ class RelayConnection(
     fun getDevices(): List<Device> =
         withAuthRetry { api.getDevices(serverConfig.address, token).devices }
 
+    /**
+     * 校验管理员密码（v1.0.87 管理员模式）。成功返回 true。
+     * 密码错误（401）单独区分 lastError 文案，避免与"认证过期"混淆。
+     */
+    fun verifyAdminPassword(config: ServerConfig, password: String): Boolean {
+        serverConfig = config
+        return try {
+            ensureToken()
+            try {
+                api.adminVerify(config.address, token, password)
+            } catch (e: ApiException) {
+                if (e.code == 401) {
+                    lastError = "管理员密码错误"
+                    logger.warn("Admin verify failed: wrong password")
+                    return false
+                }
+                throw e
+            }
+            lastError = ""
+            logger.info("Admin verify OK")
+            true
+        } catch (e: ApiException) {
+            lastError = formatApiError(e, "管理员验证失败")
+            logger.warn("Admin verify failed: $lastError")
+            false
+        } catch (e: Exception) {
+            lastError = formatNetworkError(e, config.address)
+            logger.warn("Admin verify failed: $lastError")
+            false
+        }
+    }
+
+    /** 物理删除设备（管理员模式）。成功返回 true；被删设备旧 ID 进服务端黑名单。 */
+    fun deleteDevicePermanently(config: ServerConfig, password: String, deviceId: String): Boolean {
+        serverConfig = config
+        return try {
+            ensureToken()
+            try {
+                api.adminDeleteDevice(config.address, token, password, deviceId)
+            } catch (e: ApiException) {
+                if (e.code == 401) {
+                    lastError = "管理员密码错误"
+                    logger.warn("Admin delete failed: wrong password")
+                    return false
+                }
+                throw e
+            }
+            lastError = ""
+            logger.warn("Device permanently deleted by admin: $deviceId")
+            true
+        } catch (e: ApiException) {
+            lastError = formatApiError(e, "物理删除失败")
+            logger.warn("Admin delete failed: $lastError")
+            false
+        } catch (e: Exception) {
+            lastError = formatNetworkError(e, config.address)
+            logger.warn("Admin delete failed: $lastError")
+            false
+        }
+    }
+
     /** 请求建立到指定设备的隧道。token 为空或已失效时自动认证/重认证。 */
     fun requestTunnel(deviceId: String): TunnelResponse {
         logger.info("Requesting tunnel for device=$deviceId")

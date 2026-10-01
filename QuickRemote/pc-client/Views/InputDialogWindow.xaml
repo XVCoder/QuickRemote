@@ -53,6 +53,17 @@
                         </Style>
                     </TextBox.Style>
                 </TextBox>
+                <!-- v1.1.77 管理员模式：密码输入（与文本框互斥，按模式切换可见性） -->
+                <PasswordBox x:Name="PwdBox" FontSize="13" Visibility="Collapsed"
+                             KeyDown="InputBox_KeyDown">
+                    <PasswordBox.Style>
+                        <Style TargetType="PasswordBox" BasedOn="{StaticResource SettingInputPassword}">
+                            <Setter Property="Width" Value="NaN"/>
+                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+                        </Style>
+                    </PasswordBox.Style>
+                </PasswordBox>
             </StackPanel>
 
             <!-- 按钮 -->

@@ -28,6 +28,9 @@ type Message struct {
 	Type        string            `json:"type"`
 	Status      string            `json:"status,omitempty"`
 	MachineID   string            `json:"machine_id,omitempty"`
+	// PreviousMachineID 是客户端因"设备被物理删除"而重新生成 ID 后上报的旧 ID（v1.0.9）。
+	// 服务端据此清除黑名单中的旧记录，使其不再无限增长。
+	PreviousMachineID string       `json:"previous_machine_id,omitempty"`
 	Hostname    string            `json:"hostname,omitempty"`
 	DisplayName string            `json:"display_name,omitempty"`
 	OS          string            `json:"os,omitempty"`
@@ -149,6 +152,19 @@ func (s *Server) handleConnection(conn net.Conn) {
 		return
 	}
 
+	// v1.0.9 管理员模式：已被物理删除的设备带着旧 ID 来注册 → 拒绝并要求重新生成 ID。
+	// 客户端收到 status=device_deleted 后会清空本地设备 ID、生成新 ID 再注册；
+	// 不这样做的话"物理删除"会在设备下一次心跳时自动复活，等于没删掉。
+	deleted, err := s.registry.IsDeleted(msg.MachineID)
+	if err != nil {
+		log.Printf("check deleted device failed: %v", err)
+	}
+	if deleted {
+		log.Printf("device %s was deleted by admin, require new device id", msg.MachineID)
+		writeMessage(conn, Message{Type: "register_ack", Status: "device_deleted"})
+		return
+	}
+
 	// 注册设备
 	dev := &registry.Device{
 		MachineID:   msg.MachineID,
@@ -186,6 +202,15 @@ func (s *Server) handleConnection(conn net.Conn) {
 		DeviceID:    deviceID,
 		DisplayName: displayName,
 	})
+
+	// 客户端因旧 ID 被删除而换了新 ID 注册成功 → 清除旧 ID 的黑名单记录
+	if msg.PreviousMachineID != "" {
+		if err := s.registry.ClearDeleted(msg.PreviousMachineID); err != nil {
+			log.Printf("clear deleted device %s failed: %v", msg.PreviousMachineID, err)
+		} else {
+			log.Printf("cleared deleted-device record for previous id %s", msg.PreviousMachineID)
+		}
+	}
 
 	log.Printf("device registered: %s (%s, display=%s)", deviceID, msg.Hostname, displayName)
 

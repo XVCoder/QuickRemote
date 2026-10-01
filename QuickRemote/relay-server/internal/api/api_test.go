@@ -23,7 +23,7 @@ func setupTestAPI(t *testing.T) (*Handler, *registry.Registry, func()) {
 		t.Fatalf("create registry: %v", err)
 	}
 	tunnelMgr := tunnel.NewManager()
-	handler := New(authService, reg, tunnelMgr, nil, nil, "", "")
+	handler := New(authService, reg, tunnelMgr, nil, nil, "", "", "admin-pw")
 
 	cleanup := func() {
 		reg.Close()
@@ -198,5 +198,87 @@ func TestGetDevices_All(t *testing.T) {
 	if all.Devices[1].DeviceID != offlineID || all.Devices[1].Status != "offline" {
 		t.Errorf("all=1: expected offline device second, got %s (%s)",
 			all.Devices[1].DeviceID, all.Devices[1].Status)
+	}
+}
+
+// ===== 管理员模式（v1.0.9）=====
+
+func TestAdminVerify(t *testing.T) {
+	handler, _, cleanup := setupTestAPI(t)
+	defer cleanup()
+
+	// 错误密码
+	body, _ := json.Marshal(map[string]string{"password": "nope"})
+	req := httptest.NewRequest("POST", "/api/admin/verify", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.HandleAdminVerify(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong password: expected 401, got %d", w.Code)
+	}
+
+	// 空密码（配置缺失时绝不放行）
+	body, _ = json.Marshal(map[string]string{"password": ""})
+	req = httptest.NewRequest("POST", "/api/admin/verify", bytes.NewReader(body))
+	w = httptest.NewRecorder()
+	handler.HandleAdminVerify(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("empty password: expected 401, got %d", w.Code)
+	}
+
+	// 正确密码（setupTestAPI 注入的是 admin-pw）
+	body, _ = json.Marshal(map[string]string{"password": "admin-pw"})
+	req = httptest.NewRequest("POST", "/api/admin/verify", bytes.NewReader(body))
+	w = httptest.NewRecorder()
+	handler.HandleAdminVerify(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("correct password: expected 200, got %d", w.Code)
+	}
+}
+
+func TestAdminDeleteDevice(t *testing.T) {
+	handler, reg, cleanup := setupTestAPI(t)
+	defer cleanup()
+
+	dev := &registry.Device{MachineID: "m-1", Hostname: "PC-1", OS: "Windows 11", RDPPort: 3389}
+	deviceID, _, err := reg.Register(dev)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// 密码错 → 拒绝且设备仍在
+	body, _ := json.Marshal(map[string]string{"password": "bad", "device_id": deviceID})
+	req := httptest.NewRequest("POST", "/api/admin/device/delete", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.HandleAdminDeleteDevice(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+	if _, err := reg.GetByDeviceID(deviceID); err != nil {
+		t.Errorf("device should survive failed delete: %v", err)
+	}
+
+	// 密码正确 → 物理删除 + machine_id 进黑名单
+	body, _ = json.Marshal(map[string]string{"password": "admin-pw", "device_id": deviceID})
+	req = httptest.NewRequest("POST", "/api/admin/device/delete", bytes.NewReader(body))
+	w = httptest.NewRecorder()
+	handler.HandleAdminDeleteDevice(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if _, err := reg.GetByDeviceID(deviceID); err == nil {
+		t.Error("device record should be gone after physical delete")
+	}
+	deleted, err := reg.IsDeleted("m-1")
+	if err != nil || !deleted {
+		t.Errorf("machine_id should be in deleted blacklist: deleted=%v err=%v", deleted, err)
+	}
+
+	// 换新 ID 注册成功后清除旧 ID 黑名单
+	if err := reg.ClearDeleted("m-1"); err != nil {
+		t.Fatalf("clear deleted: %v", err)
+	}
+	deleted, _ = reg.IsDeleted("m-1")
+	if deleted {
+		t.Error("blacklist entry should be cleared")
 	}
 }

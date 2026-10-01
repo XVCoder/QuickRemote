@@ -51,6 +51,25 @@ data class AuthResponse(
     val expires: Int = 0
 )
 
+// 管理员密码校验请求（v1.0.87 管理员模式）
+@Serializable
+data class AdminVerifyRequest(
+    val password: String
+)
+
+// 管理员物理删除设备请求
+@Serializable
+data class AdminDeleteRequest(
+    val password: String,
+    val device_id: String
+)
+
+// 管理员接口通用响应 {"ok": true}
+@Serializable
+data class AdminOkResponse(
+    val ok: Boolean = false
+)
+
 // 隧道请求
 @Serializable
 data class TunnelRequest(

@@ -222,6 +222,41 @@
             </Style>
 
             <!-- ============ 输入框（圆角 6，聚焦蓝色描边） ============ -->
+            <!-- v1.1.77 管理员模式密码输入框：外观与 SettingInput 一致，
+                 仅控件类型不同（PasswordBox 不继承 TextBox，不能共用同一样式） -->
+            <Style x:Key="SettingInputPassword" TargetType="PasswordBox">
+                <Setter Property="Background" Value="{StaticResource BgInputBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Padding" Value="10,6"/>
+                <Setter Property="HorizontalAlignment" Value="Right"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="PasswordBox">
+                            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6">
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource TextMutedBrush}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style x:Key="SettingInput" TargetType="TextBox">
                 <Setter Property="Background" Value="{StaticResource BgInputBrush}"/>
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>

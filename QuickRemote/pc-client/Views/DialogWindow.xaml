@@ -14,6 +14,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- 标题栏 -->
@@ -53,8 +54,16 @@
                            TextWrapping="Wrap" LineHeight="20" VerticalAlignment="Top"/>
             </Grid>
 
+            <!-- v1.1.77 管理员模式：可选的「物理删除」复选框（默认折叠，按需显示） -->
+            <StackPanel Grid.Row="2" x:Name="OptionPanel" Orientation="Horizontal"
+                        Margin="22,6,22,0" Visibility="Collapsed">
+                <CheckBox x:Name="OptionCheck" Content="" IsChecked="True"
+                          Foreground="{StaticResource TextPrimaryBrush}"
+                          FontSize="12.5" VerticalAlignment="Center"/>
+            </StackPanel>
+
             <!-- 按钮 -->
-            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
                         Margin="20,14,20,20">
                 <Button x:Name="BtnCancel" Content="取消" MinWidth="88"
                         Click="BtnCancel_Click" Margin="0,0,10,0"

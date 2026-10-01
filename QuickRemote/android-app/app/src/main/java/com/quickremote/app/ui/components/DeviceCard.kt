@@ -97,6 +97,16 @@ fun DeviceCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 StatusIndicator(color = statusColor, size = 6.dp)
+                // v1.0.87 管理员模式：被软删除的设备带「已隐藏」标记
+                if (item.isSoftDeleted) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "已隐藏",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFF59E0B),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(

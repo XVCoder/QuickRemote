@@ -228,10 +228,58 @@ class MainViewModel(
      * 这里把它写回本地隐藏集合（移除）。下次装配就不会再隐藏它。
      */
     private fun rebuildDeviceList() {
-        val result = assembleDeviceList(_devices.value, remarksCache, hiddenCache)
+        val result = assembleDeviceList(_devices.value, remarksCache, hiddenCache, adminMode = _isAdmin.value)
         _deviceList.value = result
         if (result.revived.isNotEmpty()) {
             viewModelScope.launch { settingsStore.restoreDevices(result.revived) }
+        }
+    }
+
+    // ========== 管理员模式（v1.0.87）==========
+
+    /**
+     * 管理员模式是否已开启。进程内有效——重启 App 后回到普通模式。
+     * 管理员密码只保存在内存（adminPassword），用于后续物理删除请求，不落盘。
+     */
+    private val _isAdmin = MutableStateFlow(false)
+    val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
+
+    @Volatile private var adminPassword: String = ""
+
+    /** 校验管理员密码并进入管理员模式（展示被软删除的设备，支持物理删除）。 */
+    fun enterAdminMode(password: String) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                relay.verifyAdminPassword(_serverConfig.value, password)
+            }
+            if (!ok) {
+                _toast.value = relay.lastError.ifBlank { "管理员密码验证失败" }
+                return@launch
+            }
+            adminPassword = password
+            _isAdmin.value = true
+            rebuildDeviceList()
+            _toast.value = "管理员模式已开启：被软删除的设备已显示"
+            logger.info("Admin mode enabled")
+        }
+    }
+
+    /**
+     * 物理删除设备（管理员模式）：调服务端接口清除设备记录并拉黑旧 ID，
+     * 同时把该 ID 移出本地隐藏集合，刷新列表。
+     */
+    fun deleteDevicePermanently(deviceId: String) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                relay.deleteDevicePermanently(_serverConfig.value, adminPassword, deviceId)
+            }
+            if (!ok) {
+                _toast.value = relay.lastError.ifBlank { "永久删除失败" }
+                return@launch
+            }
+            settingsStore.restoreDevices(setOf(deviceId))
+            _toast.value = "设备已从服务器永久删除（下次连接需重新注册）"
+            refreshDevices()
         }
     }
 
