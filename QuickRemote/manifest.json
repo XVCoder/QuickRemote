@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.78",
-    "changelog": "管理员模式二次点击提示退出登录（退出后恢复普通视图）；修复管理员确认框「物理删除」复选框长文案被截断",
+    "latest_version": "1.1.79",
+    "changelog": "管理员在服务器侧更改密码后，本机执行物理删除会提示密码已变更并自动退出管理员登录",
     "versions": {
+      "1.1.79": {
+        "zip": "https://qd.solutionx.top/d/p/320e57b9-931f-4e4d-9a6a-bf9ae0bd5844"
+      },
       "1.1.78": {
         "zip": "https://qd.solutionx.top/d/p/bda28208-e602-445f-93c0-a8c623d9ac49"
       },
       "1.1.77": {
         "zip": "https://qd.solutionx.top/d/p/60bda645-0b85-4b3d-b57b-5c5570d94efb"
-      },
-      "1.1.76": {
-        "zip": "https://qd.solutionx.top/d/p/ad5d4e53-3227-4121-b49e-8be42d566e85"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.89",
-    "changelog": "管理员模式二次点击提示退出登录（退出后恢复普通视图，被软删除的设备不再展示）",
+    "latest_version": "1.0.90",
+    "changelog": "管理员在服务器侧更改密码后，执行物理删除会提示\"管理员密码已变更，请重新登录管理员模式\"并自动退出管理员登录",
     "versions": {
+      "1.0.90": {
+        "apk": "https://qd.solutionx.top/d/p/f234b197-de6f-46e4-b939-2b9ecdf630d2"
+      },
       "1.0.89": {
         "apk": "https://qd.solutionx.top/d/p/ffd01009-8332-4647-b2b7-1a932bc9800a"
       },
       "1.0.88": {
         "apk": "https://qd.solutionx.top/d/p/078ce04d-e9bd-4858-b334-21ecf18d5aa9"
-      },
-      "1.0.87": {
-        "apk": "https://qd.solutionx.top/d/p/18863c48-c4ac-4c56-8407-c03afb05743a"
       }
     }
   }
