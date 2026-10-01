@@ -677,7 +677,31 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-10-01）
+## 当前线上版本（2026-10-01 三端）
+
+> ✅ **relay 1.0.9 + PC v1.1.77 + Android v1.0.87 + about v1.0.139 已发布**（2026-10-01 09:15）=
+> 三端管理员模式。relay：`admin.password`（存量回填 88888888，install.sh 新装随机 6 位可自定义、
+> 升级时提示设置、「修改配置」可改）+ `POST /api/admin/verify`、`POST /api/admin/device/delete`
+> （JWT+密码双验证、常量时间比较）+ `deleted_devices` 黑名单（旧 ID 注册 → register_ack
+> `device_deleted` → 客户端换新 ID 并上报 `previous_machine_id` 清黑名单）。
+> PC/安卓：设置按钮左侧管理员入口 + 密码弹窗；管理员模式显示软删除设备（「已隐藏」标记）、
+> 移除未隐藏项确认框含「物理删除」复选框（默认勾选）、已隐藏项再次删除提示永久删除；
+> 非管理员行为不变。PC 收到 device_deleted 自动重新生成 MachineId 并重注册。
+> - relay amd64 → `/d/p/e2199a5e-d40a-4ba5-899a-68eb29fa916c`，arm64 → `/d/p/c724e997-0e57-4ede-bbb2-1501a59b1946`
+>   （裸二进制直出，install.sh download_binary 直接 curl；Go 交叉编译 CGO_ENABLED=0，modernc sqlite 纯 Go 可行）
+> - PC ZIP `967,518B`（内嵌 `1.1.77+b14858c`）→ `/d/p/60bda645-0b85-4b3d-b57b-5c5570d94efb`
+> - Android APK `13,816,799B` → `/d/p/18863c48-c4ac-4c56-8407-c03afb05743a`
+> - about v1.0.139 蓝绿端口 **20045**；HTML 27234（+74）/ CSS 21400 / JS 8286
+> - manifest 线上 `{relay 1.0.9, pc 1.1.77, android 1.0.87}`；清理 relay 1.0.6×2 / pc 1.1.74 / android 1.0.84 / about 包 136+138
+> - 提交 `b14858c` + `2a2fea4` + `c18e4e3`（远端 main 已 ls-remote 核对）
+> - ⚠️ 本轮新坑 2 个：
+>   ① **APK 直传产物名是 app-release.apk**，必须先本地复制成 `QuickRemote-Android-vX.Y.Z.apk` 再上传（首轮传错名已删除重传）；
+>   ② **改 about 的 server.js 下载 URL 时不要凭记忆写 old_string**——上轮发版留下的 URL 与记忆不符导致 replace 静默不生效，
+>      部署后 `/dl/android` 仍指旧包（幸好校验链路抓到）。改完必须 grep 复核 + 部署后核对 `/dl/*` Location。
+> - Go 交叉编译坑：多架构连跑会被沙箱 SIGTERM，分两条后台命令跑即可（单条仅 6-50s）。
+> - 上一版：PC v1.1.76 / Android v1.0.86 / about v1.0.136-139（2026-09-29/10-01）。
+
+> ✅ **Android v1.0.86 + about v1.0.137 已发布**（2026-10-01 06:35）= 更新包后台下载 + 断点续传。
 
 > ✅ **Android v1.0.86 + about v1.0.137 已发布**（2026-10-01 06:35）= 更新包后台下载 + 断点续传。
 > 下载改由系统 DownloadManager 执行（App 退后台/被划掉仍继续、中断后系统发 `Range` 续传），
