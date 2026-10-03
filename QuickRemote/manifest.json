@@ -18,32 +18,32 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.79",
-    "changelog": "管理员在服务器侧更改密码后，本机执行物理删除会提示密码已变更并自动退出管理员登录",
+    "latest_version": "1.1.80",
+    "changelog": "修复网络切换后重连风暴引发的屏幕捕获竞争与锁屏误判：会话启动串行化（并发连接走干净接管），DXGI 捕获失败不再上报锁屏，锁屏状态统一由真实桌面检测判定",
     "versions": {
+      "1.1.80": {
+        "zip": "https://qd.solutionx.top/d/p/c711884d-84c7-474c-9ced-33f01e07f8bc"
+      },
       "1.1.79": {
         "zip": "https://qd.solutionx.top/d/p/320e57b9-931f-4e4d-9a6a-bf9ae0bd5844"
       },
       "1.1.78": {
         "zip": "https://qd.solutionx.top/d/p/bda28208-e602-445f-93c0-a8c623d9ac49"
-      },
-      "1.1.77": {
-        "zip": "https://qd.solutionx.top/d/p/60bda645-0b85-4b3d-b57b-5c5570d94efb"
       }
     }
   },
   "android-app": {
-    "latest_version": "1.0.90",
-    "changelog": "管理员在服务器侧更改密码后，执行物理删除会提示\"管理员密码已变更，请重新登录管理员模式\"并自动退出管理员登录",
+    "latest_version": "1.0.92",
+    "changelog": "修复局域网切公网后连接永久黑屏（并发启动拒绝 + 锁屏态看门狗 60 秒保底）；修复 Android 14 前台服务启动失败；设备页顶栏服务器地址改独占一行，修复新增锁形按钮后地址换行错位",
     "versions": {
+      "1.0.92": {
+        "apk": "https://qd.solutionx.top/d/p/33981eb9-5804-4443-914f-6d8b5e6bc2e0"
+      },
       "1.0.90": {
         "apk": "https://qd.solutionx.top/d/p/f234b197-de6f-46e4-b939-2b9ecdf630d2"
       },
       "1.0.89": {
         "apk": "https://qd.solutionx.top/d/p/ffd01009-8332-4647-b2b7-1a932bc9800a"
-      },
-      "1.0.88": {
-        "apk": "https://qd.solutionx.top/d/p/078ce04d-e9bd-4858-b334-21ecf18d5aa9"
       }
     }
   }
