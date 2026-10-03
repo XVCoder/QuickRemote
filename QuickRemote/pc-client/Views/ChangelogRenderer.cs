@@ -6,8 +6,8 @@ namespace QuickRemote.PCClient.Views;
 
 /// <summary>
 /// 更新记录渲染器：把 CHANGELOG.md 的简单 Markdown 转成 FlowDocument。
-/// 仅展示 PC 客户端相关的版本段——依据版本标题括号内的组件名过滤，
-/// Android / 中转服务器 / 关于页 的条目在 PC 端设置中心不显示。
+/// 仅展示 PC 客户端相关的版本段——依据版本标题里**全部**半角括号内的组件名过滤，
+/// 任一标签指向 PC 客户端即展示；Android / 中转服务器 / 关于页 的条目在 PC 端设置中心不显示。
 /// 独立成类以便复用与离屏渲染验证。
 /// </summary>
 public static class ChangelogRenderer
@@ -39,29 +39,34 @@ public static class ChangelogRenderer
         {
             var line = rawLine.TrimEnd();
 
-            // 版本段标题形如：## v1.1.3 (PC客户端) / ## v1.0.11 (Android App)
-            // 依据括号内的组件名决定是否展示：PC 客户端 展示，Android/中转服务器 跳过，
-            // 无组件标记的公共历史（如 v1.0.1 / v1.0.0）默认展示。
+            // 版本段标题形如：
+            //   ## v1.1.3 (PC 客户端)                              单组件
+            //   ## v1.1.67 (PC 客户端) + v1.0.78 (Android App)     双组件（PC 在前）
+            //   ## v1.0.91 (Android App) + v1.1.80 (PC 客户端)     双组件（Android 在前）
+            //   ## v1.0.87 (Android App) + v1.1.77 (PC 客户端) + relay 1.0.9
+            //   ## v1.1.20                                            早期无标记（PC 单端）
+            // 判定规则：扫描标题里**全部**半角括号标签，任一标签指向 PC 客户端即展示；
+            // 全部标签都指向其他组件（Android / 中转服务器 / 关于页）才隐藏。
+            // ⚠️ 不可只取第一个标签——合并段里 Android 排在前面时会整段被误隐藏，
+            //    导致 PC 端看不到自己最新版本的记录。
+            // 全角括号（如「（配合 PC v1.1.75）」）是补充说明而非组件标记，不参与判定。
             if (line.StartsWith("## "))
             {
-                var match = System.Text.RegularExpressions.Regex.Match(
-                    line[3..].Trim(), @"^v?[\d.]+(?:\s*\(([^)]*)\))?");
-                if (match.Success)
+                var heading = line[3..].Trim();
+                var tags = System.Text.RegularExpressions.Regex.Matches(heading, @"\(([^)]*)\)")
+                    .Cast<System.Text.RegularExpressions.Match>()
+                    .Select(m => m.Groups[1].Value.Trim())
+                    .Where(t => t.Length > 0)
+                    .ToList();
+
+                if (tags.Count == 0)
                 {
-                    var component = match.Groups[1].Value.Trim();
-                    if (component.Length == 0)
-                    {
-                        included = true; // 公共历史段
-                    }
-                    else if (component.Contains("PC", StringComparison.OrdinalIgnoreCase) ||
-                             component.Contains("客户端"))
-                    {
-                        included = true;
-                    }
-                    else
-                    {
-                        included = false; // Android / 中转服务器 等其他组件
-                    }
+                    // 无组件标记：早期 PC 单端历史默认展示；但纯 relay / 关于页 段落仍需排除。
+                    included = !MentionsNonPcComponent(heading);
+                }
+                else
+                {
+                    included = tags.Any(IsPcComponent);
                 }
             }
 
@@ -135,6 +140,21 @@ public static class ChangelogRenderer
 
         return doc;
     }
+
+    /// <summary>组件标签是否指向 PC 客户端：含「PC」或「客户端」即认为是。</summary>
+    private static bool IsPcComponent(string tag) =>
+        tag.Contains("PC", StringComparison.OrdinalIgnoreCase) ||
+        tag.Contains("客户端");
+
+    /// <summary>
+    /// 无组件标记的标题里若点名了非 PC 组件（relay / 中转服务器 / 关于页），则不属于 PC 端记录。
+    /// 早期 <c>## v1.1.20</c> 这类纯 PC 单端历史返回 false，照常展示。
+    /// </summary>
+    private static bool MentionsNonPcComponent(string heading) =>
+        heading.Contains("relay", StringComparison.OrdinalIgnoreCase) ||
+        heading.Contains("中转", StringComparison.OrdinalIgnoreCase) ||
+        heading.Contains("服务器", StringComparison.OrdinalIgnoreCase) ||
+        heading.Contains("关于页", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 行内标记解析：**加粗** 与 `代码` 转成带样式的 Run，其余按纯文本。
