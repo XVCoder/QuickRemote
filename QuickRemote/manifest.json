@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.80",
-    "changelog": "修复网络切换后重连风暴引发的屏幕捕获竞争与锁屏误判：会话启动串行化（并发连接走干净接管），DXGI 捕获失败不再上报锁屏，锁屏状态统一由真实桌面检测判定",
+    "latest_version": "1.1.81",
+    "changelog": "修复设置中心「更新记录」看不到最新版本：组件过滤只识别版本标题第一个括号标签，双轨合并段里 Android 在前时整段被隐藏，PC 端丢失 v1.1.80~1.1.68 共 8 个版本段；现改为扫描全部组件标签，任一指向 PC 即展示",
     "versions": {
+      "1.1.81": {
+        "zip": "https://qd.solutionx.top/d/p/ce717468-dc67-47c3-80d2-7d669478e009"
+      },
       "1.1.80": {
         "zip": "https://qd.solutionx.top/d/p/c711884d-84c7-474c-9ced-33f01e07f8bc"
       },
       "1.1.79": {
         "zip": "https://qd.solutionx.top/d/p/320e57b9-931f-4e4d-9a6a-bf9ae0bd5844"
-      },
-      "1.1.78": {
-        "zip": "https://qd.solutionx.top/d/p/bda28208-e602-445f-93c0-a8c623d9ac49"
       }
     }
   },
