@@ -22,6 +22,7 @@ agent_created: true
 ## 执行顺序
 
 0. 强制 Git 提交（前置检查）
+0.5 **⚠️ 核对线上 manifest（2026-10-03 新增，本轮真的踩到）**
 1. 递增版本号 + 写 CHANGELOG + 同步 assets/changelog.txt
 2. 编译（PC / Android / relay）
 3. 上传产物到 qdrl 各子目录
@@ -36,6 +37,28 @@ agent_created: true
 > 纯功能类发版无需改页面结构 ⇒ 字节数与上一版完全相同属正常。
 
 ---
+
+## 0.5 ⚠️ 发版第一步：核对**线上** manifest，别信本地文件（2026-10-03 实测踩坑）
+
+**本地 `manifest.json` 改好了 ≠ 发布过。** 本轮实测：上一轮的 v1.0.91 + v1.1.80
+源码、CHANGELOG、APK **全都写好并编译完了**，但从未上传 ——
+线上 manifest 的 `latest_version` 还停在 `1.0.90` / `1.1.79`。
+若只看本地 manifest，会误判"已发布"从而**漏发一整个版本**。
+
+**每次发版第一步先拉线上比对：**
+
+```bash
+curl -sS --noproxy '*' "https://qd.solutionx.top/d/p/609d4fcb-7415-4d70-96d1-18f2201631b6" \
+  | python -c "import sys,json; d=json.load(sys.stdin); print({k:v['latest_version'] for k,v in d.items()})"
+```
+
+- 线上落后本地 ⇒ 上一轮收尾没做完，**本轮要把缺的那个版本一起发**（本轮即 PC 1.1.80 + Android 1.0.92 一起发）。
+- 线上 == 本地 ⇒ 正常单端/多端发版。
+- 顺带用 `ls` 看 `QuickRemote/QuickRemote-*-v*.zip|apk` 的本地文件 mtime，
+  配合线上版本判断"是否有已编译但没传的产物"。
+
+---
+
 
 ## 0. 强制 Git 提交（发布前置检查，不可跳过）
 
@@ -148,9 +171,11 @@ bash ../.workbuddy/tools/dotnet-with-win-env.sh publish pc-client/QuickRemote.PC
     -c Release -r win-x64 --self-contained false -o pc-client/publish --nologo
 ```
 
-> ⚠️ **包装脚本可能静默吞掉全部输出**（2026-09-14 实测：连 `--version` 都无回显、`exit=0`
-> 也不报错，极易误判成「构建成功」，实际根本没编译 → 检查产物 mtime 才发现）。
-> 判断依据**不能只看 exit code**，必须核对产物时间戳或改用下面的直连写法：
+> ⚠️ **包装脚本可能静默吞掉全部输出**（2026-09-14 实测，**2026-10-03 又复现一次**）：
+> 连 `--version` 都无回显、`exit=0` 也不报错，极易误判成「构建成功」，实际根本没编译。
+> 2026-10-03 实测：包装脚本 **6 秒返回、零输出、`pc-client/publish/` 目录压根没生成**；
+> 换成下面的直连写法后 **12 秒编译成功**。检查产物 mtime / 目录是否存在才发现。
+> **判断依据不能只看 exit code**，必须核对产物时间戳或改用下面的直连写法：
 >
 > ```bash
 > export SystemRoot='C:\Windows' windir='C:\Windows' ProgramData='C:\ProgramData' \
@@ -413,6 +438,23 @@ cd tmp-settingshot && ./bin/Debug/net8.0-windows/SettingsShot.exe --test-upload
 ```bash
 python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));print({k:v['latest_version'] for k,v in d.items()})"
 ```
+
+> ⚠️ **`json.load` 成功 ≠ 文本没坏（2026-10-03 踩到）**：Edit 写中文时出现过替换字符
+> （某个字被写成 `修���`），JSON 依然合法、版本号依然正确，只有把 `changelog` 字段
+> **`print` 出来肉眼扫一遍**才看得见。⇒ 校验命令追加一行：
+> ```bash
+> python -c "import json;d=json.load(open('manifest.json',encoding='utf-8'));[print(k,'|',v['changelog']) for k,v in d.items()]"
+> ```
+> 出现 `�` 即为损坏，重新 Edit 修好再上传。
+
+> 💡 **上传前先占位、上传后回填（2026-10-03 实践，推荐）**：
+> manifest 需要写 `share_url`，但链接要等上传成功才有。顺序应为
+> ① 先写占位串（如 `"zip": "PLACEHOLDER_PC_1180"`）→ ② 上传产物拿 `share_url`
+> → ③ Edit 回填真实链接 → ④ 覆盖上传 manifest。
+> 收尾必查一次，确保没把占位符传上去：
+> ```bash
+> python -c "s=open('manifest.json',encoding='utf-8').read(); assert 'PLACEHOLDER' not in s; print('OK 无占位符')"
+> ```
 
 随后覆盖上传 manifest.json 与 CHANGELOG.md 到 qdrl 根目录（`5b681a68-...`）。
 
@@ -677,7 +719,28 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ---
 
-## 当前线上版本（2026-10-01 三端）
+## 当前线上版本（2026-10-03 三端）
+
+> ✅ **PC 1.1.80 + Android 1.0.92 + about 1.0.143 已发布**（2026-10-03 09:10）。
+> ⚠️ **本轮发布时发现上一轮 v1.0.91 + v1.1.80 从未上传**（源码/CHANGELOG/APK 全做好但线上 manifest
+> 停在 1.0.90/1.1.79）——两版一起发的。**这就是 §0.5 存在的原因：发版先核对线上 manifest。**
+> - PC 1.1.80：会话启动串行化（`_startGate`，并发会话不再竞争同进程 DXGI `DuplicateOutput`）；
+>   DXGI 失败不再上报 locked，锁屏统一由 `UpdateLockState`（`GetInputDesktopState` 真实桌面）判定；
+>   unlock 代理在 PC 未锁屏时直接跳过并记录，不再盲注按键误报 VERIFIED
+> - Android 1.0.92：含 v1.0.91（并发启动拒绝 + 锁屏态看门狗 60s 保底，修局域网切公网永久黑屏；
+>   补 `CHANGE_NETWORK_STATE` 修 Android 14 前台服务启动失败）+ v1.0.92（顶栏服务器地址独占第二行，
+>   `maxLines=1` + `TextOverflow.Ellipsis`，修新增锁形按钮后地址换行错位）
+> - PC ZIP `968,840B`（14 条目，内嵌 `1.1.80+6f065c9`）→ `/d/p/c711884d-84c7-474c-9ced-33f01e07f8bc`
+> - Android APK `13,817,391B`（versionCode 92）→ `/d/p/33981eb9-5804-4443-914f-6d8b5e6bc2e0`
+> - about v1.0.143 蓝绿端口 **20072**，持久化卷 `data`，统计未清零（total 104）；
+>   HTML 27234（本地 27160 **+74**）/ CSS 21400 / JS 8286；页面版本号各 2 次
+> - manifest 线上 `{relay 1.0.9, pc 1.1.80, android 1.0.92}`；
+>   清理 PC 1.1.77 / Android 1.0.88 / about 包 1.0.140+141（各留最近 3 个）
+> - 提交 `6f065c9` + `e8da4c6`（远端 main 已 `ls-remote` 核对 = 本地 HEAD）
+> - ⚠️ 本轮新坑 3 个（详见 §0.5 与 §4）：
+>   ① `dotnet-with-win-env.sh` 再次静默吞输出（6s/零输出/publish 目录未生成）→ 改直连 export 写法，12s 成功；
+>   ② manifest 用「先占位后回填」顺序，传完 `assert 'PLACEHOLDER' not in s` 卡一遍；
+>   ③ Edit 写中文产生替换字符 `修���`，`json.load` 仍成功 ⇒ 必须把 changelog 字段 print 出来肉眼复核。
 
 > ✅ **Android v1.0.88 + about v1.0.140 已发布**（2026-10-01 10:15）= 重发修复版（新版本号）：双锁按钮修复 + versionCode 88，APK 13,816,791B → `/d/p/078ce04d-e9bd-4858-b334-21ecf18d5aa9`；manifest android 留 {88,87,86}，删 85；about 包删 137。端口 20046。
 >
