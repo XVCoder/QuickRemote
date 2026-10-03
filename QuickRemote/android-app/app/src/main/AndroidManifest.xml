@@ -17,6 +17,15 @@
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!--
+        Android 14（targetSDK 34）connectedDevice 类前台服务的准入权限（v1.0.91）：
+        系统要求除 FOREGROUND_SERVICE_CONNECTED_DEVICE 外还须持有任一运行时准入项
+        （BLUETOOTH_CONNECT / CHANGE_NETWORK_STATE / CHANGE_WIFI_STATE 等），否则
+        startForeground 抛 SecurityException、服务立即 stopSelf——会话失去防冻结
+        保护（App 切后台即被冻结、socket 被掐）。选 CHANGE_NETWORK_STATE：与
+        "维护与外部设备的网络连接"语义吻合，且是普通权限（无需运行时弹窗授权）。
+    -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <!-- Android 13+ 前台服务的通知需用户授权才可见（未授权不影响保活，但用户看不到会话在跑） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!--

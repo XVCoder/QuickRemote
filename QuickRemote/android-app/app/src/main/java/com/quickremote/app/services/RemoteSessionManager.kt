@@ -16,6 +16,12 @@ private const val WATCHDOG_CHECK_INTERVAL_MS = 5_000L
 private const val WATCHDOG_NO_DATA_TIMEOUT_MS = 30_000L
 private const val WATCHDOG_NO_VIDEO_TIMEOUT_MS = 30_000L
 
+// 锁屏态视频保底（v1.0.91）：PC 端 v1.1.42+ 锁屏时由 SYSTEM 代理推锁屏画面，
+// 锁屏≠零视频。放宽到 60s（代理拉起最坏 ~6s + 容错），覆盖宿主误报 locked
+// （DXGI 竞争）或锁屏代理全灭的病态场景——此前 pcLocked 完全跳过视频判定，
+// 误报时两个视频源全灭 = 永久黑屏不断开（2026-10-02 00:09 根因之三）。
+private const val WATCHDOG_LOCKED_VIDEO_TIMEOUT_MS = 60_000L
+
 /**
  * 隧道 socket 的读超时。
  *
@@ -235,6 +241,14 @@ class RemoteSessionManager(
         qualityPercent: Int,
         config: ServerConfig
     ) {
+        // 并发启动守卫（v1.0.91）：自动重连与手动重连并发触发时（retryNow 与退避
+        // job 竞态、ViewModel 层守卫的异步窗口），会在 PC 端产生并发会话——
+        // DXGI 竞争被误判锁屏 + 共享字段交错 = 远端永久黑屏（2026-10-02 实测）。
+        // 会话在途/活跃时拒绝再次启动，多余的那次本来就是无效重试。
+        if (state == SessionState.CONNECTING || state == SessionState.CONNECTED) {
+            logger.warn("start() ignored: session already $state (concurrent start?)")
+            return
+        }
         this.deviceId = deviceId
         this.lastHostname = hostname
         this.lastLanIp = lanIp
@@ -322,7 +336,7 @@ class RemoteSessionManager(
      * 无数据看门狗：会话连接后监控数据流，防止"连接成功但无限黑屏"。
      * - 30 秒无任何帧（连心跳都没有）→ 链路中断或 PC 未加入隧道（中继竞态）
      * - 30 秒未收到任何视频帧（心跳正常）→ PC 推流异常（编码器故障等）
-     * PC 锁屏时画面合法暂停（心跳保持），跳过视频超时判定。
+     * - PC 锁屏时锁屏画面由 SYSTEM 代理推流，视频超时放宽到 60 秒（代理拉起耗时）
      * 超时通过 fail() 主动断开并提示用户，而不是永远黑屏。
      */
     private fun startWatchdog() {
@@ -331,7 +345,6 @@ class RemoteSessionManager(
             while (running && sessionGeneration.get() == gen) {
                 try { Thread.sleep(WATCHDOG_CHECK_INTERVAL_MS) } catch (_: InterruptedException) { return@Thread }
                 if (!running || sessionGeneration.get() != gen || state != SessionState.CONNECTED) continue
-                if (pcLocked) continue
                 // 后台/锁屏期间不判超时：此刻的"没数据"不代表链路已死（见 appForeground 注释）。
                 // 真正死掉的链路由 socket 读超时（SOCKET_READ_TIMEOUT_MS）兜底。
                 if (!appForeground) continue
@@ -344,10 +357,13 @@ class RemoteSessionManager(
                     )
                     break
                 }
-                if (lastVideoFrameAt == 0L && now - connectedAt > WATCHDOG_NO_VIDEO_TIMEOUT_MS) {
-                    logger.warn("Watchdog: no video frame since connect (${(now - connectedAt) / 1000}s), disconnecting")
+                // 视频超时：锁屏态放宽到 60s（锁屏画面由 PC 端 SYSTEM 代理推流，启动
+                // 需要数秒；完全跳过会让"误报 locked + 代理未启动"的病态会话永久黑屏）
+                val videoTimeoutMs = if (pcLocked) WATCHDOG_LOCKED_VIDEO_TIMEOUT_MS else WATCHDOG_NO_VIDEO_TIMEOUT_MS
+                if (lastVideoFrameAt == 0L && now - connectedAt > videoTimeoutMs) {
+                    logger.warn("Watchdog: no video frame since connect (${(now - connectedAt) / 1000}s, pcLocked=$pcLocked), disconnecting")
                     fail(
-                        "连接后${WATCHDOG_NO_VIDEO_TIMEOUT_MS / 1000}秒未收到视频画面（远端推流异常），已自动断开，请重连",
+                        "连接后${videoTimeoutMs / 1000}秒未收到视频画面（远端推流异常），已自动断开，请重连",
                         ReconnectPolicy.Reason.Watchdog
                     )
                     break

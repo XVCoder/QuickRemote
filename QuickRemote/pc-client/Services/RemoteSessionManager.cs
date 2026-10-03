@@ -148,6 +148,14 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>PC 当前是否处于锁屏/UAC 安全桌面（Winlogon 输入桌面激活）。</summary>
     private volatile bool _pcLocked;
 
+    // ============ 会话启动互斥（v1.1.80） ============
+    // 2026-10-02 00:08:43 公网重连黑屏根因之一：网络切换触发重连风暴，同一秒两个
+    // Start 并发执行——DXGI DuplicateOutput 同进程同一输出互斥，后来者 E_ACCESSDENIED
+    // 被误判为锁屏；且共享字段（_transport/_capture/队列/会话代数）交错赋值互相拆台，
+    // 失败会话的线程把成功会话的捕获对象清掉，DXGI 长期占用导致后续会话也全部失败。
+    // 串行化后第二个 Start 看到第一个的 _running=true，走既有 takeover 路径干净接管。
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+
     /// <summary>锁屏输入代理连接（null = 代理未运行）。锁屏期间输入帧转发给它注入。</summary>
     private System.Net.Sockets.TcpClient? _agentClient;
     private System.Net.Sockets.NetworkStream? _agentStream;
@@ -240,6 +248,20 @@ public sealed class RemoteSessionManager : IDisposable
     /// <summary>启动远程会话（中继隧道模式）。</summary>
     public async Task<bool> StartAsync(string sessionId, string serverHost, int tunnelPort)
     {
+        await _startGate.WaitAsync();
+        try
+        {
+            return await StartAsyncCore(sessionId, serverHost, tunnelPort);
+        }
+        finally
+        {
+            _startGate.Release();
+        }
+    }
+
+    /// <summary>中继模式启动主体（调用方已持有 [_startGate]）。</summary>
+    private async Task<bool> StartAsyncCore(string sessionId, string serverHost, int tunnelPort)
+    {
         // 断开延迟锁屏（v1.1.64）：新会话启动即取消待定锁屏——30s 宽限期内重连成功不锁屏
         CancelPendingLock();
 
@@ -280,6 +302,20 @@ public sealed class RemoteSessionManager : IDisposable
 
     /// <summary>启动远程会话（局域网直连模式，连接已由 LanListener 认证建立）。</summary>
     public async Task<bool> StartLocalAsync(string sessionId, System.Net.Sockets.TcpClient client)
+    {
+        await _startGate.WaitAsync();
+        try
+        {
+            return await StartLocalAsyncCore(sessionId, client);
+        }
+        finally
+        {
+            _startGate.Release();
+        }
+    }
+
+    /// <summary>局域网直连启动主体（调用方已持有 [_startGate]）。</summary>
+    private async Task<bool> StartLocalAsyncCore(string sessionId, System.Net.Sockets.TcpClient client)
     {
         // 断开延迟锁屏（v1.1.64）：新会话启动即取消待定锁屏（同 StartAsync）
         CancelPendingLock();
@@ -509,7 +545,7 @@ public sealed class RemoteSessionManager : IDisposable
     {
         var lastControlSent = DateTime.UtcNow;
         var lastRebuildTry = DateTime.MinValue;
-        var lockNotified = false;
+        var lastLostLog = DateTime.MinValue;
         var sessionStart = DateTime.UtcNow;
         var lastNudge = DateTime.MinValue;
         var lastDeliverTime = DateTime.UtcNow;
@@ -550,7 +586,8 @@ public sealed class RemoteSessionManager : IDisposable
                         _sourceWidth = capture.Width;
                         _sourceHeight = capture.Height;
                         _logger.Info($"Screen capture restored: {capture.Width}x{capture.Height}");
-                        lockNotified = false;
+                        // 防御性 unlocked（与 UpdateLockState 的桌面检测互为备份，手机端幂等）：
+                        // DXGI 恢复即意味着可推流，客户端据此解除"锁屏暂停"提示并重置看门狗宽限
                         SendStatusControl("unlocked");
                         // 分辨率变化（切换显示器/分辨率）：编码线程按帧尺寸驱动重建编码器并重新握手
                         // （编码器操作必须收敛到 EncodeLoop 线程，见字段区注释）
@@ -605,11 +642,16 @@ public sealed class RemoteSessionManager : IDisposable
                     try { _capture?.Dispose(); } catch { }
                     _capture = null;
                     _lastDeliveredFrame = null;
-                    if (!lockNotified)
+                    // v1.1.80：此处**不再**直接发送 locked 状态。DXGI 失败 ≠ 锁屏——
+                    // 并发会话竞争（DuplicateOutput 同进程互斥）、驱动复位同样抛
+                    // E_ACCESSDENIED。locked 通知与锁屏代理启动统一由 UpdateLockState
+                    // （真实桌面检测，每轮 1 秒节流）负责：误报 locked 时 Android 端
+                    // 因"锁屏合法暂停"跳过视频看门狗、锁屏代理又因桌面未锁不启动，
+                    // 两个视频源全灭 = 永久黑屏（2026-10-02 00:09 公网重连黑屏根因）。
+                    if ((DateTime.UtcNow - lastLostLog).TotalSeconds >= 30)
                     {
-                        lockNotified = true;
-                        _logger.Warn("Screen capture lost (PC locked?), waiting for unlock...");
-                        SendStatusControl("locked");
+                        lastLostLog = DateTime.UtcNow;
+                        _logger.Warn("Screen capture lost (access denied; locked or DXGI contention), retrying...");
                     }
                 }
                 else

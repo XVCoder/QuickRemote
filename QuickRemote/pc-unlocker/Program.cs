@@ -65,6 +65,17 @@ internal static class Program
             return 2;
         }
 
+        // 1.5 前置检查：当前输入桌面不是 Winlogon = 根本没锁屏（PC 端 DXGI 失败
+        // 被误判 locked 的场景，2026-10-02 00:09 实测：desktop=Default 下 SendInput
+        // 全部失败 ok=0 fail=6，却因桌面一直是 Default 误报 "UNLOCK VERIFIED"）。
+        // 此刻注入毫无意义，直接返回让客户端从"未锁屏"方向排查。
+        var preDesktop = GetDesktopName();
+        if (preDesktop != "Winlogon")
+        {
+            Log($"unlock skipped: input desktop is '{preDesktop}' (not locked) — host misreported lock state");
+            return 0;
+        }
+
         // 2. 切换到交互会话的 WinSta0 + Winlogon 安全桌面（需要 SYSTEM 权限）
         if (!SwitchToWinlogonDesktop()) return 3;
 
@@ -93,6 +104,10 @@ internal static class Program
             Thread.Sleep(500);
             var enterOk = PressEnter();
             Log($"round {round} sent (chars ok={ok} fail={fail}, enter={enterOk})");
+            // 注入全灭 = 目标桌面不接受本进程输入（典型：桌面切换后注入落错桌面），
+            // 显式告警避免被 "UNLOCK VERIFIED" 的桌面误判掩盖（2026-10-02 案例）
+            if (ok == 0 && fail > 0)
+                Log($"WARNING: all {fail} character injections rejected by SendInput — desktop/permission mismatch");
 
             // 5. 等待系统处理提交，检测当前输入桌面是否已切回 Default（= 解锁成功）
             for (var i = 0; i < 8; i++)

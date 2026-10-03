@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.quickremote.app.data.local.MAX_REMARK_LENGTH
 import com.quickremote.app.data.models.Device
@@ -146,13 +147,18 @@ fun DeviceListScreen(
                         StatusIndicator(color = statusColor, size = 7.dp)
                         Spacer(modifier = Modifier.size(6.dp))
                         Text(statusText, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                        if (serverConfig.address.isNotBlank()) {
-                            Text(
-                                " · ${serverConfig.address}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted
-                            )
-                        }
+                    }
+                    // v1.0.92：远端 URL 独占一行。图标区（三枚）挤占宽度后，
+                    // 与状态行同行会被压缩换行甚至裁切，单独成行并单行省略更稳。
+                    if (serverConfig.address.isNotBlank()) {
+                        Text(
+                            text = serverConfig.address,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
                 }
                 IconButton(onClick = { viewModel.refreshDevices() }, enabled = !isRefreshing) {
