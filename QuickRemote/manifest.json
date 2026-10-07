@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.81",
-    "changelog": "修复设置中心「更新记录」看不到最新版本：组件过滤只识别版本标题第一个括号标签，双轨合并段里 Android 在前时整段被隐藏，PC 端丢失 v1.1.80~1.1.68 共 8 个版本段；现改为扫描全部组件标签，任一指向 PC 即展示",
+    "latest_version": "1.1.82",
+    "changelog": "修复开机自启动完全失效：客户端清单要求管理员权限，Explorer 执行注册表 Run 键项不弹 UAC、CreateProcess 直接返回 WinError 740，进程静默不起。现改为注册计划任务（登录时静默取得管理员令牌，无需 UAC 交互），并清理注册表残留、补齐失败日志",
     "versions": {
+      "1.1.82": {
+        "zip": "https://qd.solutionx.top/d/p/448a26d3-c831-4624-a145-cbf732ebfea2"
+      },
       "1.1.81": {
         "zip": "https://qd.solutionx.top/d/p/ce717468-dc67-47c3-80d2-7d669478e009"
       },
       "1.1.80": {
         "zip": "https://qd.solutionx.top/d/p/c711884d-84c7-474c-9ced-33f01e07f8bc"
-      },
-      "1.1.79": {
-        "zip": "https://qd.solutionx.top/d/p/320e57b9-931f-4e4d-9a6a-bf9ae0bd5844"
       }
     }
   },
