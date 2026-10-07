@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <RootNamespace>QuickRemote.PCClient</RootNamespace>
     <AssemblyName>QuickRemote.PCClient</AssemblyName>
-    <Version>1.1.81</Version>
+    <Version>1.1.82</Version>
     <Company>QuickRemote</Company>
     <Product>QuickRemote PC Client</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>
@@ -38,6 +38,17 @@
   <!-- 手机配对：生成配对二维码（纯托管，无原生依赖） -->
   <ItemGroup>
     <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+
+  <!--
+    开机自启：注册 Task Scheduler 任务（InteractiveToken + HighestAvailable）。
+    客户端 app.manifest 要求 requireAdministrator，Explorer 拉起 Run 键项时
+    不弹 UAC、CreateProcess 直接返回 WinError 740，自启必然静默失效；
+    计划任务是唯一能让它开机拿到管理员令牌又无需 UAC 交互的方式。
+    选库而非 fork schtasks.exe：schtasks 在安全加固环境下会被禁用/拦截。
+  -->
+  <ItemGroup>
+    <PackageReference Include="TaskScheduler" Version="2.12.2" />
   </ItemGroup>
 
   <!--

@@ -721,6 +721,18 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
 
 ## 当前线上版本（2026-10-03 三端）
 
+> ✅ **PC v1.1.81 + about v1.0.144 已发布**（2026-10-03 10:30）= 修复设置中心「更新记录」不展示最新版。
+> `ChangelogRenderer` 组件过滤只取版本标题**第一个**括号标签，双轨合并段里 Android 排在前面
+> （`## v1.0.91 (Android App) + v1.1.80 (PC 客户端)`）时整段被隐藏，PC 端丢 v1.1.80~1.1.68 共 8 段。
+> 改为 `Regex.Matches` 扫全部标签、`Any(IsPcComponent)` 即展示。**PC 单端发版**（Android/relay 零改动）。
+> - PC ZIP `968,782B`（14 条目，内嵌 `1.1.81+6166442`）→ `/d/p/ce717468-dc67-47c3-80d2-7d669478e009`
+> - manifest 线上 `{relay 1.0.9, pc 1.1.81, android 1.0.92}`；pc versions = {1.1.81, 1.1.80, 1.1.79}；清理 PC 1.1.78
+> - about v1.0.144 蓝绿端口 **20073**，持久化卷 `data`，统计未清零（total 106）；
+>   HTML 27234（本地 27160 **+74**）/ CSS 21400 / JS 8286；页面 PC 版本号 2 次
+> - 提交 `6166442`（PC）+ `28b67b8`（about/manifest），远端 main 已 `ls-remote` 核对
+> - ⭐ **本轮做对的关键动作：CHANGELOG 上传后重拉线上文件跑一遍渲染器**（见「坑 19」）
+> - ⚠️ 本轮新坑 2 个（详见下）
+>
 > ✅ **PC 1.1.80 + Android 1.0.92 + about 1.0.143 已发布**（2026-10-03 09:10）。
 > ⚠️ **本轮发布时发现上一轮 v1.0.91 + v1.1.80 从未上传**（源码/CHANGELOG/APK 全做好但线上 manifest
 > 停在 1.0.90/1.1.79）——两版一起发的。**这就是 §0.5 存在的原因：发版先核对线上 manifest。**
@@ -927,8 +939,7 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
   - ⚠️ updater 的 `publish -o` 相对路径不生效（2026-09-13 实测，产物落在默认 `bin/Release/.../win-x64/`）→
     **一律用 Windows 风格绝对路径** `-o "E:/.../pc-updater/bin/publish"`
 
-> ⚠️ 发版坑（**根因已查明，2026-09-13**）：版本号变更后**首次** `assembleRelease` 报
-> BUILD FAILED，前两次（v1.0.74/v1.0.75）错误详情被 `tail` 截断，只看到「重跑即过」，
+> ⚠️ 发版坑（**根因已查明，2026-09-13**）：版本号变更后**首次** `assembleRelease` 报> BUILD FAILED，前两次（v1.0.74/v1.0.75）错误详情被 `tail` 截断，只看到「重跑即过」，
 > 误以为是「APK 重打包瞬时锁」的玄学。实际抓到完整报错后确认 —— **就是第 2.3 节那条
 > dex 文件锁**，与版本号变更无关：
 >
@@ -1051,3 +1062,29 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
     ③ **静态响应一律不设 `Content-Length`**（v1.0.118 起改 chunked）—— 这是平台 502 的根因修复，详见坑 18。
     **新增页面内容时注意**：别把大段内容重新内联回 HTML。校验判据见「部署后校验」的字节数比对——**实际收到的字节数 == 本地文件大小（+74B 平台注入 favicon 行），绝不能是 32768**。
     另：平台会向 HTML 注入 `<link rel="icon" href="/app/{id}/favicon">`（+74 字节），本地/线上 diff 只允许差这一行。
+
+19. **⭐ 改 CHANGELOG / 渲染逻辑的版本，必须对「线上文件」再验一次，不能只验本地**（2026-10-03 踩到）：
+    本轮修的正是「PC 端看不到最新版」——根因是 `ChangelogRenderer` 的组件过滤只取标题第一个括号标签。
+    如果只拿本地 `CHANGELOG.md` 测，会误以为「本地文件没问题 = 线上没问题」；
+    但**线上 CHANGELOG 是独立的一份文件**（固定分享链接 `bc9020f9-…` 覆盖上传），它的段落结构、
+    组件顺序可能与本地不同步。**发版收尾必须**：
+    ```bash
+    # 上传后重拉线上快照 → 用真实渲染器离屏跑 → 断言首个可见段就是本轮版本
+    curl -sS --noproxy '*' "https://qd.solutionx.top/d/p/bc9020f9-8d49-42ab-b9bd-255d219e6163" -o CHANGELOG.md
+    # 再用临时工程 <Compile Include="…/ChangelogRenderer.cs"/> 渲染并打印前几个标题
+    ```
+    **判据：首个可见版本段 == 本轮发版号**。本轮据此确认 `v1.1.81` 已是首个可见段（共 116 段）。
+
+20. **`upgrade_app` 的 `volumes` 经 MCP 通道可能被传成对象**（2026-10-03 实测）：传 `["data"]`
+    两次都报「volumes 参数无效: 必须是字符串数组」，而同一份 JSON 通过
+    `.workbuddy/tools/qd-mcp.py call upgrade_app '{"…","volumes":["data"]}'` **一次成功**。
+    → **MCP 通道报"参数格式无效"但 JSON 本身合法时，直接换直连脚本**，不要反复重试或改参数形态。
+    同理适用于 `access_paths` 等嵌套数组参数。
+
+21. **离屏验证工程必须开 `ImplicitUsings`**（2026-10-03）：用 `<Compile Include="…/ChangelogRenderer.cs"/>`
+    单文件引用产品源码时，若临时 csproj 缺 `<ImplicitUsings>enable</ImplicitUsings>`，
+    产品代码里的 `StringComparison` / `MatchCollection.Cast` 会报「当前上下文中不存在」——
+    **而产品项目本身是开了的，`dotnet build` 完全正常**，极易误判成产品代码有 bug。
+    → 裸引用产品 .cs 的临时工程，csproj 要对齐产品：`<UseWPF>true</UseWPF>` + `<ImplicitUsings>enable</ImplicitUsings>`。
+    另：`dotnet run -v q` 会把 `-v`/`q` 当程序参数传给 `Main(string[] args)`，
+    传文件路径必须用 `--` 分隔（`dotnet run --no-launch-profile -v q -- <path>`）。
