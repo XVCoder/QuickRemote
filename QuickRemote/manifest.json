@@ -33,17 +33,17 @@
     }
   },
   "android-app": {
-    "latest_version": "1.0.92",
-    "changelog": "修复局域网切公网后连接永久黑屏（并发启动拒绝 + 锁屏态看门狗 60 秒保底）；修复 Android 14 前台服务启动失败；设备页顶栏服务器地址改独占一行，修复新增锁形按钮后地址换行错位",
+    "latest_version": "1.0.93",
+    "changelog": "管理员模式开启后，设备页顶栏的锁形按钮右上方新增小绿圆点作为「已登录」标记，退出后自动隐藏——此前只能点开对话框才知道当前状态，而退出入口正是该按钮本身，缺视觉反馈易被误认为没退出成功；锁形图标在管理员态同时转为绿色",
     "versions": {
+      "1.0.93": {
+        "apk": "https://qd.solutionx.top/d/p/e0913b17-73bd-448f-8a5b-b0f05d8b2011"
+      },
       "1.0.92": {
         "apk": "https://qd.solutionx.top/d/p/33981eb9-5804-4443-914f-6d8b5e6bc2e0"
       },
       "1.0.90": {
         "apk": "https://qd.solutionx.top/d/p/f234b197-de6f-46e4-b939-2b9ecdf630d2"
-      },
-      "1.0.89": {
-        "apk": "https://qd.solutionx.top/d/p/ffd01009-8332-4647-b2b7-1a932bc9800a"
       }
     }
   }

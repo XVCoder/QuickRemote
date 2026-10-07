@@ -37,8 +37,8 @@ const CLIENTS = {
   },
   android: {
     name: 'Android App',
-    version: 'v1.0.92',
-    url: 'https://qd.solutionx.top/d/p/33981eb9-5804-4443-914f-6d8b5e6bc2e0',
+    version: 'v1.0.93',
+    url: 'https://qd.solutionx.top/d/p/e0913b17-73bd-448f-8a5b-b0f05d8b2011',
   },
 };
 const CLIENT_IDS = Object.keys(CLIENTS);
