@@ -2,6 +2,7 @@ package com.quickremote.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -61,6 +64,8 @@ import com.quickremote.app.data.models.DeviceListItem
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.Danger
+import com.quickremote.app.ui.theme.BgPrimary
+import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
 import com.quickremote.app.ui.theme.TextPrimary
 import com.quickremote.app.ui.theme.TextSecondary
@@ -173,8 +178,29 @@ fun DeviceListScreen(
                     }
                 }
                 // v1.0.87 管理员模式入口：设置按钮左边（锁形图标）
-                IconButton(onClick = { showAdminDialog = true }) {
-                    Icon(Icons.Filled.Lock, contentDescription = "管理员模式", tint = TextPrimary)
+                // v1.0.93：进入管理员模式后，锁形按钮右上方显示小绿圆点作为「已登录」标记，
+                // 退出即隐藏。原先只能靠点开对话框才知道当前是否处于管理员态——
+                // 而退出入口正是这个按钮本身，不给视觉反馈容易被忽略（甚至以为没退出成功）。
+                // 圆点描一圈背景色，避免压在图标上时边界糊在一起。
+                Box {
+                    IconButton(onClick = { showAdminDialog = true }) {
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = if (isAdmin) "管理员模式（已开启，点击退出）" else "管理员模式",
+                            tint = if (isAdmin) Success else TextPrimary
+                        )
+                    }
+                    if (isAdmin) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 2.dp, y = (-2).dp)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Success)
+                                .border(2.dp, BgPrimary, CircleShape)
+                        )
+                    }
                 }
                 IconButton(onClick = onSettingsClick) {
                     Icon(Icons.Filled.Settings, contentDescription = "设置", tint = TextPrimary)
