@@ -1088,3 +1088,23 @@ cat bin/Debug/net8.0-windows/upload-test.log   # success = True 即链路通
     → 裸引用产品 .cs 的临时工程，csproj 要对齐产品：`<UseWPF>true</UseWPF>` + `<ImplicitUsings>enable</ImplicitUsings>`。
     另：`dotnet run -v q` 会把 `-v`/`q` 当程序参数传给 `Main(string[] args)`，
     传文件路径必须用 `--` 分隔（`dotnet run --no-launch-profile -v q -- <path>`）。
+
+22. **离屏渲染取段落文本只能用 `TextRange`，`Inline.ToString()` 会静默返回类型名**（2026-10-07 试错 3 次）：
+    跑坑 19 的渲染器校验时，提取 `FlowDocument` 里的段落文本：
+    - `p.Inlines.Select(i => i.ToString())` ⇒拿到的是**类型名字符串**
+      （`System.Windows.Documents.Run`），拼出来的字符串全是类型名 → 断言"版本段数 = 0"，
+      **看起来像"渲染器把内容全过滤了"，实际是提取方式错了**。这是最坑的一种失败：不报错、静默给错结果。
+    - `new TextRange(p.ContentStart, p.ContentEnd).Text` ⇒✅ 正确。
+    - `Run.Content` / `Text` 类在裸引用的临时工程里报「不存在」（ReachFramework 可见性），
+      `BlockCollection` 也**不支持 `[i]` 索引**，要先 `.ToList()` 再下标。
+    → 校验脚本的断言逻辑要和提取方式一起 review，别把"提取失败"当成"线上内容有问题"。
+
+23. **打包前先让工作区「源码提交」干净，别让 chore 提交顶掉内嵌提交号**（2026-10-07 自造坑）：
+    `dotnet publish` 把当时的 `HEAD` 写进 `AssemblyInformationalVersion`，
+    `pack-pc.py` 会打印这个值并校验它以版本号开头 —— **它是"这个包 = 哪个 commit"的唯一凭据**。
+    本轮先提交了源码、又把误提交的临时文件单独清理成一个 `chore:` 提交，等编译时 HEAD 已是那个 chore 提交，
+    包内嵌的就不再是真正的修复提交。发现后 `git reset --soft <源码提交>` 压回一个提交、**重新编译再打包**。
+    → **顺序铁律**：① 先把源码改动提交成一个语义完整的提交 → ② 再 publish → ③ 再打包
+    → ④ manifest/about 的改动另起一个 `release:` 提交。任何"编译期间夹带新提交"都会污染内嵌凭据。
+    另外 `git add -A` 会把 `curl -o` 下载的临时文件一起吞进去（**`curl -o` 落在 cwd**，
+    在仓库根执行 bash 时 cwd 就是仓库根）→ 临时文件一律落工作区外的 `$TEMP`，或加进 `.gitignore`。
