@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.83",
-    "changelog": "修复双屏电脑远程画面与鼠标位置不对应的问题：现在远程画面始终对准 Windows 主显示器，点哪里 PC 上的光标就落在哪里；锁屏时用手机点击、输入密码的位置也一并修正",
+    "latest_version": "1.1.84",
+    "changelog": "修复长期运行后打开设置失败、甚至程序意外退出的问题：系统在后台升级 .NET 组件后，长期运行的客户端可能打不开设置窗口并闪退；现在这类异常只记录到日志，不再影响程序使用",
     "versions": {
+      "1.1.84": {
+        "zip": "https://qd.solutionx.top/d/p/eabb0e06-ae8c-4758-91af-b223759797f5"
+      },
       "1.1.83": {
         "zip": "https://qd.solutionx.top/d/p/92b4dabd-503b-4d93-a208-464d380a52c8"
       },
       "1.1.82": {
         "zip": "https://qd.solutionx.top/d/p/448a26d3-c831-4624-a145-cbf732ebfea2"
-      },
-      "1.1.81": {
-        "zip": "https://qd.solutionx.top/d/p/ce717468-dc67-47c3-80d2-7d669478e009"
       }
     }
   },
