@@ -35,6 +35,55 @@ public sealed class RemoteInputHandler
     /// <summary>远程画面高度（像素），用于坐标归一化。</summary>
     public int VideoHeight { get; set; } = 1080;
 
+    // ============ 多显示器映射（视频像素 → 虚拟桌面物理像素） ============
+    // 视频画面只是被捕获的那一块显示器，而 MOUSEEVENTF_VIRTUALDESK 的 0..65535
+    // 覆盖整个虚拟桌面。缺少这两个偏移/尺寸时，双屏下点按会被压缩到另一块屏。
+
+    /// <summary>被捕获显示器在虚拟桌面中的左上角（物理像素，可为负）。</summary>
+    public int MonitorLeft { get; private set; }
+
+    /// <summary>被捕获显示器在虚拟桌面中的顶边（物理像素，可为负）。</summary>
+    public int MonitorTop { get; private set; }
+
+    /// <summary>被捕获显示器物理宽（0=未知，按视频宽处理）。</summary>
+    public int MonitorWidth { get; private set; }
+
+    /// <summary>被捕获显示器物理高（0=未知，按视频高处理）。</summary>
+    public int MonitorHeight { get; private set; }
+
+    /// <summary>虚拟桌面左上角 X（物理像素）。</summary>
+    public int VirtualLeft { get; private set; }
+
+    /// <summary>虚拟桌面左上角 Y（物理像素）。</summary>
+    public int VirtualTop { get; private set; }
+
+    /// <summary>虚拟桌面宽（物理像素，0=未知，按显示器宽处理）。</summary>
+    public int VirtualWidth { get; private set; }
+
+    /// <summary>虚拟桌面高（物理像素）。</summary>
+    public int VirtualHeight { get; private set; }
+
+    /// <summary>
+    /// 设置多显示器坐标映射（会话启动/捕获重建时更新）。
+    /// 输入帧在线程池线程处理，整体加锁避免读到半更新的映射。
+    /// </summary>
+    public void SetDesktopMapping(
+        int monitorLeft, int monitorTop, int monitorWidth, int monitorHeight,
+        int virtualLeft, int virtualTop, int virtualWidth, int virtualHeight)
+    {
+        lock (_lock)
+        {
+            MonitorLeft = monitorLeft;
+            MonitorTop = monitorTop;
+            MonitorWidth = monitorWidth;
+            MonitorHeight = monitorHeight;
+            VirtualLeft = virtualLeft;
+            VirtualTop = virtualTop;
+            VirtualWidth = virtualWidth;
+            VirtualHeight = virtualHeight;
+        }
+    }
+
     /// <summary>处理一帧输入数据。</summary>
     public void HandleFrame(byte type, byte[] data)
     {
@@ -96,14 +145,36 @@ public sealed class RemoteInputHandler
         }
     }
 
-    /// <summary>像素坐标 → SendInput 归一化坐标（0-65535，配合 MOUSEEVENTF_ABSOLUTE）。</summary>
+    /// <summary>
+    /// 视频像素 → SendInput 归一化坐标（0-65535，配合 MOUSEEVENTF_ABSOLUTE|VIRTUALDESK）。
+    /// 先映射到被捕获显示器的桌面物理像素，再在整个虚拟桌面上归一化：
+    /// 双屏时画面只覆盖其中一块屏，直接按视频宽高归一化会把点按压缩/平移到另一块屏。
+    /// </summary>
     private (int dx, int dy) Normalize(int x, int y)
     {
-        var vw = VideoWidth > 0 ? VideoWidth : 1920;
-        var vh = VideoHeight > 0 ? VideoHeight : 1080;
-        var dx = (int)((long)Math.Clamp(x, 0, vw - 1) * 65535 / vw);
-        var dy = (int)((long)Math.Clamp(y, 0, vh - 1) * 65535 / vh);
-        return (dx, dy);
+        int vw, vh, mLeft, mTop, mw, mh, vLeft, vTop, vW, vH;
+        lock (_lock)
+        {
+            vw = VideoWidth > 0 ? VideoWidth : 1920;
+            vh = VideoHeight > 0 ? VideoHeight : 1080;
+            mLeft = MonitorLeft;
+            mTop = MonitorTop;
+            mw = MonitorWidth > 0 ? MonitorWidth : vw;
+            mh = MonitorHeight > 0 ? MonitorHeight : vh;
+            vLeft = VirtualLeft;
+            vTop = VirtualTop;
+            vW = VirtualWidth > 0 ? VirtualWidth : mw;
+            vH = VirtualHeight > 0 ? VirtualHeight : mh;
+        }
+
+        // 视频像素 → 被捕获显示器桌面像素（物理）
+        var px = mLeft + (long)Math.Clamp(x, 0, vw - 1) * mw / vw;
+        var py = mTop + (long)Math.Clamp(y, 0, vh - 1) * mh / vh;
+
+        // 桌面像素 → 虚拟桌面归一化坐标（65535 = 虚拟桌面右下角最后一个像素）
+        var dx = (int)Math.Round((px - vLeft) * 65535.0 / Math.Max(1, vW - 1));
+        var dy = (int)Math.Round((py - vTop) * 65535.0 / Math.Max(1, vH - 1));
+        return (Math.Clamp(dx, 0, 65535), Math.Clamp(dy, 0, 65535));
     }
 
     /// <summary>绝对坐标移动鼠标（像素坐标 → 归一化）。</summary>

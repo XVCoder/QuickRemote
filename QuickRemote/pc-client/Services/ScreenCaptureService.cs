@@ -27,6 +27,24 @@ public sealed class ScreenCaptureService : IDisposable
     /// <summary>屏幕高度（像素）。</summary>
     public int Height => _height;
 
+    /// <summary>被捕获显示器在虚拟桌面中的左上角（物理像素；主屏为 0，左/上方副屏可为负）。</summary>
+    public int DesktopLeft { get; private set; }
+
+    /// <summary>被捕获显示器在虚拟桌面中的顶边（物理像素）。</summary>
+    public int DesktopTop { get; private set; }
+
+    /// <summary>虚拟桌面（所有显示器外接矩形）左上角 X（物理像素）。</summary>
+    public int VirtualLeft { get; private set; }
+
+    /// <summary>虚拟桌面左上角 Y（物理像素）。</summary>
+    public int VirtualTop { get; private set; }
+
+    /// <summary>虚拟桌面宽度（物理像素，所有显示器外接矩形）。</summary>
+    public int VirtualWidth { get; private set; }
+
+    /// <summary>虚拟桌面高度（物理像素）。</summary>
+    public int VirtualHeight { get; private set; }
+
     /// <summary>
     /// 判断异常是否为锁屏/安全桌面导致的 DXGI 访问问题（可等待解锁后恢复）。
     /// - 0x887A0026 DXGI_ERROR_ACCESS_LOST：锁屏/UAC 切换桌面导致复制失效
@@ -55,6 +73,45 @@ public sealed class ScreenCaptureService : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// 枚举本机所有适配器的所有输出，返回虚拟桌面的外接矩形（物理像素）。
+    /// 仅用于输入坐标归一化基准；枚举失败返回空矩形由调用方回退。
+    /// </summary>
+    private static (int Left, int Top, int Right, int Bottom) EnumerateVirtualDesktopBounds()
+    {
+        int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
+        try
+        {
+            using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+            for (var ai = 0; ; ai++)
+            {
+                var adapters = factory.EnumAdapters1(ai, out var adapter);
+                if (adapters.Failure) break;
+                using (adapter)
+                {
+                    for (var oi = 0; ; oi++)
+                    {
+                        var outputs = adapter.EnumOutputs(oi, out var output);
+                        if (outputs.Failure) break;
+                        using (output)
+                        {
+                            var r = output.Description.DesktopCoordinates;
+                            left = Math.Min(left, r.Left);
+                            top = Math.Min(top, r.Top);
+                            right = Math.Max(right, r.Right);
+                            bottom = Math.Max(bottom, r.Bottom);
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return (0, 0, 0, 0);
+        }
+        return left == int.MaxValue ? (0, 0, 0, 0) : (left, top, right, bottom);
+    }
+
     /// <summary>初始化 DXGI Desktop Duplication。需要在 UI 线程或有桌面会话的线程调用。</summary>
     public void Start()
     {
@@ -71,19 +128,63 @@ public sealed class ScreenCaptureService : IDisposable
             out _context
         ).CheckError();
 
-        // 2. 获取主显示器输出
+        // 2. 枚举设备所在适配器的全部输出，选中 Windows 主显示器（桌面原点固定为 (0,0)）。
+        //    EnumOutputs(0) 只是适配器输出序号，不保证是"主显示器"——双屏用户把右屏
+        //    设为主屏时，旧实现可能捕获另一块屏，手机端画面与点击坐标整体错位。
         using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
         using var adapter = dxgiDevice.GetParent<IDXGIAdapter>();
-        adapter.EnumOutputs(0, out var output).CheckError();
-        using (output)
+
+        var outputs = new List<IDXGIOutput>();
+        for (var i = 0; ; i++)
         {
-            var desc = output.Description;
+            var hr = adapter.EnumOutputs(i, out var candidate);
+            if (hr.Failure) break;
+            outputs.Add(candidate);
+        }
+        if (outputs.Count == 0)
+            throw new InvalidOperationException("No DXGI output available for desktop duplication");
+
+        var primary = outputs.FirstOrDefault(o =>
+        {
+            var r = o.Description.DesktopCoordinates;
+            return r.Left == 0 && r.Top == 0;
+        }) ?? outputs[0];
+
+        try
+        {
+            var desc = primary.Description;
             _width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
             _height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
+            DesktopLeft = desc.DesktopCoordinates.Left;
+            DesktopTop = desc.DesktopCoordinates.Top;
 
-            using var output1 = output.QueryInterface<IDXGIOutput1>();
+            using var output1 = primary.QueryInterface<IDXGIOutput1>();
             // 3. 创建 Output Duplication
             _duplication = output1.DuplicateOutput(_device);
+
+            // 虚拟桌面 = 所有适配器所有输出的外接矩形（物理像素）。
+            // 输入注入按 VIRTUALDESK 归一化，必须用整个虚拟桌面换算，
+            // 否则双屏下点按位置会被压缩/平移到另一块屏。
+            var (vLeft, vTop, vRight, vBottom) = EnumerateVirtualDesktopBounds();
+            if (vRight <= vLeft || vBottom <= vTop)
+            {
+                vLeft = desc.DesktopCoordinates.Left;
+                vTop = desc.DesktopCoordinates.Top;
+                vRight = desc.DesktopCoordinates.Right;
+                vBottom = desc.DesktopCoordinates.Bottom;
+            }
+            VirtualLeft = vLeft;
+            VirtualTop = vTop;
+            VirtualWidth = Math.Max(1, vRight - vLeft);
+            VirtualHeight = Math.Max(1, vBottom - vTop);
+        }
+        finally
+        {
+            // 选中输出之外的对象必须释放；Duplication 创建后不再依赖 output 实例
+            foreach (var o in outputs)
+            {
+                try { o.Dispose(); } catch { }
+            }
         }
 
         // 4. 创建 staging 纹理（CPU 可读，用于读取 GPU 纹理数据）

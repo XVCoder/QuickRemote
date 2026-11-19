@@ -499,7 +499,7 @@ internal static class Program
             _ => 0
         };
         if (flags == 0) return;
-        SendMouseInput(dx, dy, 0, flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK);
+        SendMouseInput(dx, dy, 0, flags | MOUSEEVENTF_ABSOLUTE);
     }
 
     private static void InjectKey(byte[] data)
@@ -534,10 +534,10 @@ internal static class Program
         // 垂直/水平互斥 dwFlags，分别注入（均带 MOVE 定位光标）
         if (delta != 0)
             SendMouseInput(dx, dy, unchecked((uint)delta),
-                MOUSEEVENTF_WHEEL | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK);
+                MOUSEEVENTF_WHEEL | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE);
         if (deltaH != 0)
             SendMouseInput(dx, dy, unchecked((uint)deltaH),
-                MOUSEEVENTF_HWHEEL | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK);
+                MOUSEEVENTF_HWHEEL | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE);
     }
 
     /// <summary>文本帧注入：UTF-8 解码后逐字符 Unicode 注入（锁屏密码框打字）。</summary>
@@ -548,6 +548,11 @@ internal static class Program
             TypeUnicode(ch);
     }
 
+    /// <summary>
+    /// 视频像素 → 绝对坐标（0-65535）。不带 VIRTUALDESK：锁屏画面来自主显示器
+    /// （GetDC(NULL)），归一化必须只覆盖主屏；带 VIRTUALDESK 时会按整个虚拟桌面
+    /// 换算，双屏下点按会落到另一块屏。
+    /// </summary>
     private static (int, int) Normalize(int x, int y, int videoW, int videoH)
     {
         var dx = (int)((long)Math.Clamp(x, 0, videoW - 1) * 65535 / videoW);
@@ -597,7 +602,7 @@ internal static class Program
     private static void ClickCenter()
     {
         SendMouseInput(65535 / 2, 65535 / 2, 0,
-            MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK);
+            MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE);
     }
 
     private static bool SendKey(ushort vk, ushort scan, uint flags)
@@ -797,7 +802,6 @@ internal static class Program
     private const uint MOUSEEVENTF_WHEEL = 0x0800;
     private const uint MOUSEEVENTF_HWHEEL = 0x1000;
     private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
-    private const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint KEYEVENTF_UNICODE = 0x0004;
     private const ushort VK_RETURN = 0x0D;

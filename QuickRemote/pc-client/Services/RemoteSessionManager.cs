@@ -435,6 +435,7 @@ public sealed class RemoteSessionManager : IDisposable
                     capture.Start();
                     _sourceWidth = capture.Width;
                     _sourceHeight = capture.Height;
+                    ApplyInputMapping(capture);
                     _capture = capture; // 所有权转移：此后由字段统一管理生命周期
                 }
                 finally
@@ -585,6 +586,7 @@ public sealed class RemoteSessionManager : IDisposable
                         _capture = capture;
                         _sourceWidth = capture.Width;
                         _sourceHeight = capture.Height;
+                        ApplyInputMapping(capture);
                         _logger.Info($"Screen capture restored: {capture.Width}x{capture.Height}");
                         // 防御性 unlocked（与 UpdateLockState 的桌面检测互为备份，手机端幂等）：
                         // DXGI 恢复即意味着可推流，客户端据此解除"锁屏暂停"提示并重置看门狗宽限
@@ -1363,6 +1365,23 @@ public sealed class RemoteSessionManager : IDisposable
             data[i + 1] &= 0xFC;  // G → 6 bit
             data[i + 2] &= 0xF8;  // R → 5 bit
         }
+    }
+
+    /// <summary>
+    /// 同步多显示器输入映射：视频像素 → 被捕获显示器物理像素 → 虚拟桌面归一化。
+    /// 手机端触摸坐标只按视频尺寸换算，PC 端必须补上显示器在虚拟桌面中的偏移，
+    /// 否则双屏（尤其主屏不是最左/最上那块）时点按会落到另一块屏上。
+    /// </summary>
+    private void ApplyInputMapping(ScreenCaptureService capture)
+    {
+        _inputHandler.SetDesktopMapping(
+            capture.DesktopLeft, capture.DesktopTop,
+            capture.Width, capture.Height,
+            capture.VirtualLeft, capture.VirtualTop,
+            capture.VirtualWidth, capture.VirtualHeight);
+        _logger.Info(
+            $"Input mapping: monitor {capture.Width}x{capture.Height} at ({capture.DesktopLeft},{capture.DesktopTop}), " +
+            $"virtual desktop {capture.VirtualWidth}x{capture.VirtualHeight} at ({capture.VirtualLeft},{capture.VirtualTop})");
     }
 
     /// <summary>
