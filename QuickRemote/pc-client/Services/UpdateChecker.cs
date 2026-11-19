@@ -12,10 +12,9 @@ namespace QuickRemote.PCClient.Services;
 /// </summary>
 public sealed class UpdateChecker : INotifyPropertyChanged, IDisposable
 {
-    private static readonly HttpClient Http = new()
-    {
-        Timeout = TimeSpan.FromSeconds(15)
-    };
+    // 惰性创建，避免静态初始化失败时把整个 UpdateChecker 类型永久置为不可用（同 SettingsWindow）。
+    private static HttpClient? _http;
+    private static HttpClient Http => _http ??= new() { Timeout = TimeSpan.FromSeconds(15) };
 
     private readonly Logger _logger;
     private bool _isUpdateAvailable;

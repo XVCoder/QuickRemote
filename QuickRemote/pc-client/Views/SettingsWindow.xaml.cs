@@ -16,7 +16,13 @@ namespace QuickRemote.PCClient.Views;
 /// </summary>
 public partial class SettingsWindow : Window
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    /// <summary>
+    /// 惰性创建：静态字段初始化一旦失败（例如运行时程序集缺失），整个 SettingsWindow
+    /// 类型会在本进程内被永久标记为初始化失败，用户点多少次都打不开设置。
+    /// 改为首次使用时才创建，失败只影响本次调用，环境恢复后无需重启进程。
+    /// </summary>
+    private static HttpClient? _http;
+    private static HttpClient Http => _http ??= new() { Timeout = TimeSpan.FromSeconds(20) };
 
     /// <summary>更新记录是否已成功加载（切页时不再重复拉取，点「刷新」可强制重载）。</summary>
     private bool _changelogLoaded;

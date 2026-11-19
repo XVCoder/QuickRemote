@@ -18,7 +18,9 @@ namespace QuickRemote.PCClient.Services;
 /// </summary>
 public static class AdminService
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    // 惰性创建，避免静态初始化失败时把整个 AdminService 类型永久置为不可用。
+    private static HttpClient? _http;
+    private static HttpClient Http => _http ??= new() { Timeout = TimeSpan.FromSeconds(15) };
 
     /// <summary>校验管理员密码。成功返回 (true, null, false)。</summary>
     public static async Task<(bool Ok, string? Error, bool PasswordInvalid)> VerifyAsync(string controlAddress, string preSharedKey, string password)

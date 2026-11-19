@@ -27,7 +27,9 @@ public static class FeedbackService
     /// <summary>勾选「附带日志」时截取的日志行数。</summary>
     public const int LogTailLines = 1000;
 
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    // 惰性创建，避免静态初始化失败时把整个 FeedbackService 类型永久置为不可用。
+    private static HttpClient? _http;
+    private static HttpClient Http => _http ??= new() { Timeout = TimeSpan.FromSeconds(30) };
 
     /// <summary>
     /// 提交反馈。上传失败不抛异常，返回带失败原因的结果由调用方提示。

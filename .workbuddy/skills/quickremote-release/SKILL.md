@@ -146,6 +146,9 @@ git status --porcelain
 - `QuickRemote/CHANGELOG.md`：PC 条目 `## vX.Y.Z (PC 客户端)`，Android 条目 `## vX.Y.Z (Android App)`；新条目插在 `# QuickRemote 更新记录` 之后，最新在前
 - `android-app/app/src/main/assets/changelog.txt`：**独立维护**，只放 Android 条目，每次发版必须同步（App 内「更新记录」读的就是它）
 - PC 端版本号从 csproj 自动读取，不要硬编码
+- ⚠️ **更新记录面向普通用户（2026-11-19 用户反馈）**：CHANGELOG.md / manifest.json 的 `changelog` / assets/changelog.txt 只写用户能感知的现象、影响场景和修复结果，**禁止**出现类名、文件名、API/枚举名（`EnumOutputs(0)`、`MOUSEEVENTF_VIRTUALDESK` 之类）、日志字段和实现手段。技术根因只写进 commit message / 代码注释。
+  正例：`修复双屏电脑远程画面和鼠标位置对不上的问题：现在远程画面始终对准 Windows 主显示器，点哪里 PC 上的光标就落在哪里`
+  反例：v1.1.83 初版条目罗列捕获枚举序号、虚拟桌面归一化、`Input mapping` 日志字段，被用户指出「不像面向用户的更新记录」
 
 ---
 
