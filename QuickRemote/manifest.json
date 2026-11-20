@@ -18,17 +18,17 @@
     }
   },
   "pc-client": {
-    "latest_version": "1.1.85",
-    "changelog": "新增多屏切换：被控电脑接了多个显示器时，手机端远程画面底部会出现「屏幕」按钮，可在弹窗中选择要查看和操作的屏幕（标注主屏与分辨率），切换后画面与点击位置自动对应所选屏幕；单屏电脑或旧版手机端不显示该入口，行为不变",
+    "latest_version": "1.1.86",
+    "changelog": "修复部分电脑远程画面全黑的问题：上一版加入多屏支持后，部分显卡的电脑出现连接正常、鼠标键盘可用但手机端画面全黑；本版已修复，多屏切换功能不受影响。已安装 1.1.85 的用户请直接升级到本版",
     "versions": {
+      "1.1.86": {
+        "zip": "https://qd.solutionx.top/d/p/8b08cc77-611b-456e-86d4-ecc05ef0d893"
+      },
       "1.1.85": {
         "zip": "https://qd.solutionx.top/d/p/72b22be2-bbf1-40c6-a9ab-ca3b64509fbd"
       },
       "1.1.84": {
         "zip": "https://qd.solutionx.top/d/p/eabb0e06-ae8c-4758-91af-b223759797f5"
-      },
-      "1.1.83": {
-        "zip": "https://qd.solutionx.top/d/p/92b4dabd-503b-4d93-a208-464d380a52c8"
       }
     }
   },
