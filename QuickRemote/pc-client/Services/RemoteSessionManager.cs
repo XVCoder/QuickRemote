@@ -787,7 +787,10 @@ public sealed class RemoteSessionManager : IDisposable
     {
         try
         {
-            var monitors = ScreenCaptureService.EnumerateMonitors();
+            // 优先用当前捕获实例缓存的列表（与捕获编号同一体系且无需重复创建设备）；
+            // 捕获未就绪（锁屏中）时退回实时枚举
+            IReadOnlyList<MonitorTarget> monitors = _capture?.Monitors ?? Array.Empty<MonitorTarget>();
+            if (monitors.Count == 0) monitors = ScreenCaptureService.EnumerateMonitors();
             if (monitors.Count == 0) return string.Empty;
             var current = _capture != null && _capture.MonitorIndex >= 0
                 ? _capture.MonitorIndex

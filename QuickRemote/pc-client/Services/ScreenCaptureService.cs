@@ -33,6 +33,10 @@ public sealed class ScreenCaptureService : IDisposable
     /// </summary>
     public int MonitorIndex { get; private set; } = -1;
 
+    /// <summary>本次捕获时枚举到的显示器列表（与 <see cref="MonitorIndex"/> 同一编号体系；
+    /// 提供给会话层下发 Android 端，避免每次握手重新创建设备枚举）。</summary>
+    public IReadOnlyList<MonitorTarget> Monitors { get; private set; } = Array.Empty<MonitorTarget>();
+
     /// <summary>被捕获显示器在虚拟桌面中的左上角（物理像素；主屏为 0，左/上方副屏可为负）。</summary>
     public int DesktopLeft { get; private set; }
 
@@ -80,44 +84,54 @@ public sealed class ScreenCaptureService : IDisposable
     }
 
     /// <summary>
-    /// 枚举本机所有显示器（所有适配器的所有输出，过滤未接入桌面的输出），
+    /// 枚举本机显示器（默认适配器的全部输出，过滤未接入桌面的输出），
     /// 统一按「主屏优先、再从左到右、从上到下」排序并编号。
     /// <see cref="Start"/> 的 monitorIndex 使用同一套顺序定位目标输出。
     /// </summary>
     public static List<MonitorTarget> EnumerateMonitors()
     {
-        var raw = new List<MonitorTarget>();
         try
         {
-            using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-            for (var ai = 0; ; ai++)
+            // 与 Start 完全一致：设备用默认适配器创建（显式传适配器在部分驱动上
+            // 会直接返回 E_INVALIDARG），再枚举该设备所属适配器的输出。
+            var hr = D3D11.D3D11CreateDevice(
+                null,
+                DriverType.Hardware,
+                DeviceCreationFlags.BgraSupport,
+                null,
+                out var device,
+                out _,
+                out var context
+            );
+            if (hr.Failure) return new List<MonitorTarget>();
+
+            using (device)
+            using (context)
+            using (var dxgiDevice = device.QueryInterface<IDXGIDevice>())
+            using (var adapter = dxgiDevice.GetParent<IDXGIAdapter>())
             {
-                var hr = factory.EnumAdapters1(ai, out var adapter);
-                if (hr.Failure) break;
-                using (adapter)
+                var raw = new List<MonitorTarget>();
+                for (var oi = 0; ; oi++)
                 {
-                    for (var oi = 0; ; oi++)
+                    var ohr = adapter.EnumOutputs(oi, out var output);
+                    if (ohr.Failure) break;
+                    using (output)
                     {
-                        var ohr = adapter.EnumOutputs(oi, out var output);
-                        if (ohr.Failure) break;
-                        using (output)
-                        {
-                            var r = output.Description.DesktopCoordinates;
-                            var w = r.Right - r.Left;
-                            var h = r.Bottom - r.Top;
-                            if (w <= 0 || h <= 0) continue; // 未接入桌面（如休眠/禁用）的输出
-                            raw.Add(new MonitorTarget(0, w, h, r.Left, r.Top,
-                                r.Left == 0 && r.Top == 0));
-                        }
+                        var r = output.Description.DesktopCoordinates;
+                        var w = r.Right - r.Left;
+                        var h = r.Bottom - r.Top;
+                        if (w <= 0 || h <= 0) continue; // 未接入桌面（如休眠/禁用）的输出
+                        raw.Add(new MonitorTarget(0, w, h, r.Left, r.Top,
+                            r.Left == 0 && r.Top == 0));
                     }
                 }
+                return Order(raw);
             }
         }
         catch
         {
-            return raw;
+            return new List<MonitorTarget>();
         }
-        return Order(raw);
     }
 
     /// <summary>统一排序规则：主屏在最前，其余按虚拟桌面坐标从左到右、从上到下，再重新编号。</summary>
@@ -178,70 +192,63 @@ public sealed class ScreenCaptureService : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(ScreenCaptureService));
 
-        using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-        var adapters = new List<IDXGIAdapter1>();
-        var candidates = new List<(int Adapter, int Output, MonitorTarget Info)>();
-        IDXGIOutput? selected = null;
+        // 1. 创建设备。必须传 null（默认适配器）：显式传 IDXGIAdapter 在 AMD 驱动上
+        //    实测直接返回 E_INVALIDARG，导致整条推流链路黑屏（v1.1.85 回归根因）。
+        D3D11.D3D11CreateDevice(
+            null,
+            DriverType.Hardware,
+            DeviceCreationFlags.BgraSupport,
+            null,
+            out _device,
+            out _,
+            out _context
+        ).CheckError();
+
+        // 2. 枚举设备所属适配器的全部输出，按与 EnumerateMonitors 一致的规则排序后
+        //    按编号选目标（-1 = 主显示器）。输出序号不保证主屏在第一位，必须按坐标判断。
+        using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
+        using var adapter = dxgiDevice.GetParent<IDXGIAdapter>();
+
+        var outputs = new List<IDXGIOutput>();
+        for (var i = 0; ; i++)
+        {
+            var hr = adapter.EnumOutputs(i, out var candidate);
+            if (hr.Failure) break;
+            outputs.Add(candidate);
+        }
+        if (outputs.Count == 0)
+            throw new InvalidOperationException("No DXGI output available for desktop duplication");
 
         try
         {
-            // 1. 枚举所有适配器/输出并按与 EnumerateMonitors 一致的规则排序。
-            //    不能只用默认适配器：多显卡笔记本的外接屏可能挂在另一块显卡上。
-            for (var ai = 0; ; ai++)
-            {
-                var hr = factory.EnumAdapters1(ai, out var adapter);
-                if (hr.Failure) break;
-                adapters.Add(adapter);
-                for (var oi = 0; ; oi++)
+            var ordered = outputs
+                .Select(o =>
                 {
-                    var ohr = adapter.EnumOutputs(oi, out var output);
-                    if (ohr.Failure) break;
-                    using (output)
-                    {
-                        var r = output.Description.DesktopCoordinates;
-                        var w = r.Right - r.Left;
-                        var h = r.Bottom - r.Top;
-                        if (w <= 0 || h <= 0) continue;
-                        candidates.Add((ai, oi, new MonitorTarget(0, w, h, r.Left, r.Top,
-                            r.Left == 0 && r.Top == 0)));
-                    }
-                }
-            }
-            if (candidates.Count == 0)
-                throw new InvalidOperationException("No DXGI output available for desktop duplication");
-
-            var ordered = candidates
-                .OrderByDescending(c => c.Info.IsPrimary)
-                .ThenBy(c => c.Info.Left)
-                .ThenBy(c => c.Info.Top)
+                    var r = o.Description.DesktopCoordinates;
+                    return (Output: o, Info: new MonitorTarget(0, r.Right - r.Left, r.Bottom - r.Top,
+                        r.Left, r.Top, r.Left == 0 && r.Top == 0));
+                })
+                .Where(x => x.Info.Width > 0 && x.Info.Height > 0)
+                .OrderByDescending(x => x.Info.IsPrimary)
+                .ThenBy(x => x.Info.Left)
+                .ThenBy(x => x.Info.Top)
+                .Select((x, i) => (x.Output, Info: x.Info with { Index = i }))
                 .ToList();
+            if (ordered.Count == 0)
+                throw new InvalidOperationException("No active DXGI output available for desktop duplication");
+
             var sel = monitorIndex >= 0 && monitorIndex < ordered.Count ? monitorIndex : 0;
             var target = ordered[sel];
             MonitorIndex = sel;
-            var desc = target.Info;
+            Monitors = ordered.Select(x => x.Info).ToList();
 
-            // 2. 在目标输出所属适配器上创建 D3D11 设备（硬件驱动）
-            D3D11.D3D11CreateDevice(
-                adapters[target.Adapter],
-                DriverType.Hardware,
-                DeviceCreationFlags.BgraSupport,
-                null,
-                out _device,
-                out _,
-                out _context
-            ).CheckError();
+            _width = target.Info.Width;
+            _height = target.Info.Height;
+            DesktopLeft = target.Info.Left;
+            DesktopTop = target.Info.Top;
 
-            // 3. 重新取该适配器的目标输出并创建 Output Duplication
-            if (adapters[target.Adapter].EnumOutputs(target.Output, out selected).Failure ||
-                selected == null)
-                throw new InvalidOperationException("Selected DXGI output is no longer available");
-
-            _width = desc.Width;
-            _height = desc.Height;
-            DesktopLeft = desc.Left;
-            DesktopTop = desc.Top;
-
-            using var output1 = selected.QueryInterface<IDXGIOutput1>();
+            using var output1 = target.Output.QueryInterface<IDXGIOutput1>();
+            // 3. 创建 Output Duplication
             _duplication = output1.DuplicateOutput(_device);
 
             // 虚拟桌面 = 所有适配器所有输出的外接矩形（物理像素）。
@@ -250,10 +257,10 @@ public sealed class ScreenCaptureService : IDisposable
             var (vLeft, vTop, vRight, vBottom) = EnumerateVirtualDesktopBounds();
             if (vRight <= vLeft || vBottom <= vTop)
             {
-                vLeft = desc.Left;
-                vTop = desc.Top;
-                vRight = desc.Left + desc.Width;
-                vBottom = desc.Top + desc.Height;
+                vLeft = target.Info.Left;
+                vTop = target.Info.Top;
+                vRight = target.Info.Left + target.Info.Width;
+                vBottom = target.Info.Top + target.Info.Height;
             }
             VirtualLeft = vLeft;
             VirtualTop = vTop;
@@ -262,8 +269,11 @@ public sealed class ScreenCaptureService : IDisposable
         }
         finally
         {
-            try { selected?.Dispose(); } catch { }
-            foreach (var a in adapters) { try { a.Dispose(); } catch { } }
+            // 选中输出之外的对象必须释放；Duplication 创建后不再依赖 output 实例
+            foreach (var o in outputs)
+            {
+                try { o.Dispose(); } catch { }
+            }
         }
 
         // 4. 创建 staging 纹理（CPU 可读，用于读取 GPU 纹理数据）
