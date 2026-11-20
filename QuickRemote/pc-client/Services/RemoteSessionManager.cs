@@ -110,6 +110,15 @@ public sealed class RemoteSessionManager : IDisposable
     /// 会话启动时复位，configure 帧到达后更新并实时反映到 _sessionInfo.DeviceName。</summary>
     private volatile string _peerDeviceName = string.Empty;
 
+    // ============ 多屏切换（Android 端「屏幕」按钮，v1.1.85） ============
+    /// <summary>目标显示器编号（<see cref="ScreenCaptureService.EnumerateMonitors"/> 的 Index；
+    /// -1 = 主显示器）。会话开始时复位，捕获（重）建时沿用。</summary>
+    private volatile int _targetMonitorIndex = -1;
+    /// <summary>Android 请求切换到的显示器编号（-1 = 无请求）。接收线程写入，捕获线程消费。</summary>
+    private int _pendingMonitorIndex = -1;
+    /// <summary>切换请求已生效：捕获（重）建成功后向客户端推送新的屏幕列表与选中项。</summary>
+    private volatile bool _pendingScreensNotify;
+
     /// <summary>编码器重建与编码的互斥锁（压缩率调整时避免竞态）。</summary>
     private readonly object _encoderLock = new();
 
@@ -416,6 +425,12 @@ public sealed class RemoteSessionManager : IDisposable
     {
         try
         {
+            // 多屏切换状态复位：必须在捕获初始化之前（新会话默认回到主显示器，
+            // 不能沿用上一次会话切换到的屏幕）
+            _targetMonitorIndex = -1;
+            _pendingMonitorIndex = -1;
+            _pendingScreensNotify = false;
+
             // 2. 初始化屏幕捕获
             // PC 锁屏时 DXGI DuplicateOutput 被拒绝（E_ACCESSDENIED）：不阻塞等待，
             // 直接带着空捕获进入 CaptureLoop（每秒重建检测解锁），并立即启动锁屏
@@ -432,7 +447,7 @@ public sealed class RemoteSessionManager : IDisposable
                 var capture = new ScreenCaptureService();
                 try
                 {
-                    capture.Start();
+                    capture.Start(_targetMonitorIndex);
                     _sourceWidth = capture.Width;
                     _sourceHeight = capture.Height;
                     ApplyInputMapping(capture);
@@ -557,6 +572,28 @@ public sealed class RemoteSessionManager : IDisposable
             var interval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, _fps));
             var sw = Stopwatch.StartNew();
 
+            // 多屏切换请求：捕获对象只由本线程持有，销毁与重建必须在这里执行
+            // （接收线程只投递编号）。重建走下方 `_capture == null` 分支，
+            // lastRebuildTry 清零保证本轮回合立即重建，不等待 1 秒节流。
+            var switchTo = Interlocked.Exchange(ref _pendingMonitorIndex, -1);
+            if (switchTo >= 0)
+            {
+                _targetMonitorIndex = switchTo;
+                _pendingScreensNotify = true;
+                var oldCapture = _capture;
+                _capture = null;
+                if (oldCapture != null)
+                {
+                    try { oldCapture.Dispose(); } catch { }
+                }
+                lastRebuildTry = DateTime.MinValue;
+                // 丢弃旧屏缓存帧：静止的新屏若沿用旧缓存，保底重投会让手机端一直
+                // 停留在上一块屏幕（缓存帧存在时也不会触发微移 nudge 产生基准帧）
+                _lastDeliveredFrame = null;
+                lastNudge = DateTime.MinValue;
+                _logger.Info($"Switching screen capture to monitor {switchTo}");
+            }
+
             // 锁屏/UAC 安全桌面检测（内部节流 1 秒）：驱动输入代理启停。
             // 覆盖 DXGI 正常但实际已锁屏的场景（此时本地 SendInput 被 lastError=5 拒绝）。
             UpdateLockState();
@@ -572,7 +609,7 @@ public sealed class RemoteSessionManager : IDisposable
                         var capture = new ScreenCaptureService();
                         try
                         {
-                            capture.Start();
+                            capture.Start(_targetMonitorIndex);
                         }
                         catch
                         {
@@ -588,6 +625,13 @@ public sealed class RemoteSessionManager : IDisposable
                         _sourceHeight = capture.Height;
                         ApplyInputMapping(capture);
                         _logger.Info($"Screen capture restored: {capture.Width}x{capture.Height}");
+                        // 多屏切换生效：同分辨率切换不会触发下方握手，这里主动推送
+                        // 最新屏幕列表与选中项（Android 端据此刷新单选态）
+                        if (_pendingScreensNotify)
+                        {
+                            _pendingScreensNotify = false;
+                            SendScreensControl();
+                        }
                         // 防御性 unlocked（与 UpdateLockState 的桌面检测互为备份，手机端幂等）：
                         // DXGI 恢复即意味着可推流，客户端据此解除"锁屏暂停"提示并重置看门狗宽限
                         SendStatusControl("unlocked");
@@ -720,13 +764,15 @@ public sealed class RemoteSessionManager : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool LockWorkStation();
 
-    /// <summary>发送握手控制帧（分辨率/帧率/编码器信息给 Android 端）。</summary>
+    /// <summary>发送握手控制帧（分辨率/帧率/编码器信息 + 多屏列表给 Android 端）。</summary>
     private void SendHandshakeControl(string encoderName)
     {
         try
         {
+            var screens = BuildScreensJsonBody();
             var control = Encoding.UTF8.GetBytes(
-                $"{{\"width\":{_inputHandler.VideoWidth},\"height\":{_inputHandler.VideoHeight},\"fps\":{_fps},\"codec\":\"{encoderName}\"}}");
+                $"{{\"width\":{_inputHandler.VideoWidth},\"height\":{_inputHandler.VideoHeight},\"fps\":{_fps},\"codec\":\"{encoderName}\"" +
+                (screens.Length > 0 ? "," + screens : "") + "}");
             _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL, control);
         }
         catch (Exception ex)
@@ -734,6 +780,49 @@ public sealed class RemoteSessionManager : IDisposable
             // 连接断开时 Send 抛异常；此方法在 CaptureLoop 内调用，不能让异常逃逸终止进程
             _logger.Warn($"Handshake send failed: {ex.Message}");
         }
+    }
+
+    /// <summary>构建多屏信息 JSON 主体（无显示器时返回空串，Android 端据此隐藏切换按钮）。</summary>
+    private string BuildScreensJsonBody()
+    {
+        try
+        {
+            var monitors = ScreenCaptureService.EnumerateMonitors();
+            if (monitors.Count == 0) return string.Empty;
+            var current = _capture != null && _capture.MonitorIndex >= 0
+                ? _capture.MonitorIndex
+                : Math.Max(0, _targetMonitorIndex);
+            var sb = new StringBuilder("\"screens\":[");
+            for (var i = 0; i < monitors.Count; i++)
+            {
+                var m = monitors[i];
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"index\":").Append(m.Index)
+                  .Append(",\"width\":").Append(m.Width)
+                  .Append(",\"height\":").Append(m.Height)
+                  .Append(",\"primary\":").Append(m.IsPrimary ? "true" : "false")
+                  .Append('}');
+            }
+            sb.Append("],\"screenIndex\":").Append(current);
+            return sb.ToString();
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>推送当前显示器列表与选中项（切换屏幕后立即下发，Android 端刷新选中态）。</summary>
+    private void SendScreensControl()
+    {
+        try
+        {
+            var body = BuildScreensJsonBody();
+            if (body.Length == 0) return;
+            _transport?.Send(RemoteFrameProtocol.TYPE_CONTROL,
+                Encoding.UTF8.GetBytes("{" + body + "}"));
+        }
+        catch { }
     }
 
     /// <summary>向客户端发送状态通知（locked/unlocked，锁屏提示）。</summary>
@@ -1738,6 +1827,16 @@ public sealed class RemoteSessionManager : IDisposable
                 // ForceKeyFrame 由编码线程统一执行（失败时由其重建编码器兜底）
                 _logger.Info("Keyframe request received");
                 _pendingKeyframe = true;
+            }
+            else if (action == "switchScreen" &&
+                     root.TryGetProperty("index", out var screenProp) &&
+                     screenProp.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                // 多屏切换（Android v1.1.85+）：捕获线程销毁当前复制对象并按新显示器重建，
+                // 分辨率不同则帧驱动重建编码器并重新握手，相同则单独推送屏幕列表刷新选中态。
+                var index = Math.Max(0, screenProp.GetInt32());
+                _logger.Info($"Screen switch request: monitor {index}");
+                _pendingMonitorIndex = index;
             }
             else if (action == "clipboard" &&
                      root.TryGetProperty("id", out var clipId) &&

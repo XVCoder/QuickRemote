@@ -27,6 +27,12 @@ public sealed class ScreenCaptureService : IDisposable
     /// <summary>屏幕高度（像素）。</summary>
     public int Height => _height;
 
+    /// <summary>
+    /// 当前捕获的显示器编号（<see cref="EnumerateMonitors"/> 返回列表中的 Index；
+    /// -1 = 尚未启动）。多屏切换时客户端据此高亮当前屏幕。
+    /// </summary>
+    public int MonitorIndex { get; private set; } = -1;
+
     /// <summary>被捕获显示器在虚拟桌面中的左上角（物理像素；主屏为 0，左/上方副屏可为负）。</summary>
     public int DesktopLeft { get; private set; }
 
@@ -74,6 +80,55 @@ public sealed class ScreenCaptureService : IDisposable
     }
 
     /// <summary>
+    /// 枚举本机所有显示器（所有适配器的所有输出，过滤未接入桌面的输出），
+    /// 统一按「主屏优先、再从左到右、从上到下」排序并编号。
+    /// <see cref="Start"/> 的 monitorIndex 使用同一套顺序定位目标输出。
+    /// </summary>
+    public static List<MonitorTarget> EnumerateMonitors()
+    {
+        var raw = new List<MonitorTarget>();
+        try
+        {
+            using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+            for (var ai = 0; ; ai++)
+            {
+                var hr = factory.EnumAdapters1(ai, out var adapter);
+                if (hr.Failure) break;
+                using (adapter)
+                {
+                    for (var oi = 0; ; oi++)
+                    {
+                        var ohr = adapter.EnumOutputs(oi, out var output);
+                        if (ohr.Failure) break;
+                        using (output)
+                        {
+                            var r = output.Description.DesktopCoordinates;
+                            var w = r.Right - r.Left;
+                            var h = r.Bottom - r.Top;
+                            if (w <= 0 || h <= 0) continue; // 未接入桌面（如休眠/禁用）的输出
+                            raw.Add(new MonitorTarget(0, w, h, r.Left, r.Top,
+                                r.Left == 0 && r.Top == 0));
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return raw;
+        }
+        return Order(raw);
+    }
+
+    /// <summary>统一排序规则：主屏在最前，其余按虚拟桌面坐标从左到右、从上到下，再重新编号。</summary>
+    private static List<MonitorTarget> Order(List<MonitorTarget> raw) =>
+        raw.OrderByDescending(m => m.IsPrimary)
+           .ThenBy(m => m.Left)
+           .ThenBy(m => m.Top)
+           .Select((m, i) => m with { Index = i })
+           .ToList();
+
+    /// <summary>
     /// 枚举本机所有适配器的所有输出，返回虚拟桌面的外接矩形（物理像素）。
     /// 仅用于输入坐标归一化基准；枚举失败返回空矩形由调用方回退。
     /// </summary>
@@ -112,54 +167,81 @@ public sealed class ScreenCaptureService : IDisposable
         return left == int.MaxValue ? (0, 0, 0, 0) : (left, top, right, bottom);
     }
 
-    /// <summary>初始化 DXGI Desktop Duplication。需要在 UI 线程或有桌面会话的线程调用。</summary>
-    public void Start()
+    /// <summary>
+    /// 初始化 DXGI Desktop Duplication。需要在 UI 线程或有桌面会话的线程调用。
+    /// </summary>
+    /// <param name="monitorIndex">
+    /// 目标显示器编号（<see cref="EnumerateMonitors"/> 的 Index）；-1 = 主显示器。
+    /// 多屏切换时由会话层传入 Android 端选择的编号。
+    /// </param>
+    public void Start(int monitorIndex = -1)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(ScreenCaptureService));
 
-        // 1. 创建 D3D11 设备（硬件驱动）
-        D3D11.D3D11CreateDevice(
-            null,
-            DriverType.Hardware,
-            DeviceCreationFlags.BgraSupport,
-            null,
-            out _device,
-            out _,
-            out _context
-        ).CheckError();
-
-        // 2. 枚举设备所在适配器的全部输出，选中 Windows 主显示器（桌面原点固定为 (0,0)）。
-        //    EnumOutputs(0) 只是适配器输出序号，不保证是"主显示器"——双屏用户把右屏
-        //    设为主屏时，旧实现可能捕获另一块屏，手机端画面与点击坐标整体错位。
-        using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
-        using var adapter = dxgiDevice.GetParent<IDXGIAdapter>();
-
-        var outputs = new List<IDXGIOutput>();
-        for (var i = 0; ; i++)
-        {
-            var hr = adapter.EnumOutputs(i, out var candidate);
-            if (hr.Failure) break;
-            outputs.Add(candidate);
-        }
-        if (outputs.Count == 0)
-            throw new InvalidOperationException("No DXGI output available for desktop duplication");
-
-        var primary = outputs.FirstOrDefault(o =>
-        {
-            var r = o.Description.DesktopCoordinates;
-            return r.Left == 0 && r.Top == 0;
-        }) ?? outputs[0];
+        using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+        var adapters = new List<IDXGIAdapter1>();
+        var candidates = new List<(int Adapter, int Output, MonitorTarget Info)>();
+        IDXGIOutput? selected = null;
 
         try
         {
-            var desc = primary.Description;
-            _width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
-            _height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
-            DesktopLeft = desc.DesktopCoordinates.Left;
-            DesktopTop = desc.DesktopCoordinates.Top;
+            // 1. 枚举所有适配器/输出并按与 EnumerateMonitors 一致的规则排序。
+            //    不能只用默认适配器：多显卡笔记本的外接屏可能挂在另一块显卡上。
+            for (var ai = 0; ; ai++)
+            {
+                var hr = factory.EnumAdapters1(ai, out var adapter);
+                if (hr.Failure) break;
+                adapters.Add(adapter);
+                for (var oi = 0; ; oi++)
+                {
+                    var ohr = adapter.EnumOutputs(oi, out var output);
+                    if (ohr.Failure) break;
+                    using (output)
+                    {
+                        var r = output.Description.DesktopCoordinates;
+                        var w = r.Right - r.Left;
+                        var h = r.Bottom - r.Top;
+                        if (w <= 0 || h <= 0) continue;
+                        candidates.Add((ai, oi, new MonitorTarget(0, w, h, r.Left, r.Top,
+                            r.Left == 0 && r.Top == 0)));
+                    }
+                }
+            }
+            if (candidates.Count == 0)
+                throw new InvalidOperationException("No DXGI output available for desktop duplication");
 
-            using var output1 = primary.QueryInterface<IDXGIOutput1>();
-            // 3. 创建 Output Duplication
+            var ordered = candidates
+                .OrderByDescending(c => c.Info.IsPrimary)
+                .ThenBy(c => c.Info.Left)
+                .ThenBy(c => c.Info.Top)
+                .ToList();
+            var sel = monitorIndex >= 0 && monitorIndex < ordered.Count ? monitorIndex : 0;
+            var target = ordered[sel];
+            MonitorIndex = sel;
+            var desc = target.Info;
+
+            // 2. 在目标输出所属适配器上创建 D3D11 设备（硬件驱动）
+            D3D11.D3D11CreateDevice(
+                adapters[target.Adapter],
+                DriverType.Hardware,
+                DeviceCreationFlags.BgraSupport,
+                null,
+                out _device,
+                out _,
+                out _context
+            ).CheckError();
+
+            // 3. 重新取该适配器的目标输出并创建 Output Duplication
+            if (adapters[target.Adapter].EnumOutputs(target.Output, out selected).Failure ||
+                selected == null)
+                throw new InvalidOperationException("Selected DXGI output is no longer available");
+
+            _width = desc.Width;
+            _height = desc.Height;
+            DesktopLeft = desc.Left;
+            DesktopTop = desc.Top;
+
+            using var output1 = selected.QueryInterface<IDXGIOutput1>();
             _duplication = output1.DuplicateOutput(_device);
 
             // 虚拟桌面 = 所有适配器所有输出的外接矩形（物理像素）。
@@ -168,10 +250,10 @@ public sealed class ScreenCaptureService : IDisposable
             var (vLeft, vTop, vRight, vBottom) = EnumerateVirtualDesktopBounds();
             if (vRight <= vLeft || vBottom <= vTop)
             {
-                vLeft = desc.DesktopCoordinates.Left;
-                vTop = desc.DesktopCoordinates.Top;
-                vRight = desc.DesktopCoordinates.Right;
-                vBottom = desc.DesktopCoordinates.Bottom;
+                vLeft = desc.Left;
+                vTop = desc.Top;
+                vRight = desc.Left + desc.Width;
+                vBottom = desc.Top + desc.Height;
             }
             VirtualLeft = vLeft;
             VirtualTop = vTop;
@@ -180,11 +262,8 @@ public sealed class ScreenCaptureService : IDisposable
         }
         finally
         {
-            // 选中输出之外的对象必须释放；Duplication 创建后不再依赖 output 实例
-            foreach (var o in outputs)
-            {
-                try { o.Dispose(); } catch { }
-            }
+            try { selected?.Dispose(); } catch { }
+            foreach (var a in adapters) { try { a.Dispose(); } catch { } }
         }
 
         // 4. 创建 staging 纹理（CPU 可读，用于读取 GPU 纹理数据）
@@ -299,6 +378,10 @@ public sealed class ScreenCaptureService : IDisposable
         try { _device?.Dispose(); } catch { }
     }
 }
+
+/// <summary>本机显示器信息（多屏切换用）。</summary>
+/// <param name="Index">排序后的编号（0 起，主屏为 0）。</param>
+public sealed record MonitorTarget(int Index, int Width, int Height, int Left, int Top, bool IsPrimary);
 
 /// <summary>捕获的桌面帧。</summary>
 public sealed class CapturedFrame

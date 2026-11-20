@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.quickremote.app.data.local.SettingsStore
 import com.quickremote.app.data.models.AppSettings
 import com.quickremote.app.data.models.Device
+import com.quickremote.app.data.models.RemoteScreen
 import com.quickremote.app.services.Logger
 import com.quickremote.app.services.ReconnectPolicy
 import com.quickremote.app.services.RemoteSessionManager
@@ -118,6 +119,14 @@ class SessionViewModel(
     private val _pcLocked = MutableStateFlow(false)
     val pcLocked: StateFlow<Boolean> = _pcLocked.asStateFlow()
 
+    /** PC 端显示器列表（多屏时非空；单屏/旧版 PC 为空 → UI 隐藏多屏切换入口）。 */
+    private val _screens = MutableStateFlow<List<RemoteScreen>>(emptyList())
+    val screens: StateFlow<List<RemoteScreen>> = _screens.asStateFlow()
+
+    /** 当前 PC 端正在推流的显示器编号（对应 [screens] 中的 index）。 */
+    private val _screenIndex = MutableStateFlow(0)
+    val screenIndex: StateFlow<Int> = _screenIndex.asStateFlow()
+
     /** 远程解锁失败原因（null 表示无错误）。 */
     private val _pcUnlockError = MutableStateFlow<String?>(null)
     val pcUnlockError: StateFlow<String?> = _pcUnlockError.asStateFlow()
@@ -151,6 +160,9 @@ class SessionViewModel(
                 _authRequired.value = false
                 _authError.value = null
                 _latencyMs.value = -1
+                // 多屏信息属于单次会话：断开后清空，重连时由 PC 端重新下发
+                _screens.value = emptyList()
+                _screenIndex.value = 0
             } else {
                 _tunnel.value = sessionManager.tunnel
             }
@@ -198,6 +210,11 @@ class SessionViewModel(
 
         override fun onLatencyChanged(ms: Int) {
             _latencyMs.value = ms
+        }
+
+        override fun onScreensChanged(screens: List<RemoteScreen>, currentIndex: Int) {
+            _screens.value = screens
+            _screenIndex.value = currentIndex
         }
     }
 
@@ -301,6 +318,12 @@ class SessionViewModel(
             val cur = settingsStore.appSettings.first()
             settingsStore.saveAppSettings(cur.copy(qualityPercent = clamped))
         }
+    }
+
+    /** 多屏切换：请求 PC 端把画面切换到指定编号的显示器（仅多屏会话有效）。 */
+    fun switchScreen(index: Int) {
+        if (_screens.value.size <= 1) return
+        sessionManager.switchScreen(index)
     }
 
     /**

@@ -149,6 +149,17 @@ data class AppSettings(
 /** 画质档位。percent 与 PC 端码率缩放比例语义一致，label 仅用于展示。 */
 data class QualityPreset(val percent: Int, val label: String)
 
+/**
+ * PC 端显示器信息（多屏远端时由 PC 端随握手/切屏控制帧下发）。
+ * index 为 PC 端统一排序后的编号（0 起、主屏为 0），切换屏幕时原样回传该编号。
+ */
+data class RemoteScreen(
+    val index: Int,
+    val width: Int,
+    val height: Int,
+    val primary: Boolean
+)
+
 /** 画质 4 档预设：设置页与会话内快捷面板共用同一份，保证两处配置语义拉齐。 */
 val QUALITY_PRESETS = listOf(
     QualityPreset(40, "流畅"),

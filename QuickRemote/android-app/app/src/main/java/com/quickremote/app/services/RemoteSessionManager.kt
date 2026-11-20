@@ -2,6 +2,7 @@ package com.quickremote.app.services
 
 import android.os.SystemClock
 import android.view.Surface
+import com.quickremote.app.data.models.RemoteScreen
 import com.quickremote.app.data.models.ServerConfig
 import com.quickremote.app.data.models.TunnelResponse
 import org.json.JSONObject
@@ -190,6 +191,9 @@ class RemoteSessionManager(
 
         /** 延迟探测更新（ms；-1 表示当前无数据，UI 据此隐藏或置灰延迟显示）。 */
         fun onLatencyChanged(ms: Int) {}
+
+        /** PC 端显示器列表与当前正在推流的屏幕编号（多屏时 PC 端随握手/切屏帧下发）。 */
+        fun onScreensChanged(screens: List<RemoteScreen>, currentIndex: Int) {}
     }
 
     /** 最近一次会话的设备信息与配置，供断线自动重连时复用。 */
@@ -429,6 +433,27 @@ class RemoteSessionManager(
     }
 
     /**
+     * 请求 PC 端切换捕获的显示器：{action:"switchScreen", index:N}。
+     * 走 inputExecutor 避免网络阻塞时拖累接收线程（与 keyframe 请求同策略）。
+     */
+    fun switchScreen(index: Int) {
+        val out = output ?: return
+        val data = "{\"action\":\"switchScreen\",\"index\":$index}".toByteArray(Charsets.UTF_8)
+        inputExecutor.execute {
+            try {
+                synchronized(out) {
+                    out.write(RemoteFrameProtocol.makeHeader(RemoteFrameProtocol.TYPE_CONTROL, data.size))
+                    out.write(data)
+                    out.flush()
+                }
+                logger.info("Screen switch request sent: monitor $index")
+            } catch (e: Exception) {
+                logger.warn("Screen switch request failed: ${e.javaClass.name}: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * 请求 PC 端立即输出 IDR 关键帧：{action:"keyframe"}。
      * 解码器启动可能晚于 PC 端首个关键帧（中继模式下 PC 先推流），
      * 错过 IDR 后全是 P 帧无法解码 → 黑屏；主动请求秒级出画。
@@ -664,6 +689,32 @@ class RemoteSessionManager(
                 logger.info("Control: PC status = ${json.optString("status")}")
                 return
             }
+
+            // 多屏信息（PC 端多显示器时随握手帧/切屏帧下发；单屏或旧版 PC 不下发 → UI 隐藏入口）
+            json.optJSONArray("screens")?.let { arr ->
+                if (arr.length() > 0) {
+                    val list = ArrayList<RemoteScreen>(arr.length())
+                    for (i in 0 until arr.length()) {
+                        val item = arr.optJSONObject(i) ?: continue
+                        list.add(
+                            RemoteScreen(
+                                index = item.optInt("index", i),
+                                width = item.optInt("width", 0),
+                                height = item.optInt("height", 0),
+                                primary = item.optBoolean("primary", false)
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) {
+                        val current = json.optInt("screenIndex", 0)
+                        logger.info("Control: screens=${list.size}, current=$current")
+                        listener?.onScreensChanged(list, current)
+                    }
+                }
+            }
+            // 仅含多屏信息的通知帧（切屏后 PC 主动推送，同分辨率时不触发重新握手）：
+            // 不含 width/height，绝不能继续走下方分辨率解析（会用默认 1280x720 重建解码器）
+            if (!json.has("width") && !json.has("height")) return
 
             val w = json.optInt("width", 1280)
             val h = json.optInt("height", 720)

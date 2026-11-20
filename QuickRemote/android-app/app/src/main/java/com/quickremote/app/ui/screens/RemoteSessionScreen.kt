@@ -41,14 +41,18 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Splitscreen
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -99,6 +103,7 @@ import com.quickremote.app.data.models.Device
 import com.quickremote.app.data.models.ImeToggle
 import com.quickremote.app.data.models.ModKeyState
 import com.quickremote.app.data.models.QUALITY_PRESETS
+import com.quickremote.app.data.models.RemoteScreen
 import com.quickremote.app.data.models.consumeOneShot
 import com.quickremote.app.services.KeyMapper
 import com.quickremote.app.services.ReconnectPolicy
@@ -117,6 +122,7 @@ import com.quickremote.app.ui.components.WheelAccumulator
 import com.quickremote.app.ui.theme.Accent
 import com.quickremote.app.ui.theme.BgCard
 import com.quickremote.app.ui.theme.BgHover
+import com.quickremote.app.ui.theme.Border
 import com.quickremote.app.ui.theme.Danger
 import com.quickremote.app.ui.theme.Success
 import com.quickremote.app.ui.theme.TextMuted
@@ -175,6 +181,8 @@ fun RemoteSessionScreen(
     val connectionMode by viewModel.connectionMode.collectAsState()
     val latencyMs by viewModel.latencyMs.collectAsState()
     val pcLocked by viewModel.pcLocked.collectAsState()
+    val screens by viewModel.screens.collectAsState()
+    val screenIndex by viewModel.screenIndex.collectAsState()
     val pcUnlockError by viewModel.pcUnlockError.collectAsState()
     val authRequired by viewModel.authRequired.collectAsState()
     val authError by viewModel.authError.collectAsState()
@@ -345,6 +353,12 @@ fun RemoteSessionScreen(
 
     // 画质快捷面板显示状态（会话内直接切换档位，无需断开重连）
     var showQualityPanel by remember { mutableStateOf(false) }
+
+    // 多屏切换弹窗（仅 PC 端检测到多个显示器时底部按钮才出现）
+    var showScreenDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(screens.size) {
+        if (screens.size <= 1) showScreenDialog = false
+    }
     val qualityPercent by viewModel.qualityPercent.collectAsState()
 
     // 同步真实 IME 可见状态（用户按系统返回键收起键盘时修正，避免按钮高亮失真）。
@@ -628,6 +642,16 @@ fun RemoteSessionScreen(
                             onClick = { onImeToggleTap() }
                         )
                     } else {
+                        // 多屏切换：仅 PC 端检测到多个显示器时出现（单屏/旧版 PC 隐藏）
+                        if (screens.size > 1) {
+                            ToolBarButton(
+                                icon = Icons.Filled.Splitscreen,
+                                label = "屏幕",
+                                active = showScreenDialog,
+                                modifier = Modifier.weight(1f),
+                                onClick = { showScreenDialog = true }
+                            )
+                        }
                         ToolBarButton(
                             icon = Icons.Filled.ScreenRotation,
                             label = "旋转",
@@ -850,6 +874,16 @@ fun RemoteSessionScreen(
                         onClick = { showHotkeyPanel = !showHotkeyPanel }
                     )
                     Spacer(modifier = Modifier.height(10.dp))
+                    // 多屏切换：全屏没有底部工具栏，多屏时在悬浮组里补一个入口
+                    if (screens.size > 1) {
+                        FloatingToolButton(
+                            icon = Icons.Filled.Splitscreen,
+                            contentDescription = "屏幕切换",
+                            active = showScreenDialog,
+                            onClick = { showScreenDialog = true }
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
                     FloatingToolButton(
                         icon = Icons.Filled.ScreenRotation,
                         contentDescription = if (isLandscape) "切换竖屏" else "切换横屏",
@@ -1038,6 +1072,19 @@ fun RemoteSessionScreen(
                         onDismiss = { showUnlockDialog = false }
                     )
                 }
+            }
+
+            // 多屏切换弹窗：选择 PC 端要远程查看/操作的那块显示器
+            if (showScreenDialog && screens.size > 1) {
+                ScreenSwitchDialog(
+                    screens = screens,
+                    currentIndex = screenIndex,
+                    onSelect = { index ->
+                        showScreenDialog = false
+                        viewModel.switchScreen(index)
+                    },
+                    onDismiss = { showScreenDialog = false }
+                )
             }
 
             // 访问验证码：被控端开启验证保护时，先输入验证码验证通过才开始推流。
@@ -1889,6 +1936,81 @@ private fun HotkeyButton(
             maxLines = 1
         )
     }
+}
+
+/**
+ * 多屏切换对话框：列出 PC 端全部显示器，点击即切换（主屏带「主屏」标记，
+ * 当前正在查看的屏幕显示选中态）。风格与其他会话弹窗一致（深色卡片 + 强调色）。
+ */
+@Composable
+private fun ScreenSwitchDialog(
+    screens: List<RemoteScreen>,
+    currentIndex: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("屏幕切换", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                screens.forEachIndexed { i, screen ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onSelect(screen.index) }
+                            .padding(horizontal = 4.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "屏幕 ${screen.index + 1}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextPrimary
+                                )
+                                if (screen.primary) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "主屏",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Accent
+                                    )
+                                }
+                            }
+                            if (screen.width > 0 && screen.height > 0) {
+                                Text(
+                                    "${screen.width} × ${screen.height}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                        RadioButton(
+                            selected = screen.index == currentIndex,
+                            onClick = { onSelect(screen.index) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = Accent,
+                                unselectedColor = TextMuted
+                            )
+                        )
+                    }
+                    if (i != screens.lastIndex) {
+                        HorizontalDivider(color = Border, thickness = 1.dp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = TextSecondary)
+            }
+        },
+        containerColor = BgCard
+    )
 }
 
 /** 远程解锁对话框：输入 Windows 登录 PIN 或密码，发送到 PC 端锁屏桌面注入解锁。 */
